@@ -1,0 +1,222 @@
+/** Location picker — autocomplete, near me, search history, top cities. */
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { View, ScrollView, TextInput, Alert, Keyboard } from 'react-native';
+import { useRouter } from 'expo-router';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useFocusEffect } from '@react-navigation/native';
+import { Ionicons } from '@expo/vector-icons';
+import { palette, radius, spacing, fontFamily } from '@/theme';
+import { Text, Button, IconButton, PressableScale } from '@/components/ui';
+import { filterLocations, LOCATION_SEARCH_PLACEHOLDER } from '@/data/locationSearch';
+import { TOP_CITIES } from '@/data';
+import { resolveNearMeLocation } from '@/lib/nearMe';
+import { getSearchHistory, addSearchHistory } from '@/lib/searchHistory';
+import { locationPicker } from '@/store/locationPicker';
+import { haptic } from '@/lib/haptics';
+
+export default function LocationScreen() {
+  const router = useRouter();
+  const insets = useSafeAreaInsets();
+  const inputRef = useRef<TextInput>(null);
+  const pickedRef = useRef(false);
+
+  const [query, setQuery] = useState('');
+  const [history, setHistory] = useState<string[]>([]);
+  const [loadingNear, setLoadingNear] = useState(false);
+
+  const suggestions = useMemo(() => filterLocations(query, 10), [query]);
+  const showSuggestions = query.trim().length > 0 && suggestions.length > 0;
+
+  const loadHistory = useCallback(async () => {
+    setHistory(await getSearchHistory());
+  }, []);
+
+  useFocusEffect(
+    useCallback(() => {
+      loadHistory();
+      const t = setTimeout(() => inputRef.current?.focus(), 320);
+      return () => clearTimeout(t);
+    }, [loadHistory]),
+  );
+
+  useEffect(
+    () => () => {
+      if (!pickedRef.current) locationPicker.cancel();
+    },
+    [],
+  );
+
+  const select = async (label: string) => {
+    pickedRef.current = true;
+    haptic.select();
+    Keyboard.dismiss();
+    const next = await addSearchHistory(label);
+    setHistory(next);
+    locationPicker.pick(label);
+    router.back();
+  };
+
+  const nearMe = async () => {
+    setLoadingNear(true);
+    haptic.light();
+    const result = await resolveNearMeLocation();
+    setLoadingNear(false);
+    if (result.ok) {
+      await select(result.label);
+      return;
+    }
+    Alert.alert('Near me', result.message);
+  };
+
+  return (
+    <View style={{ flex: 1, paddingTop: insets.top + spacing.sm, backgroundColor: palette.bg }}>
+      <View style={{ flexDirection: 'row', alignItems: 'center', paddingHorizontal: spacing.base, gap: spacing.sm, marginBottom: spacing.md }}>
+        <IconButton icon="close" onPress={() => router.back()} style={{ borderRadius: 21 }} />
+        <Text variant="h3" style={{ flex: 1 }}>
+          Search your location to stay
+        </Text>
+      </View>
+
+      <View style={{ paddingHorizontal: spacing.base, marginBottom: spacing.md }}>
+        <View
+          style={{
+            flexDirection: 'row',
+            alignItems: 'center',
+            gap: spacing.sm,
+            minHeight: 52,
+            paddingHorizontal: spacing.base,
+            backgroundColor: palette.surface,
+            borderRadius: radius.md,
+            borderWidth: 1.5,
+            borderColor: palette.coral,
+          }}
+        >
+          <Ionicons name="search-outline" size={20} color={palette.coral} />
+          <TextInput
+            ref={inputRef}
+            value={query}
+            onChangeText={setQuery}
+            placeholder={LOCATION_SEARCH_PLACEHOLDER}
+            placeholderTextColor={palette.inkTertiary}
+            style={{ flex: 1, fontFamily: fontFamily.medium, fontSize: 16, color: palette.ink, paddingVertical: 0 }}
+            returnKeyType="search"
+            autoCorrect={false}
+          />
+          {query.length > 0 ? (
+            <PressableScale onPress={() => setQuery('')} haptics={false} style={{ padding: 4 }} accessibilityLabel="Clear search">
+              <Ionicons name="close-circle" size={20} color={palette.inkTertiary} />
+            </PressableScale>
+          ) : null}
+        </View>
+      </View>
+
+      <ScrollView
+        contentContainerStyle={{ paddingHorizontal: spacing.base, paddingBottom: insets.bottom + spacing['2xl'] }}
+        keyboardShouldPersistTaps="handled"
+        showsVerticalScrollIndicator={false}
+      >
+        {showSuggestions ? (
+          <View style={{ marginBottom: spacing.lg, borderRadius: radius.md, borderWidth: 1, borderColor: palette.border, overflow: 'hidden', backgroundColor: palette.surface }}>
+            {suggestions.map((item, i) => (
+              <SuggestionRow key={`${item}-${i}`} icon="search-outline" label={item} onPress={() => select(item)} divider={i < suggestions.length - 1} />
+            ))}
+          </View>
+        ) : null}
+
+        <Button
+          label="Search nearby PGs"
+          icon="navigate-outline"
+          variant="outline"
+          full
+          size="lg"
+          loading={loadingNear}
+          onPress={nearMe}
+          style={{ marginBottom: spacing.xl }}
+        />
+
+        {history.length > 0 && !showSuggestions ? (
+          <View style={{ marginBottom: spacing.xl }}>
+            <Text variant="overline" color={palette.inkTertiary} style={{ marginBottom: spacing.sm }}>
+              CONTINUE YOUR SEARCH
+            </Text>
+            {history.map((item, i) => (
+              <SuggestionRow key={`${item}-${i}`} icon="time-outline" label={item} onPress={() => select(item)} />
+            ))}
+          </View>
+        ) : null}
+
+        {!showSuggestions ? (
+          <View>
+            <Text variant="overline" color={palette.inkTertiary} style={{ marginBottom: spacing.sm }}>
+              TOP CITIES
+            </Text>
+            {TOP_CITIES.map((city, i) => (
+              <SuggestionRow
+                key={city.name}
+                icon="business-outline"
+                label={city.name}
+                subtitle={city.state}
+                onPress={() => select(city.name)}
+                divider={i < TOP_CITIES.length - 1}
+              />
+            ))}
+          </View>
+        ) : null}
+      </ScrollView>
+    </View>
+  );
+}
+
+function SuggestionRow({
+  icon,
+  label,
+  subtitle,
+  onPress,
+  divider,
+}: {
+  icon: keyof typeof Ionicons.glyphMap;
+  label: string;
+  subtitle?: string;
+  onPress: () => void;
+  divider?: boolean;
+}) {
+  return (
+    <PressableScale
+      onPress={onPress}
+      scaleTo={0.99}
+      style={{
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: spacing.md,
+        paddingVertical: spacing.md,
+        paddingHorizontal: spacing.base,
+        borderBottomWidth: divider ? 1 : 0,
+        borderBottomColor: palette.border,
+      }}
+    >
+      <View
+        style={{
+          width: 36,
+          height: 36,
+          borderRadius: 18,
+          backgroundColor: palette.surfaceRaised,
+          alignItems: 'center',
+          justifyContent: 'center',
+        }}
+      >
+        <Ionicons name={icon} size={18} color={palette.inkSecondary} />
+      </View>
+      <View style={{ flex: 1, minWidth: 0 }}>
+        <Text variant="bodyMd" weight="600" numberOfLines={1}>
+          {label}
+        </Text>
+        {subtitle ? (
+          <Text variant="caption" color={palette.inkTertiary} numberOfLines={1}>
+            {subtitle}
+          </Text>
+        ) : null}
+      </View>
+      <Ionicons name="chevron-forward" size={18} color={palette.inkTertiary} />
+    </PressableScale>
+  );
+}
