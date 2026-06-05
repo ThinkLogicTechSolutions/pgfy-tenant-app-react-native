@@ -1,6 +1,8 @@
 # Android APK build — PGfy Tenant
 
-**Package name:** `com.kumarsunil17.tenant`
+**Package name:** `com.kumarsunil17.tenant`  
+**EAS project:** [@kumarsunil17/pgfy-tenant](https://expo.dev/accounts/kumarsunil17/projects/pgfy-tenant)  
+**Project ID:** `5e813d62-a636-48e3-a39d-8442867202c0`
 
 ## Prerequisites
 
@@ -16,10 +18,15 @@
    ```bash
    npm install
    eas login
-   eas init
    ```
 
-   Link the project when prompted (creates `extra.eas.projectId` in `app.json`).
+   First-time only (already done for this repo):
+
+   ```bash
+   eas init --force --non-interactive
+   ```
+
+   EAS requires a git repo in `tenant-app-1/` (`git init` + at least one commit).
 
 2. Build an installable APK:
 
