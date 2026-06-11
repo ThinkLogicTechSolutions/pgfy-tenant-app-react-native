@@ -1,6 +1,6 @@
 /** PGfy Tenant — mock data barrel. */
 export * from './types';
-export { coverImages, interiorImages, galleryFor, avatarFor } from './images';
+export { coverImages, interiorImages, galleryFor, mediaSectionsFor, avatarFor } from './images';
 export { LISTINGS, getListing } from './listings';
 export * from './discovery';
 export { POPULAR_DESTINATIONS, type PopularDestination } from './popularDestinations';
@@ -8,10 +8,28 @@ export { USER } from './user';
 export {
   ACTIVE_BOOKING, LEASE, INVOICES, VISITORS, TICKETS,
   ROOM_SWAP_REQUESTS, AVAILABLE_SWAP_ROOMS, MOVE_OUT_REQUESTS, PAST_BOOKINGS,
-  getBookingByRef, type BookingRecord,
+  getBookingByRef, getAllTenantBookings, bookingListStatus, bookingCheckInDate,
+  getMonthlyServiceCharges, type BookingRecord, type TenantBookingItem,
 } from './booking';
 export { NOTIFICATIONS, unreadCount } from './notifications';
 export { COUPONS, resolveCoupon, type Coupon } from './coupons';
+export {
+  BRAND_VENDORS,
+  BRAND_OFFERS,
+  activeOffers,
+  getVendor,
+  getOffer,
+  pickRandomOffer,
+  isRewardExpired,
+  isRewardOpened,
+  DEMO_SCRATCH_CARDS,
+  VENDOR_CATEGORY_ICON,
+  type BrandVendor,
+  type BrandOffer,
+  type TenantReward,
+  type VendorCategory,
+  type ScratchCardStatus,
+} from './brandRewards';
 
 import { LISTINGS } from './listings';
 export function listingsByIds(ids: string[]) {

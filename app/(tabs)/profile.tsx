@@ -13,6 +13,7 @@ import { haptic } from '@/lib/haptics';
 import { useSaved } from '@/store/saved';
 import { useKyc } from '@/store/kyc';
 import { useBank } from '@/store/bank';
+import { useRewards } from '@/store/rewards';
 
 const PRIVACY_URL = 'https://pgfy.in/privacyPolicy.html';
 const TERMS_URL = 'https://pgfy.in/termsCondtions.html';
@@ -27,6 +28,7 @@ export default function Profile() {
   const saved = useSaved();
   const kyc = useKyc();
   const bank = useBank();
+  const { lockedCount, revealed } = useRewards();
   const [push, setPush] = useState(true);
 
   const logout = async () => { haptic.warning(); await session.logout(); router.replace('/landing'); };
@@ -105,10 +107,32 @@ export default function Profile() {
         <ListRow icon="people-outline" title="Guardian & emergency" subtitle={`${USER.guardianName} (${USER.guardianRelation})`} onPress={() => router.push('/profile-edit')} />
       </Section>
 
+      <Section title="REWARDS">
+        <ListRow
+          icon="gift-outline"
+          iconColor={palette.coral}
+          iconBg={palette.coralTint}
+          title="Rewards"
+          subtitle={
+            lockedCount > 0
+              ? `${lockedCount} scratch card${lockedCount === 1 ? '' : 's'} to reveal`
+              : revealed.length > 0
+                ? `${revealed.length} partner coupon${revealed.length === 1 ? '' : 's'}`
+                : 'Earn coupons after booking'
+          }
+          right={
+            lockedCount > 0 ? (
+              <View style={{ backgroundColor: palette.coral, minWidth: 22, height: 22, borderRadius: 11, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 6 }}>
+                <Text variant="caption" weight="700" color={palette.white}>{lockedCount}</Text>
+              </View>
+            ) : undefined
+          }
+          onPress={() => router.push('/rewards')}
+        />
+      </Section>
+
       <Section title="MY STAY">
-        <ListRow icon="bed-outline" iconColor={palette.navy} iconBg={palette.navyTint} title="Current stay" subtitle="Urbanest Stays · 101-B" onPress={() => router.push('/(tabs)/stay')} />
-        <Divider />
-        <ListRow icon="time-outline" title="Booking history" subtitle="Your past & cancelled bookings" onPress={() => router.push('/bookings')} />
+        <ListRow icon="time-outline" title="Booking history" subtitle="All your bookings" onPress={() => router.push('/bookings')} />
         <Divider />
         <ListRow icon="document-text-outline" title="Lease agreement" onPress={() => router.push('/lease')} />
         <Divider />

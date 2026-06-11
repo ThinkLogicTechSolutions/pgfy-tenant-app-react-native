@@ -12,7 +12,7 @@ import { inr } from '@/lib/format';
 import { listingNearLandmarkTitle } from '@/lib/listingDisplay';
 
 export default function SelectBed() {
-  const { id, checkIn, checkOut, occupancy, occupancyTitle, acType, selectedRent } = useLocalSearchParams<{
+  const { id, checkIn, checkOut, occupancy, occupancyTitle, acType, selectedRent, bookingType } = useLocalSearchParams<{
     id: string;
     checkIn?: string;
     checkOut?: string;
@@ -20,6 +20,7 @@ export default function SelectBed() {
     occupancyTitle?: string;
     acType?: string;
     selectedRent?: string;
+    bookingType?: string;
   }>();
   const router = useRouter();
   const insets = useSafeAreaInsets();
@@ -44,6 +45,7 @@ export default function SelectBed() {
     return true;
   });
   const selectedOccupancyRent = Number(selectedRent ?? 0) || undefined;
+  const priceSuffix = bookingType === 'hourly' ? '/hr' : bookingType === 'daily' ? '/day' : '/mo';
 
   return (
     <View style={{ flex: 1, paddingTop: insets.top + spacing.xs }}>
@@ -112,7 +114,7 @@ export default function SelectBed() {
             <View style={{ flex: 1 }}>
               <Text variant="bodyMd" weight="700">Room {sel.room.number} · Bed {sel.bed.label}</Text>
               <Text variant="caption" color={palette.inkSecondary}>
-                {sel.room.sharingType}{acLabel ? ` · ${acLabel}` : ''} · {inr(selectedOccupancyRent ?? sel.bed.rent)}/mo
+                {sel.room.sharingType}{acLabel ? ` · ${acLabel}` : ''} · {inr(selectedOccupancyRent ?? sel.bed.rent)}{priceSuffix}
               </Text>
             </View>
             <Button
@@ -129,6 +131,7 @@ export default function SelectBed() {
                   checkOut: checkOut ?? '',
                   occupancyTitle: occupancyTitle ?? '',
                   acType: acLabel ?? '',
+                  bookingType: bookingType ?? 'monthly',
                 },
               })}
             />

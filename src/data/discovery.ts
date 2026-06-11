@@ -14,7 +14,7 @@ export const CURATED_RAILS: CuratedRail[] = [
 
 export const PROMO_BANNERS: PromoBanner[] = [
   { id: 'promo1', title: 'Move in this month', subtitle: 'Flat ₹500 off your first booking', cta: 'Use WELCOME500', tone: 'coral', icon: 'pricetag' },
-  { id: 'promo2', title: 'Refer & earn ₹250', subtitle: 'For every friend who books', cta: 'Invite friends', tone: 'success', icon: 'gift' },
+  { id: 'promo2', title: 'Rewards', subtitle: 'Scratch cards from Swiggy, Amazon & more', cta: 'View rewards', tone: 'success', icon: 'gift' },
   { id: 'promo3', title: 'Zero brokerage', subtitle: 'Every PGfy booking, always', cta: 'Learn more', tone: 'info', icon: 'shield-checkmark' },
 ];
 

@@ -76,6 +76,9 @@ export function VisitScheduleFields({ visitDate, visitTime, onChangeDate, onChan
             display={Platform.OS === 'ios' ? 'spinner' : 'default'}
             minimumDate={startOfToday()}
             onChange={onDateChange}
+            themeVariant="light"
+            textColor={palette.ink}
+            accentColor={palette.coral}
           />
           {Platform.OS === 'ios' ? (
             <PressableScale onPress={() => setPicker(null)} scaleTo={0.98} style={{ alignSelf: 'flex-end', paddingVertical: spacing.sm }}>
@@ -92,6 +95,11 @@ export function VisitScheduleFields({ visitDate, visitTime, onChangeDate, onChan
             mode="time"
             display={Platform.OS === 'ios' ? 'spinner' : 'default'}
             onChange={onTimeChange}
+            is24Hour={false}
+            locale={Platform.OS === 'ios' ? 'en-US' : undefined}
+            themeVariant="light"
+            textColor={palette.ink}
+            accentColor={palette.coral}
           />
           {Platform.OS === 'ios' ? (
             <PressableScale onPress={() => setPicker(null)} scaleTo={0.98} style={{ alignSelf: 'flex-end', paddingVertical: spacing.sm }}>
@@ -105,7 +113,7 @@ export function VisitScheduleFields({ visitDate, visitTime, onChangeDate, onChan
 }
 
 const pickerWrapStyle = {
-  backgroundColor: palette.surfaceRaised,
+  backgroundColor: palette.surface,
   borderRadius: radius.md,
   borderWidth: 1,
   borderColor: palette.border,

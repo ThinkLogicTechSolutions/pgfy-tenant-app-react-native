@@ -1,21 +1,29 @@
 /** T-S13 — Property details page with verification/trust surfaced. */
 import { useEffect, useState } from 'react';
 import { View, ScrollView, useWindowDimensions } from 'react-native';
-import { Image } from 'expo-image';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { palette, spacing, radius, shadows } from '@/theme';
 import { Text, Card, IconButton, Divider, Button, EmptyState, Sheet, Input, PressableScale } from '@/components/ui';
-import { StayDateRangeField } from '@/components/search';
-import { PgfyScore, StatusPill, RatingPill, ReviewCard, WeeklyFoodMenuSheet, buildWeeklyMenu, type WeekDay } from '@/components/domain';
-import { getListing } from '@/data';
+import { StayBookingFields, type StayBookingValues } from '@/components/search';
+import { PgfyScore, StatusPill, RatingPill, ReviewCard, WeeklyFoodMenuSheet, buildWeeklyMenu, PropertyImageCarousel, PromotedBadge, type WeekDay } from '@/components/domain';
+import { listingCarouselImages, listingPhotoCount, PROPERTY_IMAGE_ASPECT } from '@/lib/media';
+import { getListing, LISTINGS } from '@/data';
 import { inr, formatDate } from '@/lib/format';
-import { listingNearLandmarkTitle } from '@/lib/listingDisplay';
+import { listingNearLandmarkTitle, isPromotedListing } from '@/lib/listingDisplay';
 import { defaultCheckIn, defaultCheckOut } from '@/lib/dates';
 import { useSaved } from '@/store/saved';
 import { haptic } from '@/lib/haptics';
+import type { BookingMode } from '@/data/types';
+
+function formatTime12(t: string) {
+  const [h, m] = t.split(':').map(Number);
+  const suffix = h >= 12 ? 'PM' : 'AM';
+  const hr = h === 0 ? 12 : h > 12 ? h - 12 : h;
+  return `${hr}:${String(m).padStart(2, '0')} ${suffix}`;
+}
 
 const AMENITY_ICON: Record<string, keyof typeof Ionicons.glyphMap> = {
   'Wi-Fi': 'wifi', AC: 'snow-outline', Gym: 'barbell-outline', Parking: 'car-outline',
@@ -70,17 +78,31 @@ function occupancyPlanKey(hasAcRoom: boolean, withFood: boolean) {
 }
 
 export default function ListingDetail() {
-  const { id, checkIn, checkOut, openReview, openFoodMenu } = useLocalSearchParams<{ id: string; checkIn?: string; checkOut?: string; openReview?: string; openFoodMenu?: string }>();
+  const {
+    id, checkIn, checkOut, openReview, openFoodMenu,
+    bookingType: routeBookingType, startTime: routeStartTime, hours: routeHours,
+  } = useLocalSearchParams<{
+    id: string;
+    checkIn?: string;
+    checkOut?: string;
+    openReview?: string;
+    openFoodMenu?: string;
+    bookingType?: string;
+    startTime?: string;
+    hours?: string;
+  }>();
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const { width } = useWindowDimensions();
   const saved = useSaved();
   const listing = getListing(String(id));
-  const [activeImg, setActiveImg] = useState(0);
   const [reviewOpen, setReviewOpen] = useState(false);
   const [foodSheetOpen, setFoodSheetOpen] = useState(false);
   const [selectedWeekDay, setSelectedWeekDay] = useState<WeekDay>('Mon');
   const [expandedOccupancy, setExpandedOccupancy] = useState<string | null>(null);
+  const selectedBookingMode: BookingMode = ['hourly', 'daily', 'monthly'].includes(routeBookingType ?? '')
+    ? (routeBookingType as BookingMode)
+    : 'monthly';
   const [selectedOccupancy, setSelectedOccupancy] = useState<{
     key: string;
     sharingType: string;
@@ -89,11 +111,13 @@ export default function ListingDetail() {
     hasAc: boolean;
     acLabel: 'AC' | 'Non-AC';
   } | null>(null);
-  const [stayDates, setStayDates] = useState(() => {
+  const [stayValues, setStayValues] = useState<StayBookingValues>(() => {
     const nextCheckIn = checkIn || defaultCheckIn();
     return {
       checkIn: nextCheckIn,
       checkOut: checkOut || defaultCheckOut(nextCheckIn),
+      startTime: routeStartTime || '10:00',
+      hours: routeHours ? Number(routeHours) : 4,
     };
   });
   const [reviewRatings, setReviewRatings] = useState<Record<ReviewCategoryKey, number>>({
@@ -122,29 +146,52 @@ export default function ListingDetail() {
     if (openFoodMenu === '1') setFoodSheetOpen(true);
   }, [openFoodMenu]);
 
+  const promoted = isPromotedListing(l.id, LISTINGS);
+
   return (
     <View style={{ flex: 1 }}>
       <ScrollView contentContainerStyle={{ paddingBottom: 120 }} showsVerticalScrollIndicator={false}>
         {/* Gallery */}
         <View>
-          <ScrollView horizontal pagingEnabled showsHorizontalScrollIndicator={false} onMomentumScrollEnd={(e) => setActiveImg(Math.round(e.nativeEvent.contentOffset.x / width))}>
-            {l.gallery.map((uri, i) => (
-              <Image key={i} source={{ uri }} style={{ width, height: 300 }} contentFit="cover" transition={200} />
-            ))}
-          </ScrollView>
-          <LinearGradient colors={['rgba(1,38,78,0.5)', 'transparent']} style={{ position: 'absolute', top: 0, left: 0, right: 0, height: 110 }} />
-          <View style={{ position: 'absolute', top: insets.top + spacing.xs, left: spacing.base, right: spacing.base, flexDirection: 'row', justifyContent: 'space-between' }}>
-            <IconButton icon="chevron-back" bg="rgba(255,255,255,0.92)" onPress={() => (router.canGoBack() ? router.back() : router.replace('/(tabs)'))} />
+          <PropertyImageCarousel
+            images={listingCarouselImages(l)}
+            width={width}
+            aspectRatio={PROPERTY_IMAGE_ASPECT}
+            maxImages={5}
+            showDots
+          />
+          <LinearGradient colors={['rgba(1,38,78,0.5)', 'transparent']} style={{ position: 'absolute', top: 0, left: 0, right: 0, height: 110 }} pointerEvents="none" />
+          <View style={{ position: 'absolute', top: insets.top + spacing.xs, left: spacing.base, right: spacing.base, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: spacing.sm }}>
+              <IconButton icon="chevron-back" bg="rgba(255,255,255,0.92)" onPress={() => (router.canGoBack() ? router.back() : router.replace('/(tabs)'))} />
+              {promoted ? <PromotedBadge /> : null}
+            </View>
             <View style={{ flexDirection: 'row', gap: spacing.sm }}>
               <IconButton icon={saved.isSaved(l.id) ? 'heart' : 'heart-outline'} color={saved.isSaved(l.id) ? palette.coral : palette.ink} bg="rgba(255,255,255,0.92)" onPress={() => saved.toggle(l.id)} />
               <IconButton icon="share-social-outline" bg="rgba(255,255,255,0.92)" />
             </View>
           </View>
-          {/* dots + count */}
-          <View style={{ position: 'absolute', bottom: 12, right: spacing.base, backgroundColor: 'rgba(1,38,78,0.7)', paddingHorizontal: 10, paddingVertical: 4, borderRadius: 999, flexDirection: 'row', alignItems: 'center', gap: 4 }}>
-            <Ionicons name="images-outline" size={13} color={palette.white} />
-            <Text variant="caption" color={palette.white}>{activeImg + 1}/{l.gallery.length}</Text>
-          </View>
+          <PressableScale
+            onPress={() => router.push({ pathname: `/listing/${l.id}/media`, params: { section: l.mediaSections[0]?.id } })}
+            scaleTo={0.97}
+            style={{
+              position: 'absolute',
+              bottom: 12,
+              left: spacing.base,
+              flexDirection: 'row',
+              alignItems: 'center',
+              gap: 6,
+              backgroundColor: 'rgba(255,255,255,0.94)',
+              paddingHorizontal: 12,
+              paddingVertical: 7,
+              borderRadius: 999,
+              ...shadows.card,
+            }}
+          >
+            <Ionicons name="images-outline" size={15} color={palette.navy} />
+            <Text variant="bodySm" weight="600" color={palette.navy}>{listingPhotoCount(l)} Photos</Text>
+            <Ionicons name="chevron-forward" size={14} color={palette.navy} />
+          </PressableScale>
         </View>
 
         <View style={{ paddingHorizontal: spacing.base, paddingTop: spacing.base, gap: spacing.base }}>
@@ -154,7 +201,7 @@ export default function ListingDetail() {
               <Text variant="h1" style={{ flex: 1 }}>{listingNearLandmarkTitle(l)}</Text>
               <RatingPill rating={l.rating} count={l.reviewCount} />
             </View>
-            <View style={{ flexDirection: 'row', gap: spacing.sm, marginTop: spacing.sm }}>
+            <View style={{ flexDirection: 'row', gap: spacing.sm, marginTop: spacing.sm, flexWrap: 'wrap' }}>
               <StatusPill status={l.type} small />
               <StatusPill status={l.gender} small />
               {l.tags.filter((t) => t === 'New').map((t) => <StatusPill key={t} status={t} small />)}
@@ -169,14 +216,43 @@ export default function ListingDetail() {
             </Text>
           </Card>
 
+          {/* Booking details */}
+          <Card>
+            <Text variant="h3" style={{ marginBottom: spacing.md }}>Your booking details</Text>
+            <StayBookingFields
+              mode={selectedBookingMode}
+              values={stayValues}
+              onChange={setStayValues}
+              showModeLabel
+            />
+            {selectedBookingMode === 'hourly' && l.bookingConfig.hourly ? (
+              <Text variant="caption" color={palette.inkTertiary} style={{ marginTop: spacing.md }}>
+                Property window: {formatTime12(l.bookingConfig.hourly.windowStart)} – {formatTime12(l.bookingConfig.hourly.windowEnd)}
+              </Text>
+            ) : null}
+            {selectedBookingMode === 'daily' && l.bookingConfig.daily ? (
+              <Text variant="caption" color={palette.inkTertiary} style={{ marginTop: spacing.md }}>
+                Standard check-in {formatTime12(l.bookingConfig.daily.checkInTime)} · check-out {formatTime12(l.bookingConfig.daily.checkOutTime)}
+              </Text>
+            ) : null}
+          </Card>
+
           {/* Occupancy */}
           <Card>
             <Text variant="h3" style={{ marginBottom: spacing.xs }}>Occupancy</Text>
             <Text variant="caption" color={palette.inkTertiary} style={{ marginBottom: spacing.md }}>
               Expand a room type and select one option to continue to room / bed selection.
             </Text>
+
             <View style={{ gap: spacing.md }}>
-              {l.pricing.map((tier) => {
+              {(selectedBookingMode === 'hourly'
+                ? l.hourlyPricing.map((h) => ({ sharingType: h.sharingType, rent: h.rentPerHour, available: h.available }))
+                : selectedBookingMode === 'daily'
+                  ? l.dailyPricing.map((d) => ({ sharingType: d.sharingType, rent: d.rentPerDay, available: d.available }))
+                  : l.pricing
+              ).map((tier) => {
+                const tierRent = tier.rent;
+                const priceSuffix = selectedBookingMode === 'hourly' ? '/hr' : selectedBookingMode === 'daily' ? '/day' : '/mo';
                 const plans = monthlyPlansForTier(tier.rent, l.amenities.includes('AC'), l.foodIncluded);
                 const options = [
                   {
@@ -254,7 +330,7 @@ export default function ListingDetail() {
                       </View>
                       <View style={{ alignItems: 'flex-end', paddingLeft: spacing.sm }}>
                         <Text variant="bodySm" weight="700" color={palette.coralDark}>
-                          From {inr(tier.rent)}/mo
+                          From {inr(tierRent)}{priceSuffix}
                         </Text>
                         <Text variant="caption" color={activeSelection ? palette.coralDark : palette.inkTertiary}>
                           {activeSelection ? 'Option selected' : expanded ? 'Hide plans' : 'View plans'}
@@ -356,16 +432,6 @@ export default function ListingDetail() {
                 </View>
               ))}
             </View>
-          </Card>
-
-          {/* Booking details */}
-          <Card>
-            <Text variant="h3" style={{ marginBottom: spacing.md }}>Your booking details</Text>
-            <StayDateRangeField
-              checkIn={stayDates.checkIn}
-              checkOut={stayDates.checkOut}
-              onChange={setStayDates}
-            />
           </Card>
 
           {/* Food menu */}
@@ -528,12 +594,15 @@ export default function ListingDetail() {
           onPress={() => l.verified ? router.push({
             pathname: `/listing/${l.id}/select`,
             params: {
-              checkIn: stayDates.checkIn,
-              checkOut: stayDates.checkOut,
+              checkIn: stayValues.checkIn,
+              checkOut: stayValues.checkOut,
+              startTime: stayValues.startTime,
+              hours: String(stayValues.hours),
               occupancy: selectedOccupancy?.sharingType ?? '',
               occupancyTitle: selectedOccupancy?.title ?? '',
               acType: selectedOccupancy?.acLabel ?? '',
               selectedRent: selectedOccupancy ? String(selectedOccupancy.rent) : '',
+              bookingType: selectedBookingMode,
             },
           }) : router.push(`/listing/${l.id}/request`)}
           disabled={l.verified && !selectedOccupancy}

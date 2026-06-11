@@ -8,6 +8,13 @@ import { palette, spacing, radius } from '@/theme';
 import { Text, Input, Button, Chip, IconButton, Divider } from '@/components/ui';
 import { FILTER_OPTIONS, RECENT_SEARCHES, LOCATIONS } from '@/data';
 import { inr } from '@/lib/format';
+import type { BookingMode } from '@/data/types';
+
+const BOOKING_TYPE_OPTIONS: { key: BookingMode; label: string }[] = [
+  { key: 'hourly', label: '⏱ Hourly' },
+  { key: 'daily', label: '☀ Daily' },
+  { key: 'monthly', label: '📅 Monthly' },
+];
 
 export default function Search() {
   const router = useRouter();
@@ -20,14 +27,15 @@ export default function Search() {
   const [food, setFood] = useState<string[]>([]);
   const [amenities, setAmenities] = useState<string[]>([]);
   const [verifiedOnly, setVerifiedOnly] = useState(true);
+  const [bookingType, setBookingType] = useState<BookingMode>('monthly');
 
   const toggle = (arr: string[], set: (v: string[]) => void, v: string) =>
     set(arr.includes(v) ? arr.filter((x) => x !== v) : [...arr, v]);
 
-  const activeCount = sharing.length + food.length + amenities.length + (gender !== 'Any' ? 1 : 0) + (stay !== 'Any' ? 1 : 0) + (verifiedOnly ? 1 : 0);
+  const activeCount = sharing.length + food.length + amenities.length + (gender !== 'Any' ? 1 : 0) + (stay !== 'Any' ? 1 : 0) + (verifiedOnly ? 1 : 0) + (bookingType !== 'monthly' ? 1 : 0);
 
   const apply = () => router.replace({ pathname: '/results', params: { title: query || 'Search results' } });
-  const reset = () => { setBudget(15000); setStay('Any'); setSharing([]); setGender('Any'); setFood([]); setAmenities([]); setVerifiedOnly(true); };
+  const reset = () => { setBudget(15000); setStay('Any'); setSharing([]); setGender('Any'); setFood([]); setAmenities([]); setVerifiedOnly(true); setBookingType('monthly'); };
 
   return (
     <View style={{ flex: 1, paddingTop: insets.top + spacing.sm }}>
@@ -58,8 +66,13 @@ export default function Search() {
 
         <Divider style={{ marginVertical: spacing.lg }} />
 
+        {/* Booking type */}
+        <FilterBlock label="Booking type">
+          <Row>{BOOKING_TYPE_OPTIONS.map((bt) => <Chip key={bt.key} label={bt.label} active={bookingType === bt.key} onPress={() => setBookingType(bt.key)} />)}</Row>
+        </FilterBlock>
+
         {/* Budget */}
-        <FilterBlock label="Monthly budget" value={`Up to ${inr(budget)}`}>
+        <FilterBlock label={bookingType === 'hourly' ? 'Hourly budget' : bookingType === 'daily' ? 'Daily budget' : 'Monthly budget'} value={`Up to ${inr(budget)}`}>
           <BudgetSlider value={budget} onChange={setBudget} />
         </FilterBlock>
 

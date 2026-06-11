@@ -14,7 +14,7 @@ import { haptic } from '@/lib/haptics';
 import { useKyc } from '@/store/kyc';
 
 export default function BookConfig() {
-  const { id, room, bed, rent, sharing, appliedCode, checkIn, checkOut } = useLocalSearchParams<{
+  const { id, room, bed, rent, sharing, appliedCode, checkIn, checkOut, bookingType } = useLocalSearchParams<{
     id: string;
     room: string;
     bed: string;
@@ -23,6 +23,7 @@ export default function BookConfig() {
     appliedCode?: string;
     checkIn?: string;
     checkOut?: string;
+    bookingType?: string;
   }>();
   const router = useRouter();
   const insets = useSafeAreaInsets();
@@ -42,9 +43,11 @@ export default function BookConfig() {
   });
 
   const kyc = useKyc();
-  const registrationFee = 500;
+  const rentLabel = bookingType === 'hourly' ? 'Hourly rate' : bookingType === 'daily' ? 'Daily rate' : 'First month rent';
+  const registrationFee = bookingType === 'hourly' ? 0 : 500;
+  const depositAmount = bookingType === 'hourly' ? 0 : dep;
   const gst = Math.round((monthlyRent + registrationFee) * 0.18);
-  const netPayable = monthlyRent + dep + registrationFee + gst - discount;
+  const netPayable = monthlyRent + depositAmount + registrationFee + gst - discount;
   const kycVerified = kyc.verified;
 
   useEffect(() => {
@@ -178,9 +181,9 @@ export default function BookConfig() {
         {/* Bill */}
         <Card>
           <Text variant="overline" color={palette.inkTertiary} style={{ marginBottom: spacing.sm }}>BILL SUMMARY</Text>
-          <Row k="First month rent" v={inr(monthlyRent)} />
-          <Row k="Security deposit (refundable)" v={inr(dep)} />
-          <Row k="Registration fee" v={inr(registrationFee)} />
+          <Row k={rentLabel} v={inr(monthlyRent)} />
+          {depositAmount > 0 ? <Row k="Security deposit (refundable)" v={inr(depositAmount)} /> : null}
+          {registrationFee > 0 ? <Row k="Registration fee" v={inr(registrationFee)} /> : null}
           <Row k="GST (18%)" v={inr(gst)} />
           {discount > 0 ? <Row k="Discount" v={`− ${inr(discount)}`} accent={palette.success} /> : null}
           <Divider style={{ marginVertical: spacing.sm }} />

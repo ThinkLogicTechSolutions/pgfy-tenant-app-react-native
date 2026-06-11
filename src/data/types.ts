@@ -10,6 +10,39 @@ export type Gender = 'Male' | 'Female' | 'Co-ed';
 export type SharingType = 'Single' | 'Double' | 'Triple' | '4-sharing' | 'Dormitory';
 export type KycStatus = 'Verified' | 'Pending' | 'Not Submitted';
 
+/* ── Booking type ────────────────────────────── */
+export type BookingMode = 'hourly' | 'daily' | 'monthly';
+
+export interface HourlyConfig {
+  windowStart: string;
+  windowEnd: string;
+}
+
+export interface DailyConfig {
+  checkInTime: string;
+  checkOutTime: string;
+}
+
+export interface ListingBookingConfig {
+  hourlyEnabled: boolean;
+  dailyEnabled: boolean;
+  monthlyEnabled: boolean;
+  hourly?: HourlyConfig;
+  daily?: DailyConfig;
+}
+
+export interface HourlyPricingTier {
+  sharingType: SharingType;
+  rentPerHour: number;
+  available: number;
+}
+
+export interface DailyPricingTier {
+  sharingType: SharingType;
+  rentPerDay: number;
+  available: number;
+}
+
 export interface Certificate {
   label: string;
   status: 'Verified' | 'Pending' | 'Expired' | 'Missing';
@@ -65,6 +98,13 @@ export interface FoodDay {
 
 export type ListingTag = 'New' | 'Last Bed' | 'Fast Filling';
 
+/** Section-wise property media (mirrors owner add-property flow). */
+export interface MediaSection {
+  id: string;
+  name: string;
+  images: string[];
+}
+
 export interface Listing {
   id: string;
   name: string;
@@ -79,6 +119,7 @@ export interface Listing {
   lng: number;
   coverImage: string;
   gallery: string[];
+  mediaSections: MediaSection[];
   hasVideoTour: boolean;
   description: string;
   priceFrom: number; // lowest sharing rent
@@ -107,6 +148,9 @@ export interface Listing {
   noticePeriodDays: number;
   lockInMonths: number;
   addedOn: string;
+  bookingConfig: ListingBookingConfig;
+  hourlyPricing: HourlyPricingTier[];
+  dailyPricing: DailyPricingTier[];
 }
 
 export interface CuratedRail {
@@ -315,4 +359,5 @@ export interface FilterState {
   food: string[];
   amenities: string[];
   verifiedOnly: boolean;
+  bookingType: BookingMode;
 }

@@ -2,6 +2,7 @@
  * Verified free-to-use images for the tenant marketplace mockup.
  * Photos: Unsplash + Pexels CDN (commercial-OK). Avatars: pravatar (by seed).
  */
+import type { MediaSection } from './types';
 
 export const coverImages = [
   'https://images.unsplash.com/photo-1522708323590-d24dbb6b0267?w=800&q=80&auto=format&fit=crop',
@@ -30,12 +31,37 @@ export const interiorImages = [
   'https://images.pexels.com/photos/2029722/pexels-photo-2029722.jpeg?auto=compress&cs=tinysrgb&w=800',
 ];
 
+const MEDIA_SECTION_NAMES = [
+  'Room', 'Outdoors', 'Facade', 'Kitchen', 'Common Area', 'Entrance', 'Dining', 'Recreation',
+];
+
 /** Build a gallery of N images starting at an offset, mixing covers + interiors. */
 export function galleryFor(seed: number, n = 5): string[] {
   const pool = [...coverImages, ...interiorImages];
   const out: string[] = [];
   for (let i = 0; i < n; i++) out.push(pool[(seed * 3 + i) % pool.length]);
   return out;
+}
+
+/** Section-wise media groups for property gallery (owner-app add flow pattern). */
+export function mediaSectionsFor(seed: number, coverIdx: number): MediaSection[] {
+  const pool = [...coverImages, ...interiorImages];
+  const sectionCount = 4 + (seed % 3);
+  const sections: MediaSection[] = [];
+  let imgOffset = 0;
+
+  for (let s = 0; s < sectionCount; s++) {
+    const name = MEDIA_SECTION_NAMES[(seed + s) % MEDIA_SECTION_NAMES.length];
+    const imageCount = 2 + ((seed + s * 2) % 4);
+    const images: string[] = [];
+    for (let i = 0; i < imageCount; i++) {
+      images.push(pool[(coverIdx + seed + imgOffset + i) % pool.length]);
+    }
+    imgOffset += imageCount;
+    sections.push({ id: `sec-${seed}-${s}`, name, images });
+  }
+
+  return sections;
 }
 
 export function avatarFor(seed: string): string {

@@ -6,22 +6,22 @@ import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
 import { palette, spacing, radius } from '@/theme';
-import { Text, Button, IconButton, PressableScale } from '@/components/ui';
+import { Text, IconButton, PressableScale } from '@/components/ui';
 import { ListingCard, CraftedFooter } from '@/components/domain';
-import { LocationSearchTrigger } from '@/components/search/LocationAutocomplete';
+import { HomeSearchCard, type StayBookingValues } from '@/components/search';
 import { locationPicker } from '@/store/locationPicker';
-import { StayDateRangeField } from '@/components/search/StayDateRangeField';
 import { LISTINGS, USER, unreadCount } from '@/data';
 import { POPULAR_DESTINATIONS, type PopularDestination } from '@/data/popularDestinations';
 import { isBefore } from '@/lib/dates';
 import { defaultCheckIn, defaultCheckOut } from '@/lib/dates';
+import { listingSupportsBookingMode, getPromotedPgListingId } from '@/lib/listingDisplay';
 import { haptic } from '@/lib/haptics';
+import type { BookingMode } from '@/data/types';
 
 const DESTINATION_CARD_WIDTH = 132;
 const DESTINATION_CARD_HEIGHT = 164;
 const DESTINATION_GRID_ROWS = 2;
 
-/** Resolved once at module load — avoids barrel/circular import leaving the export undefined. */
 const popularDestinations = POPULAR_DESTINATIONS;
 
 function destinationColumns(items: PopularDestination[], rows = DESTINATION_GRID_ROWS) {
@@ -37,6 +37,16 @@ function greeting() {
   if (h < 12) return 'Good morning';
   if (h < 17) return 'Good afternoon';
   return 'Good evening';
+}
+
+function defaultStayValues(): StayBookingValues {
+  const checkIn = defaultCheckIn();
+  return {
+    checkIn,
+    checkOut: defaultCheckOut(checkIn),
+    startTime: '10:00',
+    hours: 4,
+  };
 }
 
 function DestinationCard({ dest, onPress }: { dest: PopularDestination; onPress: () => void }) {
@@ -74,42 +84,90 @@ export default function Home() {
   const firstName = USER.name.split(' ')[0] ?? USER.name;
 
   const [location, setLocation] = useState('');
-  const [checkIn, setCheckIn] = useState(defaultCheckIn);
-  const [checkOut, setCheckOut] = useState(() => defaultCheckOut(defaultCheckIn()));
+  const [stayType, setStayType] = useState<BookingMode>('monthly');
+  const [stayValues, setStayValues] = useState<StayBookingValues>(defaultStayValues);
+
+  const promotedPgId = useMemo(() => getPromotedPgListingId(LISTINGS), []);
 
   const topPgs = useMemo(
-    () => [...LISTINGS].filter((l) => l.type === 'PG').sort((a, b) => b.rating - a.rating).slice(0, 5),
-    [],
+    () => [...LISTINGS]
+      .filter((l) => l.type === 'PG')
+      .filter((l) => listingSupportsBookingMode(l, stayType))
+      .sort((a, b) => b.rating - a.rating)
+      .slice(0, 5),
+    [stayType],
   );
+
+  const searchParams = () => ({
+    city: location.trim(),
+    checkIn: stayValues.checkIn,
+    checkOut: stayValues.checkOut,
+    bookingType: stayType,
+    startTime: stayValues.startTime,
+    hours: String(stayValues.hours),
+  });
 
   const browseWithLocation = (city: string) => {
     router.push({
       pathname: '/browse',
-      params: { city: city.trim(), checkIn, checkOut },
+      params: { ...searchParams(), city: city.trim() },
     });
   };
 
-  const search = () => {
-    if (!location.trim()) {
+  const validateSearch = (city = location): boolean => {
+    if (!city.trim()) {
       Alert.alert('Location required', 'Choose where you want to stay.');
-      return;
+      return false;
     }
-    if (!checkIn || !checkOut) {
-      Alert.alert('Dates required', 'Select check-in and check-out dates.');
-      return;
+    if (!stayValues.checkIn) {
+      Alert.alert('Date required', 'Select your stay date.');
+      return false;
     }
-    if (isBefore(checkOut, checkIn) || checkOut === checkIn) {
-      Alert.alert('Check dates', 'Check-out must be after check-in.');
-      return;
+    if (stayType === 'daily') {
+      if (!stayValues.checkOut) {
+        Alert.alert('Dates required', 'Select check-in and check-out dates.');
+        return false;
+      }
+      if (isBefore(stayValues.checkOut, stayValues.checkIn) || stayValues.checkOut === stayValues.checkIn) {
+        Alert.alert('Check dates', 'Check-out must be after check-in.');
+        return false;
+      }
     }
+    if (stayType === 'hourly') {
+      if (!stayValues.startTime) {
+        Alert.alert('Time required', 'Select a start time for your hourly stay.');
+        return false;
+      }
+      if (!stayValues.hours || stayValues.hours < 1) {
+        Alert.alert('Duration required', 'Select how many hours you need (1–18).');
+        return false;
+      }
+    }
+    return true;
+  };
+
+  const search = () => {
+    if (!validateSearch()) return;
     browseWithLocation(location);
   };
 
   const openDestination = (name: string) => {
     haptic.select();
     setLocation(name);
-    browseWithLocation(name);
+    if (!validateSearch(name)) return;
+    router.push({
+      pathname: '/browse',
+      params: { ...searchParams(), city: name.trim() },
+    });
   };
+
+  const listingParams = () => ({
+    checkIn: stayValues.checkIn,
+    checkOut: stayValues.checkOut,
+    bookingType: stayType,
+    startTime: stayValues.startTime,
+    hours: String(stayValues.hours),
+  });
 
   return (
     <View style={{ flex: 1, paddingTop: insets.top + spacing.sm }}>
@@ -117,6 +175,7 @@ export default function Home() {
         contentContainerStyle={{ paddingHorizontal: spacing.base, paddingBottom: insets.bottom + spacing['3xl'] }}
         showsVerticalScrollIndicator={false}
         keyboardShouldPersistTaps="handled"
+        nestedScrollEnabled
       >
         <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: spacing.lg }}>
           <Text variant="h2" numberOfLines={1} style={{ flex: 1 }}>
@@ -125,26 +184,21 @@ export default function Home() {
           <IconButton icon="notifications-outline" badge={unreadCount > 0} onPress={() => router.push('/notifications')} />
         </View>
 
-        <View style={{ gap: spacing.md, marginBottom: spacing.lg }}>
-          <LocationSearchTrigger
-            value={location}
-            onPress={() => {
-              locationPicker.open((loc) => setLocation(loc));
-              router.push('/location');
-            }}
-          />
-          <StayDateRangeField
-            checkIn={checkIn}
-            checkOut={checkOut}
-            onChange={({ checkIn: ci, checkOut: co }) => {
-              setCheckIn(ci);
-              setCheckOut(co);
-            }}
-          />
-          <Button label="Search" icon="search" full size="lg" onPress={search} disabled={!location.trim()} />
-        </View>
+        <HomeSearchCard
+          stayType={stayType}
+          onStayTypeChange={setStayType}
+          location={location}
+          onLocationPress={() => {
+            locationPicker.open((loc) => setLocation(loc));
+            router.push('/location');
+          }}
+          stayValues={stayValues}
+          onStayValuesChange={setStayValues}
+          onSearch={search}
+          searchDisabled={!location.trim()}
+        />
 
-        <Text variant="h3" style={{ marginBottom: spacing.sm }}>
+        <Text variant="h3" style={{ marginBottom: spacing.sm, marginTop: spacing.xl }}>
           Popular destinations
         </Text>
         <ScrollView
@@ -152,6 +206,7 @@ export default function Home() {
           showsHorizontalScrollIndicator={false}
           contentContainerStyle={{ gap: spacing.md, paddingRight: spacing.base }}
           style={{ marginBottom: 0 }}
+          nestedScrollEnabled
         >
           {destinationColumns(popularDestinations).map((column, columnIndex) => (
             <View key={`col-${columnIndex}`} style={{ gap: spacing.md }}>
@@ -173,10 +228,12 @@ export default function Home() {
               titleFormat="nearLandmark"
               showDistance={false}
               showMeta={false}
+              promoted={listing.id === promotedPgId}
+              bookingType={stayType}
               badgeLabels={listing.gender === 'Female' ? ['Highly rated by women'] : []}
               onPress={() => router.push({
                 pathname: `/listing/${listing.id}`,
-                params: { checkIn, checkOut },
+                params: listingParams(),
               })}
             />
           ))}

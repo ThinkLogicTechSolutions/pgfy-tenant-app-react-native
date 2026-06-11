@@ -2,9 +2,10 @@
 import type {
   Listing, Floor, Room, Bed, SharingType, PricingTier, Gender, PropertyType,
   Certificate, ListingTag, Review, FoodDay,
+  HourlyPricingTier, DailyPricingTier, ListingBookingConfig,
 } from './types';
 import type { BedStatusKey } from '@/theme/colors';
-import { coverImages, galleryFor, avatarFor } from './images';
+import { coverImages, mediaSectionsFor, avatarFor } from './images';
 
 const CAPACITY: Record<SharingType, number> = {
   Single: 1, Double: 2, Triple: 3, '4-sharing': 4, Dormitory: 6,
@@ -69,6 +70,12 @@ interface ListingConfig {
   addedOn: string;
   verificationDate?: string;
   verificationExpiry?: string;
+  hourlyEnabled?: boolean;
+  dailyEnabled?: boolean;
+  hourlyWindowStart?: string;
+  hourlyWindowEnd?: string;
+  dailyCheckIn?: string;
+  dailyCheckOut?: string;
 }
 
 function genFloors(seedStr: string, sharing: SharingSpec[], securityDeposit: number): Floor[] {
@@ -145,7 +152,30 @@ function buildListing(c: ListingConfig): Listing {
         { label: 'FSSAI License', status: 'Missing' },
         { label: 'Property Documents', status: 'Pending' },
       ];
+  const hourlyPricing: HourlyPricingTier[] = c.hourlyEnabled
+    ? c.sharing.map((s) => ({
+        sharingType: s.type,
+        rentPerHour: Math.round(s.rent / 100),
+        available: allBeds.filter((b) => b.status === 'available' && b.rent === s.rent).length || 1,
+      }))
+    : [];
+  const dailyPricing: DailyPricingTier[] = (c.dailyEnabled ?? true)
+    ? c.sharing.map((s) => ({
+        sharingType: s.type,
+        rentPerDay: Math.round(s.rent / 25),
+        available: allBeds.filter((b) => b.status === 'available' && b.rent === s.rent).length || 1,
+      }))
+    : [];
+  const bookingConfig: ListingBookingConfig = {
+    hourlyEnabled: c.hourlyEnabled ?? false,
+    dailyEnabled: c.dailyEnabled ?? true,
+    monthlyEnabled: true,
+    hourly: c.hourlyEnabled ? { windowStart: c.hourlyWindowStart ?? '06:00', windowEnd: c.hourlyWindowEnd ?? '22:00' } : undefined,
+    daily: (c.dailyEnabled ?? true) ? { checkInTime: c.dailyCheckIn ?? '12:00', checkOutTime: c.dailyCheckOut ?? '11:00' } : undefined,
+  };
   const seedNum = c.coverIdx + c.id.length;
+  const mediaSections = mediaSectionsFor(seedNum, c.coverIdx);
+  const gallery = mediaSections.flatMap((s) => s.images);
   return {
     id: c.id,
     name: c.name,
@@ -157,8 +187,9 @@ function buildListing(c: ListingConfig): Listing {
     pincode: '5600' + (10 + (seedNum % 89)),
     lat: c.lat,
     lng: c.lng,
-    coverImage: coverImages[c.coverIdx % coverImages.length],
-    gallery: galleryFor(seedNum, 5),
+    coverImage: gallery[0] ?? coverImages[c.coverIdx % coverImages.length],
+    gallery,
+    mediaSections,
     hasVideoTour: c.coverIdx % 2 === 0,
     description: c.description,
     priceFrom: Math.min(...c.sharing.map((s) => s.rent)),
@@ -187,6 +218,9 @@ function buildListing(c: ListingConfig): Listing {
     noticePeriodDays: c.noticePeriodDays,
     lockInMonths: c.lockInMonths,
     addedOn: c.addedOn,
+    bookingConfig,
+    hourlyPricing,
+    dailyPricing,
   };
 }
 
@@ -203,6 +237,7 @@ export const LISTINGS: Listing[] = [
     securityDeposit: 36000,
     sharing: [{ type: 'Single', rent: 18000 }, { type: 'Double', rent: 13000 }, { type: 'Triple', rent: 9500 }],
     noticePeriodDays: 30, lockInMonths: 6, addedOn: '2025-08-10', verificationDate: '2025-11-12', verificationExpiry: '2026-11-12',
+    hourlyEnabled: true, dailyEnabled: true, hourlyWindowStart: '06:00', hourlyWindowEnd: '22:00', dailyCheckIn: '12:00', dailyCheckOut: '11:00',
   }),
   buildListing({
     id: 'l2', name: 'The Nest PG', type: 'PG', gender: 'Male', locality: 'HSR Layout', lat: 12.9116, lng: 77.6389,
@@ -213,6 +248,7 @@ export const LISTINGS: Listing[] = [
     securityDeposit: 33000,
     sharing: [{ type: 'Single', rent: 16500 }, { type: 'Double', rent: 11500 }, { type: 'Triple', rent: 9000 }],
     noticePeriodDays: 30, lockInMonths: 6, addedOn: '2025-02-22', verificationDate: '2026-01-08', verificationExpiry: '2027-01-08',
+    hourlyEnabled: true, dailyEnabled: true, hourlyWindowStart: '06:00', hourlyWindowEnd: '22:00', dailyCheckIn: '14:00', dailyCheckOut: '12:00',
   }),
   buildListing({
     id: 'l3', name: 'Blossom Girls PG', type: 'PG', gender: 'Female', locality: 'Indiranagar', lat: 12.9719, lng: 77.6412,
@@ -223,6 +259,7 @@ export const LISTINGS: Listing[] = [
     securityDeposit: 24000,
     sharing: [{ type: 'Double', rent: 12000 }, { type: 'Triple', rent: 9000 }, { type: '4-sharing', rent: 7500 }],
     noticePeriodDays: 30, lockInMonths: 4, addedOn: '2024-11-05', verificationDate: '2025-09-30', verificationExpiry: '2026-09-15',
+    hourlyEnabled: false, dailyEnabled: true, dailyCheckIn: '12:00', dailyCheckOut: '10:00',
   }),
   buildListing({
     id: 'l4', name: 'Hive Co-living', type: 'Co-living', gender: 'Co-ed', locality: 'Whitefield', lat: 12.9698, lng: 77.7499,
@@ -233,6 +270,7 @@ export const LISTINGS: Listing[] = [
     securityDeposit: 39000,
     sharing: [{ type: 'Single', rent: 19500 }, { type: 'Double', rent: 14000 }],
     noticePeriodDays: 30, lockInMonths: 6, addedOn: '2026-02-18', verificationDate: '2026-02-20', verificationExpiry: '2027-02-20',
+    hourlyEnabled: true, dailyEnabled: true, hourlyWindowStart: '08:00', hourlyWindowEnd: '20:00', dailyCheckIn: '14:00', dailyCheckOut: '12:00',
   }),
   buildListing({
     id: 'l5', name: 'ZenStay Hostel', type: 'Hostel', gender: 'Co-ed', locality: 'BTM Layout', lat: 12.9166, lng: 77.6101,
@@ -243,6 +281,7 @@ export const LISTINGS: Listing[] = [
     securityDeposit: 17000,
     sharing: [{ type: 'Triple', rent: 8500 }, { type: '4-sharing', rent: 7000 }, { type: 'Dormitory', rent: 5500 }],
     noticePeriodDays: 15, lockInMonths: 3, addedOn: '2025-06-12', verificationDate: '2025-10-01', verificationExpiry: '2026-10-01',
+    hourlyEnabled: false, dailyEnabled: true, dailyCheckIn: '12:00', dailyCheckOut: '11:00',
   }),
   buildListing({
     id: 'l6', name: 'CitiNest', type: 'PG', gender: 'Male', locality: 'Marathahalli', lat: 12.9569, lng: 77.7011,
@@ -253,6 +292,7 @@ export const LISTINGS: Listing[] = [
     securityDeposit: 30000,
     sharing: [{ type: 'Single', rent: 15000 }, { type: 'Double', rent: 10500 }, { type: 'Triple', rent: 8500 }],
     noticePeriodDays: 30, lockInMonths: 6, addedOn: '2025-04-01', verificationDate: '2025-12-01', verificationExpiry: '2026-12-01',
+    hourlyEnabled: false, dailyEnabled: false,
   }),
   buildListing({
     id: 'l7', name: 'Serene Living', type: 'Co-living', gender: 'Co-ed', locality: 'Electronic City', lat: 12.8452, lng: 77.6602,
@@ -263,6 +303,7 @@ export const LISTINGS: Listing[] = [
     securityDeposit: 34000,
     sharing: [{ type: 'Single', rent: 17000 }, { type: 'Double', rent: 12500 }],
     noticePeriodDays: 30, lockInMonths: 6, addedOn: '2025-03-15', verificationDate: '2025-11-20', verificationExpiry: '2026-11-20',
+    hourlyEnabled: false, dailyEnabled: true, dailyCheckIn: '14:00', dailyCheckOut: '12:00',
   }),
   buildListing({
     id: 'l8', name: 'Lotus Ladies PG', type: 'PG', gender: 'Female', locality: 'Jayanagar', lat: 12.9250, lng: 77.5938,
@@ -273,6 +314,7 @@ export const LISTINGS: Listing[] = [
     securityDeposit: 23000,
     sharing: [{ type: 'Double', rent: 11500 }, { type: 'Triple', rent: 9000 }],
     noticePeriodDays: 30, lockInMonths: 4, addedOn: '2025-01-20', verificationDate: '2025-10-10', verificationExpiry: '2026-10-10',
+    hourlyEnabled: false, dailyEnabled: false,
   }),
   buildListing({
     id: 'l9', name: 'MetroStay', type: 'Co-living', gender: 'Co-ed', locality: 'MG Road', lat: 12.9756, lng: 77.6066,
@@ -283,6 +325,7 @@ export const LISTINGS: Listing[] = [
     securityDeposit: 42000,
     sharing: [{ type: 'Single', rent: 21000 }, { type: 'Double', rent: 15000 }],
     noticePeriodDays: 30, lockInMonths: 6, addedOn: '2026-04-28',
+    hourlyEnabled: false, dailyEnabled: false,
   }),
   buildListing({
     id: 'l10', name: 'CampusHub Hostel', type: 'Hostel', gender: 'Male', locality: 'Yelahanka', lat: 13.1007, lng: 77.5963,
@@ -293,6 +336,7 @@ export const LISTINGS: Listing[] = [
     securityDeposit: 19000,
     sharing: [{ type: 'Double', rent: 9500 }, { type: 'Triple', rent: 7500 }, { type: '4-sharing', rent: 6500 }],
     noticePeriodDays: 15, lockInMonths: 3, addedOn: '2026-03-05', verificationDate: '2026-03-10', verificationExpiry: '2027-03-10',
+    hourlyEnabled: false, dailyEnabled: true, dailyCheckIn: '12:00', dailyCheckOut: '11:00',
   }),
 ];
 

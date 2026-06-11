@@ -7,18 +7,39 @@ import { Ionicons } from '@expo/vector-icons';
 import { palette, spacing, radius } from '@/theme';
 import { Text, ScreenHeader, Chip, Sheet, EmptyState, PressableScale, IconButton } from '@/components/ui';
 import { ListingCard } from '@/components/domain';
+import {
+  BrowseFiltersSheet,
+  DEFAULT_BROWSE_FILTERS,
+  browseFiltersFromParams,
+  matchesBrowseFilters,
+  browseFiltersActiveCount,
+  type BrowseFilters,
+} from '@/components/search';
 import { EmptySearch } from '@/components/illustrations';
 import { LISTINGS, listingsByIds, CURATED_RAILS, SORT_OPTIONS } from '@/data';
+import { getPromotedPgListingId, listingSupportsBookingMode } from '@/lib/listingDisplay';
 import { useSaved } from '@/store/saved';
 
 export default function Results() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
-  const params = useLocalSearchParams<{ rail?: string; title?: string }>();
+  const params = useLocalSearchParams<{
+    rail?: string;
+    title?: string;
+    bookingType?: string;
+    checkIn?: string;
+    checkOut?: string;
+    startTime?: string;
+    hours?: string;
+  }>();
   const saved = useSaved();
   const [sort, setSort] = useState('Relevance');
   const [sortOpen, setSortOpen] = useState(false);
+  const [filtersOpen, setFiltersOpen] = useState(false);
+  const [filters, setFilters] = useState<BrowseFilters>(() => browseFiltersFromParams(params));
+  const [draftFilters, setDraftFilters] = useState<BrowseFilters>(() => browseFiltersFromParams(params));
   const [compare, setCompare] = useState<string[]>([]);
+  const filtersActive = browseFiltersActiveCount(filters) > 0;
 
   const base = useMemo(() => {
     if (params.rail) {
@@ -28,14 +49,24 @@ export default function Results() {
     return LISTINGS;
   }, [params.rail]);
 
+  const listingParams = {
+    checkIn: filters.stay.checkIn,
+    checkOut: filters.stay.checkOut,
+    bookingType: filters.bookingType,
+    startTime: filters.stay.startTime,
+    hours: String(filters.stay.hours),
+  };
+
   const list = useMemo(() => {
-    const arr = [...base];
+    const arr = base.filter((l) => listingSupportsBookingMode(l, filters.bookingType) && matchesBrowseFilters(l, filters));
     if (sort === 'Price: Low to High') arr.sort((a, b) => a.priceFrom - b.priceFrom);
     else if (sort === 'Price: High to Low') arr.sort((a, b) => b.priceFrom - a.priceFrom);
     else if (sort === 'Rating') arr.sort((a, b) => b.rating - a.rating);
     else if (sort === 'Distance') arr.sort((a, b) => a.distanceKm - b.distanceKm);
     return arr;
-  }, [base, sort]);
+  }, [base, sort, filters]);
+
+  const promotedPgId = useMemo(() => getPromotedPgListingId(LISTINGS), []);
 
   const toggleCompare = (id: string) =>
     setCompare((c) => (c.includes(id) ? c.filter((x) => x !== id) : c.length < 3 ? [...c, id] : c));
@@ -52,9 +83,25 @@ export default function Results() {
           <Ionicons name="swap-vertical" size={15} color={palette.navy} />
           <Text variant="bodySm" weight="600">{sort}</Text>
         </PressableScale>
-        <PressableScale onPress={() => router.push('/search')} haptics={false} style={{ flexDirection: 'row', alignItems: 'center', gap: 5, backgroundColor: palette.surface, borderWidth: 1, borderColor: palette.border, borderRadius: radius.pill, paddingVertical: 8, paddingHorizontal: 14 }}>
+        <PressableScale
+          onPress={() => { setDraftFilters(filters); setFiltersOpen(true); }}
+          haptics={false}
+          style={{
+            flexDirection: 'row',
+            alignItems: 'center',
+            gap: 5,
+            backgroundColor: filtersActive ? palette.navyTint : palette.surface,
+            borderWidth: 1,
+            borderColor: filtersActive ? palette.navy : palette.border,
+            borderRadius: radius.pill,
+            paddingVertical: 8,
+            paddingHorizontal: 14,
+          }}
+        >
           <Ionicons name="options-outline" size={15} color={palette.navy} />
-          <Text variant="bodySm" weight="600">Filters</Text>
+          <Text variant="bodySm" weight="600">
+            Filters{filtersActive ? ` · ${browseFiltersActiveCount(filters)}` : ''}
+          </Text>
         </PressableScale>
       </View>
 
@@ -69,7 +116,12 @@ export default function Results() {
               listing={item}
               titleFormat="nearLandmark"
               showLocalityInMeta={false}
-              onPress={() => router.push(`/listing/${item.id}`)}
+              promoted={item.id === promotedPgId}
+              bookingType={filters.bookingType}
+              onPress={() => router.push({
+                pathname: `/listing/${item.id}`,
+                params: listingParams,
+              })}
               saved={saved.isSaved(item.id)}
               onToggleSave={() => saved.toggle(item.id)}
             />
@@ -78,7 +130,15 @@ export default function Results() {
             </PressableScale>
           </View>
         )}
-        ListEmptyComponent={<EmptyState illustration={<EmptySearch />} title="No properties found" message="Try adjusting your filters." actionLabel="Edit filters" onAction={() => router.push('/search')} />}
+        ListEmptyComponent={
+          <EmptyState
+            illustration={<EmptySearch />}
+            title="No properties found"
+            message="Try adjusting your filters."
+            actionLabel="Edit filters"
+            onAction={() => { setDraftFilters(filters); setFiltersOpen(true); }}
+          />
+        }
       />
 
       {compare.length >= 2 ? (
@@ -89,6 +149,20 @@ export default function Results() {
           </PressableScale>
         </View>
       ) : null}
+
+      <BrowseFiltersSheet
+        visible={filtersOpen}
+        onClose={() => setFiltersOpen(false)}
+        filters={filters}
+        draft={draftFilters}
+        onDraftChange={setDraftFilters}
+        onApply={() => { setFilters(draftFilters); setFiltersOpen(false); }}
+        onClear={() => {
+          setDraftFilters(DEFAULT_BROWSE_FILTERS);
+          setFilters(DEFAULT_BROWSE_FILTERS);
+          setFiltersOpen(false);
+        }}
+      />
 
       <Sheet visible={sortOpen} onClose={() => setSortOpen(false)} title="Sort by">
         <View>

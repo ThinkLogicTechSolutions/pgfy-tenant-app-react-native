@@ -1,41 +1,60 @@
 /** PG browse results — list after home search (city + stay dates). */
 import { useMemo, useState } from 'react';
-import { View, FlatList, ScrollView } from 'react-native';
+import { View, FlatList } from 'react-native';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { palette, spacing, radius, shadows } from '@/theme';
-import { Text, Chip, EmptyState, IconButton, Sheet, PressableScale } from '@/components/ui';
+import { Text, EmptyState, IconButton, Sheet, PressableScale } from '@/components/ui';
 import { ListingCard, CraftedFooter } from '@/components/domain';
+import {
+  BrowseFiltersSheet,
+  DEFAULT_BROWSE_FILTERS,
+  browseFiltersFromParams,
+  matchesBrowseFilters,
+  browseFiltersActiveCount,
+  type BrowseFilters,
+} from '@/components/search';
 import { EmptySearch } from '@/components/illustrations';
 import { LISTINGS, SORT_OPTIONS } from '@/data';
 import { formatDayMonth } from '@/lib/format';
+import { listingSupportsBookingMode, getPromotedPgListingId } from '@/lib/listingDisplay';
 import { useSaved } from '@/store/saved';
-
-const QUICK = ['All', 'Saved', 'Co-living', 'PG', 'Hostel'] as const;
 
 export default function Browse() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
-  const params = useLocalSearchParams<{ city?: string; checkIn?: string; checkOut?: string }>();
+  const params = useLocalSearchParams<{
+    city?: string;
+    checkIn?: string;
+    checkOut?: string;
+    bookingType?: string;
+    startTime?: string;
+    hours?: string;
+  }>();
   const saved = useSaved();
 
   const city = params.city?.trim() || 'Bengaluru';
-  const checkIn = params.checkIn || '';
-  const checkOut = params.checkOut || '';
 
-  const [quick, setQuick] = useState<(typeof QUICK)[number]>('All');
   const [sort, setSort] = useState('Relevance');
   const [sortOpen, setSortOpen] = useState(false);
+  const [filtersOpen, setFiltersOpen] = useState(false);
+  const [filters, setFilters] = useState<BrowseFilters>(() => browseFiltersFromParams(params));
+  const [draftFilters, setDraftFilters] = useState<BrowseFilters>(() => browseFiltersFromParams(params));
+
+  const { bookingType, stay } = filters;
+  const { checkIn, checkOut } = stay;
+
+  const promotedPgId = useMemo(() => getPromotedPgListingId(LISTINGS), []);
+  const filtersActive = browseFiltersActiveCount(filters) > 0;
 
   const list = useMemo(() => {
     const filtered = LISTINGS.filter((l) => {
       const loc = `${l.city} ${l.locality} ${l.name}`.toLowerCase();
       const cityMatch = !city || loc.includes(city.toLowerCase());
-      let f = true;
-      if (quick === 'Saved') f = saved.isSaved(l.id);
-      else if (quick !== 'All') f = l.type === quick;
-      return cityMatch && f;
+      const bookingMatch = listingSupportsBookingMode(l, bookingType);
+      const filterMatch = matchesBrowseFilters(l, filters);
+      return cityMatch && bookingMatch && filterMatch;
     });
     const arr = [...filtered];
     if (sort === 'Price: Low to High') arr.sort((a, b) => a.priceFrom - b.priceFrom);
@@ -44,10 +63,26 @@ export default function Browse() {
     else if (sort === 'Distance') arr.sort((a, b) => a.distanceKm - b.distanceKm);
     return arr;
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [city, quick, sort, saved.count]);
+  }, [city, sort, bookingType, filters]);
 
-  const dateSubtitle =
-    checkIn && checkOut ? `${formatDayMonth(checkIn)} – ${formatDayMonth(checkOut)}` : checkIn ? `From ${formatDayMonth(checkIn)}` : undefined;
+  const dateSubtitle = bookingType === 'monthly'
+    ? (checkIn ? `Monthly · from ${formatDayMonth(checkIn)}` : undefined)
+    : bookingType === 'hourly'
+      ? (checkIn ? `Hourly · ${formatDayMonth(checkIn)}` : undefined)
+      : (checkIn && checkOut ? `${formatDayMonth(checkIn)} – ${formatDayMonth(checkOut)}` : checkIn ? `From ${formatDayMonth(checkIn)}` : undefined);
+
+  const listingParams = {
+    checkIn: stay.checkIn,
+    checkOut: stay.checkOut,
+    bookingType,
+    startTime: stay.startTime,
+    hours: String(stay.hours),
+  };
+
+  const openFilters = () => {
+    setDraftFilters(filters);
+    setFiltersOpen(true);
+  };
 
   return (
     <View style={{ flex: 1, paddingTop: insets.top + spacing.sm }}>
@@ -66,11 +101,6 @@ export default function Browse() {
           </View>
           <IconButton icon="notifications-outline" onPress={() => router.push('/notifications')} />
         </View>
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: spacing.sm }}>
-          {QUICK.map((q) => (
-            <Chip key={q} label={q === 'Saved' ? `Saved (${saved.count})` : q} active={quick === q} onPress={() => setQuick(q)} />
-          ))}
-        </ScrollView>
       </View>
 
       <FlatList
@@ -79,10 +109,30 @@ export default function Browse() {
         contentContainerStyle={{ paddingHorizontal: spacing.base, paddingBottom: spacing['3xl'] + 48, gap: spacing.md, paddingTop: spacing.sm }}
         showsVerticalScrollIndicator={false}
         ListHeaderComponent={
-          <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: spacing.sm }}>
-            <Text variant="bodySm" color={palette.inkSecondary}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: spacing.sm, gap: spacing.sm }}>
+            <Text variant="bodySm" color={palette.inkSecondary} style={{ flex: 1 }}>
               {list.length} properties found
             </Text>
+            <PressableScale
+              onPress={openFilters}
+              haptics={false}
+              style={{
+                flexDirection: 'row',
+                alignItems: 'center',
+                gap: 5,
+                backgroundColor: filtersActive ? palette.navyTint : palette.surface,
+                borderWidth: 1,
+                borderColor: filtersActive ? palette.navy : palette.border,
+                borderRadius: radius.pill,
+                paddingVertical: 7,
+                paddingHorizontal: 12,
+              }}
+            >
+              <Ionicons name="options-outline" size={15} color={filtersActive ? palette.navy : palette.navy} />
+              <Text variant="bodySm" weight="600" color={filtersActive ? palette.navy : palette.ink}>
+                Filters{filtersActive ? ` · ${browseFiltersActiveCount(filters)}` : ''}
+              </Text>
+            </PressableScale>
             <PressableScale
               onPress={() => setSortOpen(true)}
               haptics={false}
@@ -110,9 +160,11 @@ export default function Browse() {
             listing={item}
             titleFormat="nearLandmark"
             showLocalityInMeta={false}
+            promoted={item.id === promotedPgId}
+            bookingType={bookingType}
             onPress={() => router.push({
               pathname: `/listing/${item.id}`,
-              params: { checkIn, checkOut },
+              params: listingParams,
             })}
             saved={saved.isSaved(item.id)}
             onToggleSave={() => saved.toggle(item.id)}
@@ -121,8 +173,8 @@ export default function Browse() {
         ListEmptyComponent={
           <EmptyState
             illustration={<EmptySearch />}
-            title={quick === 'Saved' ? 'No saved properties' : 'No properties found'}
-            message="Try a different search or filter."
+            title="No properties found"
+            message="Try adjusting your filters."
           />
         }
         ListFooterComponent={<CraftedFooter />}
@@ -171,6 +223,23 @@ export default function Browse() {
           ))}
         </View>
       </Sheet>
+
+      <BrowseFiltersSheet
+        visible={filtersOpen}
+        onClose={() => setFiltersOpen(false)}
+        filters={filters}
+        draft={draftFilters}
+        onDraftChange={setDraftFilters}
+        onApply={() => {
+          setFilters(draftFilters);
+          setFiltersOpen(false);
+        }}
+        onClear={() => {
+          setDraftFilters(DEFAULT_BROWSE_FILTERS);
+          setFilters(DEFAULT_BROWSE_FILTERS);
+          setFiltersOpen(false);
+        }}
+      />
     </View>
   );
 }

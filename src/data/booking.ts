@@ -195,9 +195,42 @@ export const AVAILABLE_SWAP_ROOMS = [
 
 export const MOVE_OUT_REQUESTS: MoveOutRequest[] = [];
 
+/** Recurring monthly service charges from current billing (food, laundry, etc.). */
+export function getMonthlyServiceCharges() {
+  const serviceInvoice = INVOICES
+    .filter((i) => !/rent|deposit|registration/i.test(i.label))
+    .sort((a, b) => b.dueDate.localeCompare(a.dueDate))[0];
+
+  if (!serviceInvoice) return { total: 0, items: [] as { label: string; amount: number }[] };
+
+  const items = serviceInvoice.breakdown.filter((b) => !/rent|deposit/i.test(b.label));
+  const total = items.reduce((s, b) => s + b.amount, 0);
+  return {
+    total: total || serviceInvoice.amount,
+    items: items.length ? items : [{ label: serviceInvoice.label, amount: serviceInvoice.amount }],
+  };
+}
+
 export type BookingRecord =
   | { kind: 'active'; booking: ActiveBooking }
   | { kind: 'past'; booking: PastBooking };
+
+export type TenantBookingItem = BookingRecord;
+
+export function getAllTenantBookings(): TenantBookingItem[] {
+  return [
+    { kind: 'active', booking: ACTIVE_BOOKING },
+    ...PAST_BOOKINGS.map((booking) => ({ kind: 'past' as const, booking })),
+  ];
+}
+
+export function bookingListStatus(item: TenantBookingItem): string {
+  return item.kind === 'active' ? item.booking.status : item.booking.status;
+}
+
+export function bookingCheckInDate(item: TenantBookingItem): string {
+  return item.booking.checkInDate;
+}
 
 export function getBookingByRef(ref: string): BookingRecord | null {
   if (ACTIVE_BOOKING.ref === ref) return { kind: 'active', booking: ACTIVE_BOOKING };
