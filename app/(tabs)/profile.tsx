@@ -137,6 +137,15 @@ export default function Profile() {
         <ListRow icon="document-text-outline" title="Lease agreement" onPress={() => router.push('/lease')} />
         <Divider />
         <ListRow icon="receipt-outline" title="Billing & invoices" onPress={() => router.push('/billing')} />
+        <Divider />
+        <ListRow
+          icon="people-outline"
+          iconColor={palette.navy}
+          iconBg={palette.navyTint}
+          title="Group booking"
+          subtitle="Enquire for a team, college or event"
+          onPress={() => router.push('/group-booking')}
+        />
       </Section>
 
       <Section title="PREFERENCES">
