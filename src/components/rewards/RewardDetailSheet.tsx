@@ -1,11 +1,11 @@
 /** Reward detail bottom sheet — scratch, coupon code & redemption steps. */
 import { useEffect, useState } from 'react';
-import { View, Linking, Alert } from 'react-native';
+import { View, Linking, Alert, Share } from 'react-native';
 import { Image } from 'expo-image';
 import * as Clipboard from 'expo-clipboard';
 import { Ionicons } from '@expo/vector-icons';
 import { palette, spacing, radius } from '@/theme';
-import { Text, Sheet, Button, PressableScale } from '@/components/ui';
+import { Text, Sheet, Button, PressableScale, IconButton } from '@/components/ui';
 import { ScratchCard } from './ScratchCard';
 import {
   getOffer,
@@ -65,6 +65,22 @@ export function RewardDetailSheet({ reward, visible, onClose }: Props) {
     setTimeout(() => setCopied(false), 2000);
   };
 
+  const shareOffer = async () => {
+    haptic.light();
+    const lines = [
+      `🎁 ${offer.title} on PGfy`,
+      `Partner: ${vendor.name}`,
+      couponCode ? `Use code: ${couponCode}` : undefined,
+      `Redeem here: ${offer.offerUrl}`,
+      'Get rewards like this on PGfy — pgfy.in/app',
+    ].filter(Boolean) as string[];
+    try {
+      await Share.share({ message: lines.join('\n') });
+    } catch {
+      // user dismissed the share sheet
+    }
+  };
+
   const openTerms = () => {
     Linking.openURL(offer.termsUrl).catch(() => {
       Alert.alert('Could not open link', offer.termsUrl);
@@ -89,7 +105,15 @@ export function RewardDetailSheet({ reward, visible, onClose }: Props) {
   };
 
   return (
-    <Sheet visible={visible} onClose={onClose} title={vendor.name} scroll>
+    <Sheet
+      visible={visible}
+      onClose={onClose}
+      title={vendor.name}
+      titleRight={
+        <IconButton icon="share-social-outline" size={18} color={palette.coralDark} bg={palette.coralTint} style={{ width: 36, height: 36, borderColor: 'transparent' }} onPress={shareOffer} />
+      }
+      scroll
+    >
       <View style={{ gap: spacing.lg }}>
         <Image
           source={{ uri: offer.bannerImage }}

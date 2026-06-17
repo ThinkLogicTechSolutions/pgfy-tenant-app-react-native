@@ -1,6 +1,6 @@
 /** T-S20 — Tenant dashboard (post-booking home hub). */
 import { useState } from 'react';
-import { View, ScrollView, useWindowDimensions, Linking, Alert, Platform } from 'react-native';
+import { View, ScrollView, useWindowDimensions, Linking, Alert, Platform, Share } from 'react-native';
 import { Image } from 'expo-image';
 import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -33,6 +33,17 @@ export default function Stay() {
   // Floor the tile width so 3 columns + 2 gaps never overflow & wrap unevenly.
   const tileW = Math.floor((width - spacing.base * 2 - spacing.md * 2) / 3);
 
+  const shareProperty = async () => {
+    const link = `https://pgfy.in/p/${b.listingId}`;
+    try {
+      await Share.share({
+        message: `Check out ${b.propertyName} on PGfy${listing?.locality ? ` in ${listing.locality}` : ''} — find your next stay here: ${link}`,
+      });
+    } catch {
+      // user dismissed the share sheet
+    }
+  };
+
   const openDirections = async () => {
     if (!listing) return;
     const label = encodeURIComponent(`${b.propertyName}, ${listing.locality}, ${listing.city}`);
@@ -58,7 +69,10 @@ export default function Stay() {
               <Text variant="bodySm" weight="700" color="rgba(255,255,255,0.92)">YOUR STAY</Text>
               <Text variant="bodyMd" weight="700" color="rgba(255,255,255,0.92)" style={{ marginTop: 2 }}>{b.ref}</Text>
             </View>
-            <IconButton icon="navigate-outline" color={palette.white} bg="rgba(255,255,255,0.18)" style={{ borderColor: 'transparent' }} onPress={openDirections} />
+            <View style={{ flexDirection: 'row', gap: spacing.sm }}>
+              <IconButton icon="share-social-outline" color={palette.white} bg="rgba(255,255,255,0.18)" style={{ borderColor: 'transparent' }} onPress={shareProperty} />
+              <IconButton icon="navigate-outline" color={palette.white} bg="rgba(255,255,255,0.18)" style={{ borderColor: 'transparent' }} onPress={openDirections} />
+            </View>
           </View>
           <View style={{ position: 'absolute', bottom: spacing.base, left: spacing.base, right: spacing.base }}>
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: spacing.sm }}>

@@ -17,11 +17,13 @@ interface Props {
   visible: boolean;
   onClose: () => void;
   title?: string;
+  /** Optional node rendered on the right side of the title (e.g. a share button). */
+  titleRight?: React.ReactNode;
   children: React.ReactNode;
   scroll?: boolean;
 }
 
-export function Sheet({ visible, onClose, title, children, scroll }: Props) {
+export function Sheet({ visible, onClose, title, titleRight, children, scroll }: Props) {
   const { height } = useWindowDimensions();
   const insets = useSafeAreaInsets();
   const [mounted, setMounted] = useState(visible);
@@ -82,9 +84,12 @@ export function Sheet({ visible, onClose, title, children, scroll }: Props) {
               <View style={{ width: 38, height: 5, borderRadius: 3, backgroundColor: palette.borderStrong }} />
             </View>
             {title ? (
-              <Text variant="h3" style={{ paddingHorizontal: spacing.lg, paddingTop: spacing.base }}>
-                {title}
-              </Text>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: spacing.sm, paddingHorizontal: spacing.lg, paddingTop: spacing.base }}>
+                <Text variant="h3" style={{ flex: 1 }} numberOfLines={1}>
+                  {title}
+                </Text>
+                {titleRight}
+              </View>
             ) : null}
             {scroll ? (
               <ScrollView

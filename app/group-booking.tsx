@@ -1,11 +1,12 @@
 /** Group booking enquiry — bulk / team stay request (companies, colleges, events).
  *  Submits to the (mock) enquiry store; in production this surfaces in the admin panel. */
 import { useMemo, useState } from 'react';
-import { View, ScrollView, Alert } from 'react-native';
+import { View, ScrollView, Alert, Share } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { palette, spacing } from '@/theme';
-import { Text, ScreenHeader, Card, Button, Input, SegmentedControl } from '@/components/ui';
+import { Text, ScreenHeader, Card, Button, Input, SegmentedControl, IconButton } from '@/components/ui';
+import { APP_STORE_URL } from '@/data';
 import { StayDateRangeField } from '@/components/search';
 import { SuccessBurst } from '@/components/illustrations';
 import { haptic } from '@/lib/haptics';
@@ -49,6 +50,16 @@ export default function GroupBooking() {
   const [organization, setOrganization] = useState('');
 
   const datesValid = checkIn.length > 0 && checkOut.length > 0 && isBefore(checkIn, checkOut);
+
+  const shareGroupBooking = async () => {
+    try {
+      await Share.share({
+        message: `Planning a stay for a team, college batch or event? Do a group booking on PGfy and get a custom group quote. Download the app: ${APP_STORE_URL}`,
+      });
+    } catch {
+      // user dismissed the share sheet
+    }
+  };
 
   const valid = useMemo(
     () =>
@@ -107,7 +118,11 @@ export default function GroupBooking() {
 
   return (
     <View style={{ flex: 1, paddingTop: insets.top + spacing.xs }}>
-      <ScreenHeader title="Group booking" subtitle="Enquiry for bulk / team stays" />
+      <ScreenHeader
+        title="Group booking"
+        subtitle="Enquiry for bulk / team stays"
+        right={<IconButton icon="share-social-outline" size={20} onPress={shareGroupBooking} />}
+      />
       <ScrollView
         contentContainerStyle={{ paddingHorizontal: spacing.base, paddingBottom: insets.bottom + 110, gap: spacing.base }}
         showsVerticalScrollIndicator={false}

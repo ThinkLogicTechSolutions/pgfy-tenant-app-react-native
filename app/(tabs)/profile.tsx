@@ -1,13 +1,14 @@
 /** T-S27 — Tenant profile & settings. */
 import { useState } from 'react';
-import { View, ScrollView, Switch, Alert, Linking } from 'react-native';
+import { View, ScrollView, Switch, Alert, Linking, Share } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
+import { LinearGradient } from 'expo-linear-gradient';
 import { palette, spacing, radius } from '@/theme';
 import { Text, Card, Avatar, Divider, ListRow, PressableScale } from '@/components/ui';
 import { VerifiedBadge } from '@/components/domain';
-import { USER } from '@/data';
+import { USER, REFERRAL, REFERRAL_PROGRAM, formatBenefit } from '@/data';
 import { session } from '@/lib/session';
 import { haptic } from '@/lib/haptics';
 import { useSaved } from '@/store/saved';
@@ -32,6 +33,17 @@ export default function Profile() {
   const [push, setPush] = useState(true);
 
   const logout = async () => { haptic.warning(); await session.logout(); router.replace('/landing'); };
+
+  const shareReferral = async () => {
+    haptic.light();
+    try {
+      await Share.share({
+        message: `Join me on PGfy and find your next stay! Tap my invite link to get ${formatBenefit(REFERRAL_PROGRAM.referredReward)} off your first booking. ${REFERRAL.link}`,
+      });
+    } catch {
+      // user dismissed the share sheet
+    }
+  };
 
   const deleteAccount = () => {
     Alert.alert(
@@ -79,6 +91,30 @@ export default function Profile() {
           <Ionicons name="chevron-forward" size={18} color={palette.coralDark} />
         </PressableScale>
       ) : null}
+
+      {/* Refer & earn */}
+      {/* <PressableScale onPress={() => router.push('/referral')} scaleTo={0.99} style={{ borderRadius: radius.lg, overflow: 'hidden', marginBottom: spacing.xl }}>
+        <LinearGradient colors={[palette.coral, palette.coralDark]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={{ padding: spacing.base }}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: spacing.sm }}>
+            <Ionicons name="gift" size={20} color={palette.white} />
+            <Text variant="bodyMd" weight="700" color={palette.white} style={{ flex: 1 }}>Refer & earn</Text>
+            <Ionicons name="chevron-forward" size={18} color="rgba(255,255,255,0.9)" />
+          </View>
+          <Text variant="caption" color="rgba(255,255,255,0.92)" style={{ marginTop: 4 }}>
+            You get {formatBenefit(REFERRAL_PROGRAM.referrerReward)} · friend gets {formatBenefit(REFERRAL_PROGRAM.referredReward)} on their first booking
+          </Text>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: spacing.sm, marginTop: spacing.md }}>
+            <View style={{ flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', backgroundColor: 'rgba(255,255,255,0.18)', borderRadius: radius.md, borderWidth: 1, borderColor: 'rgba(255,255,255,0.35)', borderStyle: 'dashed', paddingHorizontal: spacing.md, paddingVertical: spacing.sm }}>
+              <Text variant="overline" color="rgba(255,255,255,0.85)">YOUR CODE</Text>
+              <Text variant="bodyMd" weight="700" mono color={palette.white}>{REFERRAL.code}</Text>
+            </View>
+            <PressableScale onPress={shareReferral} scaleTo={0.92} style={{ flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: palette.white, borderRadius: radius.md, paddingHorizontal: spacing.base, paddingVertical: spacing.sm }}>
+              <Ionicons name="share-social" size={16} color={palette.coralDark} />
+              <Text variant="bodySm" weight="700" color={palette.coralDark}>Share</Text>
+            </PressableScale>
+          </View>
+        </LinearGradient>
+      </PressableScale> */}
 
       <Section title="ACCOUNT">
         <ListRow
@@ -128,6 +164,26 @@ export default function Profile() {
             ) : undefined
           }
           onPress={() => router.push('/rewards')}
+        />
+      </Section>
+
+      <Section title="MORE">
+        <ListRow
+          icon="heart-outline"
+          iconColor={palette.coral}
+          iconBg={palette.coralTint}
+          title="Liked PGs"
+          subtitle={`${saved.count} properties you love`}
+          onPress={() => router.push('/saved')}
+        />
+        <Divider />
+        <ListRow
+          icon="share-social-outline"
+          iconColor={palette.coral}
+          iconBg={palette.coralTint}
+          title="Refer app"
+          subtitle={`Invite friends, you get ${formatBenefit(REFERRAL_PROGRAM.referrerReward)} off`}
+          onPress={() => router.push('/referral')}
         />
       </Section>
 

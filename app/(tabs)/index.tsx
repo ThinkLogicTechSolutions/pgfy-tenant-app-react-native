@@ -5,7 +5,8 @@ import { Image } from 'expo-image';
 import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
-import { palette, spacing, radius } from '@/theme';
+import { Ionicons } from '@expo/vector-icons';
+import { palette, spacing, radius, shadows } from '@/theme';
 import { Text, IconButton, PressableScale } from '@/components/ui';
 import { ListingCard, CraftedFooter } from '@/components/domain';
 import { HomeSearchCard, type StayBookingValues } from '@/components/search';
@@ -47,6 +48,64 @@ function defaultStayValues(): StayBookingValues {
     startTime: '10:00',
     hours: 4,
   };
+}
+
+type QuickService = {
+  key: string;
+  label: string;
+  subtitle: string;
+  icon: keyof typeof Ionicons.glyphMap;
+  gradient: [string, string];
+  wash: string;
+  badge?: string;
+};
+
+function QuickActionTile({ service, onPress }: { service: QuickService; onPress: () => void }) {
+  return (
+    <PressableScale
+      onPress={onPress}
+      scaleTo={0.95}
+      style={{ flex: 1, borderRadius: radius.lg, backgroundColor: palette.surface, ...shadows.card }}
+    >
+      <View
+        style={{
+          borderRadius: radius.lg,
+          borderWidth: 1,
+          borderColor: palette.border,
+          overflow: 'hidden',
+          alignItems: 'center',
+          paddingTop: spacing.base,
+          paddingBottom: spacing.md,
+          paddingHorizontal: spacing.xs,
+        }}
+      >
+        {/* soft color wash behind the icon */}
+        <View style={{ position: 'absolute', top: 0, left: 0, right: 0, height: '56%', backgroundColor: service.wash }} />
+
+        {service.badge ? (
+          <View style={{ position: 'absolute', top: spacing.sm, right: spacing.sm, backgroundColor: palette.navy, borderRadius: radius.pill, paddingHorizontal: 7, paddingVertical: 2 }}>
+            <Text variant="caption" weight="800" color={palette.white} style={{ fontSize: 9, letterSpacing: 0.3 }}>{service.badge}</Text>
+          </View>
+        ) : null}
+
+        <LinearGradient
+          colors={service.gradient}
+          start={{ x: 0, y: 0 }}
+          end={{ x: 1, y: 1 }}
+          style={{ width: 54, height: 54, borderRadius: radius.lg, alignItems: 'center', justifyContent: 'center', marginBottom: spacing.sm, ...shadows.raised }}
+        >
+          <Ionicons name={service.icon} size={26} color={palette.white} />
+        </LinearGradient>
+
+        <Text variant="bodySm" weight="700" align="center" numberOfLines={1}>
+          {service.label}
+        </Text>
+        <Text variant="caption" color={palette.inkTertiary} align="center" numberOfLines={1} style={{ marginTop: 1 }}>
+          {service.subtitle}
+        </Text>
+      </View>
+    </PressableScale>
+  );
 }
 
 function DestinationCard({ dest, onPress }: { dest: PopularDestination; onPress: () => void }) {
@@ -151,6 +210,24 @@ export default function Home() {
     browseWithLocation(location);
   };
 
+  const quickServices: QuickService[] = [
+    { key: 'group', label: 'Group booking', subtitle: 'Book in bulk', icon: 'people', gradient: [palette.navy, palette.navyDark], wash: palette.navyTint },
+    { key: 'refer', label: 'Refer App', subtitle: 'Invite & save', icon: 'gift', gradient: [palette.coral, palette.coralDark], wash: palette.coralTint },
+    { key: 'metro', label: 'Metro Ticket', subtitle: 'Coming soon', icon: 'train', gradient: ['#3B82F6', '#1D5FD8'], wash: palette.infoTint },
+  ];
+
+  const onQuickService = (key: string) => {
+    haptic.select();
+    if (key === 'group') return router.push('/group-booking');
+    if (key === 'refer') return router.push('/referral');
+    if (key === 'metro') {
+      return router.push({
+        pathname: '/coming-soon',
+        params: { title: 'Metro Tickets', subtitle: 'Book metro tickets right inside PGfy. We’re working on it — stay tuned!', icon: 'train-outline' },
+      });
+    }
+  };
+
   const openDestination = (name: string) => {
     haptic.select();
     setLocation(name);
@@ -216,6 +293,15 @@ export default function Home() {
             </View>
           ))}
         </ScrollView>
+
+        <Text variant="h3" style={{ marginBottom: spacing.md, marginTop: 22 }}>
+          Other services
+        </Text>
+        <View style={{ flexDirection: 'row', gap: spacing.md }}>
+          {quickServices.map((service) => (
+            <QuickActionTile key={service.key} service={service} onPress={() => onQuickService(service.key)} />
+          ))}
+        </View>
 
         <Text variant="h3" style={{ marginBottom: spacing.md, marginTop: 22 }}>
           Top PGs for you
