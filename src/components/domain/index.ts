@@ -1,9 +1,10 @@
 export { PromotedBadge } from './PromotedBadge';
 export { VerifiedBadge, PgfyScore, RatingPill, StatusPill, statusTone } from './Badges';
 export { ListingCard, ListingRailCard } from './ListingCard';
+export { CityTile } from './CityTile';
 export { PropertyImageCarousel } from './PropertyImageCarousel';
 export { MediaSectionGrid } from './MediaSectionGrid';
-export { BedLegend, SelectableBed, SelectableRoom } from './RoomBedSelector';
+export { BedLegend, SelectableBed, SelectableRoom, type RoomCompatibility } from './RoomBedSelector';
 export { SectionHeader } from './SectionHeader';
 export { ReviewCard, InvoiceRow, VisitorCard, TicketRow, NotificationRow } from './Rows';
 export { HoldBanner } from './HoldBanner';

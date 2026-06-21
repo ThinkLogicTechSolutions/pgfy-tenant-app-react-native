@@ -6,11 +6,17 @@ export * from './discovery';
 export { POPULAR_DESTINATIONS, type PopularDestination } from './popularDestinations';
 export { USER } from './user';
 export {
-  ACTIVE_BOOKING, LEASE, INVOICES, VISITORS, TICKETS,
+  ACTIVE_BOOKING, ACTIVE_BOOKINGS, ACTIVE_HOURLY_BOOKING, ACTIVE_DAILY_BOOKING,
+  LEASE, INVOICES, VISITORS, TICKETS,
   ROOM_SWAP_REQUESTS, AVAILABLE_SWAP_ROOMS, MOVE_OUT_REQUESTS, PAST_BOOKINGS,
   getBookingByRef, getAllTenantBookings, bookingListStatus, bookingCheckInDate,
   getMonthlyServiceCharges, type BookingRecord, type TenantBookingItem,
 } from './booking';
+export {
+  EXTENSION_LIMITS, maxExtensionUnits, extensionUnitLabel, extensionRate,
+  checkExtensionAvailability, priceExtension,
+  type AvailabilityResult, type ExtensionPrice,
+} from './extension';
 export { NOTIFICATIONS, unreadCount } from './notifications';
 export { COUPONS, resolveCoupon, type Coupon } from './coupons';
 export {

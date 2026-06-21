@@ -32,7 +32,7 @@ export default function Register() {
           <Input label="Full name" icon="person-outline" value={name} onChangeText={setName} maxLength={60} placeholder="Your name" />
           <Input label="Email (optional)" icon="mail-outline" value={email} onChangeText={setEmail} keyboardType="email-address" autoCapitalize="none" placeholder="you@example.com" />
         </View>
-        <Button label="Save & Continue" onPress={save} loading={loading} disabled={!name.trim()} full size="lg" style={{ marginTop: spacing.xl }} />
+        <Button label="Save & Continue" loadingLabel="Saving…" onPress={save} loading={loading} disabled={!name.trim()} full size="lg" style={{ marginTop: spacing.xl }} />
         <View style={{ flex: 1 }} />
         <Text variant="caption" color={palette.inkTertiary} align="center" style={{ marginTop: spacing.xl }}>
           A SnapKYC-verified profile is required before you can confirm a booking.

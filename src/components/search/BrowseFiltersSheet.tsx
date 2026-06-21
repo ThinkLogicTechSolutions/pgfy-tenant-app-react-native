@@ -16,6 +16,12 @@ export interface BrowseFilters {
   amenities: string[];
   minRating: number | null;
   propertyTypes: string[];
+  /** Roommate compatibility filters (each 'Any' when unset). */
+  roommateType: string;
+  smoking: string;
+  alcohol: string;
+  sleep: string;
+  diet: string;
 }
 
 export function defaultStayValues(checkIn = defaultCheckIn()): StayBookingValues {
@@ -36,6 +42,11 @@ export const DEFAULT_BROWSE_FILTERS: BrowseFilters = {
   amenities: [],
   minRating: null,
   propertyTypes: [],
+  roommateType: 'Any',
+  smoking: 'Any',
+  alcohol: 'Any',
+  sleep: 'Any',
+  diet: 'Any',
 };
 
 export function browseFiltersFromParams(params: {
@@ -75,6 +86,11 @@ const RATING_OPTIONS = [
 ] as const;
 const PROPERTY_TYPES = ['PG', 'Co-living', 'Hostel'] as const;
 const FOOD_OPTIONS = ['Veg', 'Non-Veg', 'With meals', 'No meals'] as const;
+const ROOMMATE_TYPE_OPTIONS = ['Any', 'Working professional', 'Student'] as const;
+const SMOKING_OPTIONS = ['Any', 'Non-smoking'] as const;
+const ALCOHOL_OPTIONS = ['Any', 'No alcohol'] as const;
+const SLEEP_OPTIONS = ['Any', 'Early sleep', 'Late sleep'] as const;
+const DIET_OPTIONS = ['Any', 'Veg', 'Vegan', 'Non-veg'] as const;
 
 function toggle(arr: string[], value: string) {
   return arr.includes(value) ? arr.filter((x) => x !== value) : [...arr, value];
@@ -160,6 +176,38 @@ export function BrowseFiltersSheet({
 
         <Divider />
 
+        <FilterSection label="Roommate type">
+          <ChipRow>
+            {ROOMMATE_TYPE_OPTIONS.map((t) => (
+              <Chip key={t} label={t} active={draft.roommateType === t} onPress={() => set({ roommateType: t })} />
+            ))}
+          </ChipRow>
+        </FilterSection>
+
+        <FilterSection label="Lifestyle">
+          <ChipRow>
+            {SMOKING_OPTIONS.filter((o) => o !== 'Any').map((o) => (
+              <Chip key={o} label={o} active={draft.smoking === o} onPress={() => set({ smoking: draft.smoking === o ? 'Any' : o })} />
+            ))}
+            {ALCOHOL_OPTIONS.filter((o) => o !== 'Any').map((o) => (
+              <Chip key={o} label={o} active={draft.alcohol === o} onPress={() => set({ alcohol: draft.alcohol === o ? 'Any' : o })} />
+            ))}
+            {SLEEP_OPTIONS.filter((o) => o !== 'Any').map((o) => (
+              <Chip key={o} label={o} active={draft.sleep === o} onPress={() => set({ sleep: draft.sleep === o ? 'Any' : o })} />
+            ))}
+          </ChipRow>
+        </FilterSection>
+
+        <FilterSection label="Roommate diet">
+          <ChipRow>
+            {DIET_OPTIONS.map((d) => (
+              <Chip key={d} label={d} active={draft.diet === d} onPress={() => set({ diet: d })} />
+            ))}
+          </ChipRow>
+        </FilterSection>
+
+        <Divider />
+
         <FilterSection label="Room cooling">
           <ChipRow>
             {AC_OPTIONS.map((a) => (
@@ -214,11 +262,35 @@ export function matchesBrowseFilters(
     amenities: string[];
     foodIncluded: boolean;
     rating: number;
+    roommateSummary?: {
+      mostlyProfessionals: boolean;
+      smoking: boolean;
+      alcohol: boolean;
+      sleep: 'early' | 'late';
+      diet: 'veg' | 'vegan' | 'nonveg';
+    };
   },
   filters: BrowseFilters,
 ): boolean {
   if (filters.propertyTypes.length > 0 && !filters.propertyTypes.includes(listing.type)) return false;
   if (filters.gender !== 'Any' && listing.gender !== filters.gender) return false;
+
+  const rs = listing.roommateSummary;
+  if (filters.roommateType !== 'Any') {
+    if (!rs) return false;
+    if (filters.roommateType === 'Working professional' && !rs.mostlyProfessionals) return false;
+    if (filters.roommateType === 'Student' && rs.mostlyProfessionals) return false;
+  }
+  if (filters.smoking === 'Non-smoking' && (!rs || rs.smoking)) return false;
+  if (filters.alcohol === 'No alcohol' && (!rs || rs.alcohol)) return false;
+  if (filters.sleep === 'Early sleep' && (!rs || rs.sleep !== 'early')) return false;
+  if (filters.sleep === 'Late sleep' && (!rs || rs.sleep !== 'late')) return false;
+  if (filters.diet !== 'Any') {
+    if (!rs) return false;
+    if (filters.diet === 'Veg' && rs.diet === 'nonveg') return false;
+    if (filters.diet === 'Vegan' && rs.diet !== 'vegan') return false;
+    if (filters.diet === 'Non-veg' && rs.diet !== 'nonveg') return false;
+  }
 
   if (filters.food.length > 0) {
     const hasPureVeg = listing.amenities.includes('Pure Veg');
@@ -251,6 +323,11 @@ export function browseFiltersActiveCount(filters: BrowseFilters): number {
   if (filters.minRating !== null) n += 1;
   if (filters.propertyTypes.length) n += filters.propertyTypes.length;
   n += filters.amenities.length;
+  if (filters.roommateType !== 'Any') n += 1;
+  if (filters.smoking !== 'Any') n += 1;
+  if (filters.alcohol !== 'Any') n += 1;
+  if (filters.sleep !== 'Any') n += 1;
+  if (filters.diet !== 'Any') n += 1;
   return n;
 }
 

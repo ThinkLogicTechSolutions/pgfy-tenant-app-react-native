@@ -63,6 +63,17 @@ export interface Bed {
   rent: number;
 }
 
+/** Aggregate lifestyle profile of a room's current occupants — drives the
+ *  compatibility score shown during room selection. */
+export interface RoommateProfile {
+  professionals: number;
+  students: number;
+  smoking: boolean;
+  alcohol: boolean;
+  sleep: 'early' | 'late';
+  diet: 'veg' | 'vegan' | 'nonveg';
+}
+
 export interface Room {
   id: string;
   number: string;
@@ -74,6 +85,7 @@ export interface Room {
   photo?: string;
   beds: Bed[];
   occupied: number;
+  roommateProfile?: RoommateProfile;
 }
 
 export interface Floor {
@@ -151,6 +163,16 @@ export interface Listing {
   bookingConfig: ListingBookingConfig;
   hourlyPricing: HourlyPricingTier[];
   dailyPricing: DailyPricingTier[];
+  /** Property-level roommate makeup used for compatibility filtering on search. */
+  roommateSummary?: {
+    mostlyProfessionals: boolean;
+    smoking: boolean;
+    alcohol: boolean;
+    sleep: 'early' | 'late';
+    diet: 'veg' | 'vegan' | 'nonveg';
+  };
+  /** Appointed on-site property manager the tenant can reach. */
+  manager: { name: string; phone: string };
 }
 
 export interface CuratedRail {
@@ -192,6 +214,14 @@ export interface ActiveBooking {
   nextRentAmount: number;
   rentOverdue: boolean;
   qrToken: string;
+  /** Stay cadence. Only hourly/daily stays can be extended (T-S new). */
+  bookingMode: BookingMode;
+  /** Hourly/daily stays: when the current stay ends, and the per-unit rate. */
+  checkOutDate?: string;
+  startTime?: string;
+  endTime?: string;
+  ratePerHour?: number;
+  ratePerDay?: number;
 }
 
 export type LeaseStatus = 'Pending Tenant Signature' | 'Signed' | 'Expired';

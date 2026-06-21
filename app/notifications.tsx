@@ -4,7 +4,7 @@ import { View, SectionList, ScrollView } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { palette, spacing } from '@/theme';
-import { Text, ScreenHeader, EmptyState, PressableScale, Chip } from '@/components/ui';
+import { Text, ScreenHeader, EmptyState, PressableScale, Chip, AnimatedListItem } from '@/components/ui';
 import { NotificationRow } from '@/components/domain';
 import { EmptyNotifications } from '@/components/illustrations';
 import { NOTIFICATIONS, type NotificationItem, type NotificationType } from '@/data';
@@ -94,7 +94,11 @@ export default function Notifications() {
         renderSectionHeader={({ section }) => (
           <Text variant="overline" color={palette.inkTertiary} style={{ marginTop: spacing.base, marginBottom: spacing.xs, marginLeft: 4 }}>{section.title.toUpperCase()}</Text>
         )}
-        renderItem={({ item }) => <NotificationRow item={item} onPress={() => open(item)} />}
+        renderItem={({ item, index }) => (
+          <AnimatedListItem index={index}>
+            <NotificationRow item={item} onPress={() => open(item)} />
+          </AnimatedListItem>
+        )}
         ListEmptyComponent={<EmptyState illustration={<EmptyNotifications />} title="No notifications" message="You're all caught up." />}
       />
     </View>

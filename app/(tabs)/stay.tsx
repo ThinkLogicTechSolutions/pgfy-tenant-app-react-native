@@ -7,10 +7,11 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { palette, spacing, radius } from '@/theme';
-import { Text, Card, Button, IconButton, PressableScale } from '@/components/ui';
+import { Text, Card, Button, IconButton, PressableScale, Sheet } from '@/components/ui';
 import { StatusPill, WeeklyFoodMenuSheet, TicketRow } from '@/components/domain';
-import { ACTIVE_BOOKING, LEASE, TICKETS, getListing } from '@/data';
+import { ACTIVE_BOOKINGS, LEASE, TICKETS, getListing } from '@/data';
 import { inr, formatDate, daysFromNow } from '@/lib/format';
+import { useProfile } from '@/store/profile';
 
 const QUICK = [
   { icon: 'receipt-outline', label: 'Invoices', route: '/billing', tint: palette.success },
@@ -24,11 +25,14 @@ const QUICK = [
 export default function Stay() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
-  const b = ACTIVE_BOOKING;
+  const [selectedRef, setSelectedRef] = useState(ACTIVE_BOOKINGS[0].ref);
+  const [switcherOpen, setSwitcherOpen] = useState(false);
+  const b = ACTIVE_BOOKINGS.find((stay) => stay.ref === selectedRef) ?? ACTIVE_BOOKINGS[0];
   const listing = getListing(b.listingId);
   const dueDays = daysFromNow(b.nextRentDue);
   const openPropertyTickets = TICKETS.filter((t) => t.supportKind === 'property' && t.status !== 'Resolved');
   const [foodMenuOpen, setFoodMenuOpen] = useState(false);
+  const profile = useProfile();
   const { width } = useWindowDimensions();
   // Floor the tile width so 3 columns + 2 gaps never overflow & wrap unevenly.
   const tileW = Math.floor((width - spacing.base * 2 - spacing.md * 2) / 3);
@@ -57,6 +61,16 @@ export default function Stay() {
     }
   };
 
+  const callManager = async () => {
+    const phone = listing?.manager.phone;
+    if (!phone) return;
+    try {
+      await Linking.openURL(`tel:${phone.replace(/[^\d+]/g, '')}`);
+    } catch {
+      Alert.alert('Unable to place call', `Please dial ${phone} manually.`);
+    }
+  };
+
   return (
     <View style={{ flex: 1 }}>
       <ScrollView contentContainerStyle={{ paddingBottom: spacing['3xl'] }} showsVerticalScrollIndicator={false}>
@@ -65,10 +79,17 @@ export default function Stay() {
           <Image source={{ uri: b.propertyImage }} style={{ width: '100%', height: 200 + insets.top }} contentFit="cover" />
           <LinearGradient colors={['rgba(1,38,78,0.5)', 'rgba(1,38,78,0.2)', 'rgba(1,38,78,0.85)']} style={{ position: 'absolute', inset: 0 }} />
           <View style={{ position: 'absolute', top: insets.top + spacing.xs, left: spacing.base, right: spacing.base, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
-            <View>
+            <PressableScale onPress={() => setSwitcherOpen(true)} disabled={ACTIVE_BOOKINGS.length <= 1}>
               <Text variant="bodySm" weight="700" color="rgba(255,255,255,0.92)">YOUR STAY</Text>
-              <Text variant="bodyMd" weight="700" color="rgba(255,255,255,0.92)" style={{ marginTop: 2 }}>{b.ref}</Text>
-            </View>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 2 }}>
+                <Text variant="bodyMd" weight="700" color={palette.white}>{b.ref}</Text>
+                {ACTIVE_BOOKINGS.length > 1 ? (
+                  <View style={{ width: 20, height: 20, borderRadius: 10, backgroundColor: 'rgba(255,255,255,0.22)', alignItems: 'center', justifyContent: 'center' }}>
+                    <Ionicons name="chevron-down" size={13} color={palette.white} />
+                  </View>
+                ) : null}
+              </View>
+            </PressableScale>
             <View style={{ flexDirection: 'row', gap: spacing.sm }}>
               <IconButton icon="share-social-outline" color={palette.white} bg="rgba(255,255,255,0.18)" style={{ borderColor: 'transparent' }} onPress={shareProperty} />
               <IconButton icon="navigate-outline" color={palette.white} bg="rgba(255,255,255,0.18)" style={{ borderColor: 'transparent' }} onPress={openDirections} />
@@ -86,16 +107,32 @@ export default function Stay() {
         </View>
 
         <View style={{ paddingHorizontal: spacing.base, paddingTop: spacing.base, gap: spacing.base }}>
-          {/* Rent due card */}
+          {/* Rent / rate card — adapts to the selected stay's billing mode */}
           <Card style={{ flexDirection: 'row', alignItems: 'center' }}>
-            <View style={{ flex: 1 }}>
-              <Text variant="caption" color={palette.inkTertiary}>NEXT RENT DUE</Text>
-              <Text variant="numLg" mono color={dueDays <= 3 ? palette.danger : palette.ink} style={{ marginTop: 2 }}>{inr(b.nextRentAmount)}</Text>
-              <Text variant="caption" color={dueDays <= 3 ? palette.danger : palette.inkSecondary}>
-                Due {formatDate(b.nextRentDue)} · in {dueDays} days
-              </Text>
-            </View>
-            <Button label="Pay now" icon="flash" onPress={() => router.push('/billing')} />
+            {b.bookingMode === 'monthly' ? (
+              <>
+                <View style={{ flex: 1 }}>
+                  <Text variant="caption" color={palette.inkTertiary}>NEXT RENT DUE</Text>
+                  <Text variant="numLg" mono color={dueDays <= 3 ? palette.danger : palette.ink} style={{ marginTop: 2 }}>{inr(b.nextRentAmount)}</Text>
+                  <Text variant="caption" color={dueDays <= 3 ? palette.danger : palette.inkSecondary}>
+                    Due {formatDate(b.nextRentDue)} · in {dueDays} days
+                  </Text>
+                </View>
+                <Button label="Pay now" icon="flash" onPress={() => router.push('/billing')} />
+              </>
+            ) : (
+              <View style={{ flex: 1 }}>
+                <Text variant="caption" color={palette.inkTertiary}>{b.bookingMode === 'hourly' ? 'HOURLY RATE' : 'DAILY RATE'}</Text>
+                <Text variant="numLg" mono color={palette.ink} style={{ marginTop: 2 }}>
+                  {inr(b.bookingMode === 'hourly' ? b.ratePerHour ?? 0 : b.ratePerDay ?? 0)}{b.bookingMode === 'hourly' ? '/hr' : '/day'}
+                </Text>
+                <Text variant="caption" color={palette.inkSecondary}>
+                  {b.bookingMode === 'hourly' && b.startTime && b.endTime
+                    ? `Today · ${fmtTime(b.startTime)}–${fmtTime(b.endTime)}`
+                    : b.checkOutDate ? `Until ${formatDate(b.checkOutDate)}` : 'Active stay'}
+                </Text>
+              </View>
+            )}
           </Card>
 
           {/* Announcements */}
@@ -125,6 +162,57 @@ export default function Stay() {
               <InfoTile label="Sharing" value={b.sharingType} />
             </View>
           </Card>
+
+          {/* Property manager — appointed on-site contact the tenant can call */}
+          {listing?.manager ? (
+            <Card>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: spacing.md }}>
+                <View style={{ width: 44, height: 44, borderRadius: radius.md, backgroundColor: palette.navyTint, alignItems: 'center', justifyContent: 'center' }}>
+                  <Ionicons name="person" size={20} color={palette.navy} />
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text variant="caption" color={palette.inkTertiary}>PROPERTY MANAGER</Text>
+                  <Text variant="bodyMd" weight="700" numberOfLines={1}>{listing.manager.name}</Text>
+                  <Text variant="caption" color={palette.inkSecondary}>{listing.manager.phone}</Text>
+                </View>
+                <PressableScale
+                  onPress={callManager}
+                  scaleTo={0.94}
+                  style={{ width: 46, height: 46, borderRadius: 23, backgroundColor: palette.success, alignItems: 'center', justifyContent: 'center' }}
+                >
+                  <Ionicons name="call" size={20} color={palette.white} />
+                </PressableScale>
+              </View>
+            </Card>
+          ) : null}
+
+          {/* Roommate preferences — prompt to complete if skipped after booking */}
+          {!profile.preferencesFilled ? (
+            <PressableScale onPress={() => router.push('/roommate-preferences')} scaleTo={0.99} style={{ flexDirection: 'row', alignItems: 'center', gap: spacing.md, backgroundColor: palette.surface, borderRadius: radius.lg, borderWidth: 1, borderColor: palette.border, padding: spacing.base }}>
+              <View style={{ width: 44, height: 44, borderRadius: radius.md, backgroundColor: palette.navyTint, alignItems: 'center', justifyContent: 'center' }}>
+                <Ionicons name="people-circle-outline" size={22} color={palette.navy} />
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text variant="bodyMd" weight="700">Complete your roommate preferences</Text>
+                <Text variant="caption" color={palette.inkTertiary}>Help us match you with compatible roommates</Text>
+              </View>
+              <Ionicons name="chevron-forward" size={18} color={palette.inkTertiary} />
+            </PressableScale>
+          ) : null}
+
+          {/* Extend stay — hourly/daily stays only (monthly cannot extend) */}
+          {b.bookingMode !== 'monthly' ? (
+            <PressableScale onPress={() => router.push({ pathname: '/booking/extend', params: { ref: b.ref } })} scaleTo={0.99} style={{ flexDirection: 'row', alignItems: 'center', gap: spacing.md, backgroundColor: palette.coralTint, borderRadius: radius.lg, padding: spacing.base }}>
+              <View style={{ width: 44, height: 44, borderRadius: radius.md, backgroundColor: palette.coral, alignItems: 'center', justifyContent: 'center' }}>
+                <Ionicons name="time" size={22} color={palette.white} />
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text variant="bodyMd" weight="700" color={palette.coralDark}>Extend your stay</Text>
+                <Text variant="caption" color={palette.coralDark}>Add more {b.bookingMode === 'hourly' ? 'hours' : 'days'} to your booking</Text>
+              </View>
+              <Ionicons name="chevron-forward" size={18} color={palette.coralDark} />
+            </PressableScale>
+          ) : null}
 
           {/* Lease alert */}
           {LEASE.status !== 'Signed' ? (
@@ -228,8 +316,47 @@ export default function Stay() {
           foodIncluded={listing.foodIncluded}
         />
       ) : null}
+
+      <Sheet visible={switcherOpen} onClose={() => setSwitcherOpen(false)} title="Switch stay" scroll>
+        <View style={{ gap: spacing.sm }}>
+          {ACTIVE_BOOKINGS.map((stay) => {
+            const active = stay.ref === selectedRef;
+            const modeLabel = stay.bookingMode === 'hourly' ? 'Hourly' : stay.bookingMode === 'daily' ? 'Daily' : 'Monthly';
+            return (
+              <PressableScale
+                key={stay.ref}
+                onPress={() => { setSelectedRef(stay.ref); setSwitcherOpen(false); }}
+                scaleTo={0.98}
+                style={{ flexDirection: 'row', alignItems: 'center', gap: spacing.md, padding: spacing.sm, borderRadius: radius.lg, borderWidth: 1.5, borderColor: active ? palette.coral : palette.border, backgroundColor: active ? palette.coralTint : palette.surface }}
+              >
+                <Image source={{ uri: stay.propertyImage }} style={{ width: 56, height: 56, borderRadius: radius.md }} contentFit="cover" />
+                <View style={{ flex: 1 }}>
+                  <Text variant="bodyMd" weight="700" numberOfLines={1}>{stay.propertyName}</Text>
+                  <Text variant="caption" color={palette.inkSecondary} numberOfLines={1}>
+                    {stay.ref} · Room {stay.roomNumber} · Bed {stay.bedLabel}
+                  </Text>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: spacing.sm, marginTop: 6 }}>
+                    <StatusPill status={stay.stayStatus} small />
+                    <Text variant="caption" color={palette.inkTertiary}>{modeLabel}</Text>
+                  </View>
+                </View>
+                {active
+                  ? <Ionicons name="checkmark-circle" size={22} color={palette.coral} />
+                  : <Ionicons name="chevron-forward" size={18} color={palette.inkTertiary} />}
+              </PressableScale>
+            );
+          })}
+        </View>
+      </Sheet>
     </View>
   );
+}
+
+function fmtTime(hhmm: string) {
+  const [h, m] = hhmm.split(':').map(Number);
+  const suffix = h >= 12 ? 'PM' : 'AM';
+  const hr = h % 12 || 12;
+  return `${hr}:${String(m).padStart(2, '0')} ${suffix}`;
 }
 
 function DividerVertical() {

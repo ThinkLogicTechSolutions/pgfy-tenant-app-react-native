@@ -15,6 +15,7 @@ import { inr, formatDate } from '@/lib/format';
 import { listingNearLandmarkTitle, isPromotedListing } from '@/lib/listingDisplay';
 import { defaultCheckIn, defaultCheckOut } from '@/lib/dates';
 import { useSaved } from '@/store/saved';
+import { recordView } from '@/store/recentlyViewed';
 import { haptic } from '@/lib/haptics';
 import type { BookingMode } from '@/data/types';
 
@@ -128,6 +129,10 @@ export default function ListingDetail() {
     price: 0,
   });
   const [submitted, setSubmitted] = useState(false);
+
+  useEffect(() => {
+    if (listing) recordView(listing.id);
+  }, [listing?.id]);
 
   if (!listing) {
     return <View style={{ flex: 1, paddingTop: insets.top + 60 }}><EmptyState title="Property not found" /></View>;

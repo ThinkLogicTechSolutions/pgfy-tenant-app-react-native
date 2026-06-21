@@ -28,8 +28,8 @@ export default function BookingDetails() {
   const listing = getListing(record.booking.listingId);
   const isActive = record.kind === 'active';
   const b = record.booking;
-  const status = isActive ? b.stayStatus : b.status;
-  const paidAmount = amount ? Number(amount) : isActive ? b.monthlyRent + b.deposit : b.totalPaid;
+  const status = 'bookingMode' in b ? b.stayStatus : b.status;
+  const paidAmount = amount ? Number(amount) : 'bookingMode' in b ? b.monthlyRent + b.deposit : b.totalPaid;
 
   return (
     <View style={{ flex: 1, paddingTop: insets.top + spacing.xs }}>
@@ -61,7 +61,9 @@ export default function BookingDetails() {
           <DetailRow label="Room / Bed" value={`${b.roomNumber} · Bed ${b.bedLabel}`} />
           <DetailRow label="Sharing" value={b.sharingType} />
           <DetailRow label="Check-in" value={formatDate(b.checkInDate)} />
-          {!isActive && 'checkOutDate' in b ? (
+          {isActive && 'bookingMode' in b && b.bookingMode === 'hourly' ? (
+            <DetailRow label="Stay window" value={`${b.startTime ? fmtTime(b.startTime) : ''}–${b.endTime ? fmtTime(b.endTime) : ''}`} last />
+          ) : 'checkOutDate' in b && b.checkOutDate ? (
             <DetailRow label="Check-out" value={formatDate(b.checkOutDate)} last />
           ) : (
             <DetailRow label="Lease status" value={LEASE.status} last />
@@ -70,7 +72,13 @@ export default function BookingDetails() {
 
         <Card>
           <Text variant="h3" style={{ marginBottom: spacing.md }}>Payment summary</Text>
-          {isActive ? (
+          {isActive && 'bookingMode' in b && b.bookingMode !== 'monthly' ? (
+            <DetailRow
+              label={b.bookingMode === 'hourly' ? 'Hourly rate' : 'Daily rate'}
+              value={`${inr(b.bookingMode === 'hourly' ? b.ratePerHour ?? 0 : b.ratePerDay ?? 0)}${b.bookingMode === 'hourly' ? '/hr' : '/day'}`}
+              last
+            />
+          ) : 'bookingMode' in b ? (
             <>
               <DetailRow label="Monthly rent" value={`${inr(b.monthlyRent)}/mo`} />
               <DetailRow label="Security deposit" value={inr(b.deposit)} />
@@ -92,15 +100,22 @@ export default function BookingDetails() {
 
         {isActive ? (
           <View style={{ gap: spacing.sm }}>
+            {'bookingMode' in b && b.bookingMode !== 'monthly' ? (
+              <Button label="Extend stay" icon="time-outline" full onPress={() => router.push({ pathname: '/booking/extend', params: { ref: b.ref } })} />
+            ) : null}
             <Button label="View check-in pass" icon="qr-code-outline" variant="outline" full onPress={() => router.push('/pass')} />
-            <Button label="Go to My Stay" icon="bed-outline" variant="subtle" full onPress={() => router.replace('/(tabs)/stay')} />
           </View>
-        ) : (
-          <Button label="View property" icon="home-outline" variant="outline" full onPress={() => router.push(`/listing/${b.listingId}`)} />
-        )}
+        ) : null}
       </ScrollView>
     </View>
   );
+}
+
+function fmtTime(hhmm: string) {
+  const [h, m] = hhmm.split(':').map(Number);
+  const suffix = h >= 12 ? 'PM' : 'AM';
+  const hr = h % 12 || 12;
+  return `${hr}:${String(m).padStart(2, '0')} ${suffix}`;
 }
 
 function DetailRow({ label, value, bold, last }: { label: string; value: string; bold?: boolean; last?: boolean }) {

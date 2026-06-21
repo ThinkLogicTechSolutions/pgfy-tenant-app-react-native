@@ -6,7 +6,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { palette, spacing, radius } from '@/theme';
 import { Text, Button, Input, Card, IconButton } from '@/components/ui';
-import { KycShield, SuccessBurst } from '@/components/illustrations';
+import { KycShield } from '@/components/illustrations';
 import { haptic } from '@/lib/haptics';
 import { setKyc } from '@/store/kyc';
 
@@ -22,25 +22,15 @@ const PREFILLED_AADHAAR = {
 export default function Kyc() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
-  const [done, setDone] = useState(false);
+  const [loading, setLoading] = useState(false);
 
   const finish = () => {
-    setDone(true); haptic.success();
+    setLoading(true);
+    haptic.success();
+    // Aadhaar verification alone completes KYC. The next step (occupation) is optional.
     setKyc('Verified');
-    setTimeout(() => (router.canGoBack() ? router.back() : router.replace('/(tabs)')), 1600);
+    setTimeout(() => { setLoading(false); router.replace('/(auth)/kyc-occupation'); }, 700);
   };
-
-  if (done) {
-    return (
-      <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', padding: spacing.xl }}>
-        <SuccessBurst size={180} />
-        <Text variant="h1" align="center" style={{ marginTop: spacing.lg }}>Profile verified!</Text>
-        <Text variant="bodyLg" color={palette.inkSecondary} align="center" style={{ marginTop: spacing.sm, maxWidth: 300 }}>
-          You're all set. You can now book your stay.
-        </Text>
-      </View>
-    );
-  }
 
   return (
     <View style={{ flex: 1, paddingTop: insets.top + spacing.sm }}>
@@ -86,7 +76,7 @@ export default function Kyc() {
       </ScrollView>
 
       <View style={{ paddingHorizontal: spacing.xl, paddingBottom: insets.bottom + spacing.base, paddingTop: spacing.sm }}>
-        <Button label="Submit" onPress={finish} full size="lg" />
+        <Button label="Submit" loadingLabel="Verifying…" loading={loading} onPress={finish} full size="lg" />
       </View>
     </View>
   );

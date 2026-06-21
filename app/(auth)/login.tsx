@@ -41,7 +41,7 @@ export default function Login() {
         </View>
 
         <Input label="Mobile number" icon="call-outline" prefix="+91" keyboardType="number-pad" value={phone} onChangeText={setPhone} maxLength={11} placeholder="98765 43210" />
-        <Button label="Get OTP" onPress={getOtp} loading={loading} disabled={!valid} full size="lg" iconRight="arrow-forward" style={{ marginTop: spacing.xl }} />
+        <Button label="Get OTP" loadingLabel="Sending OTP…" onPress={getOtp} loading={loading} disabled={!valid} full size="lg" iconRight="arrow-forward" style={{ marginTop: spacing.xl }} />
 
         <View style={{ flex: 1 }} />
         <Text variant="caption" color={palette.inkTertiary} align="center" style={{ marginTop: spacing['2xl'] }}>

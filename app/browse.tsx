@@ -31,6 +31,7 @@ export default function Browse() {
     bookingType?: string;
     startTime?: string;
     hours?: string;
+    openFilters?: string;
   }>();
   const saved = useSaved();
 
@@ -38,7 +39,7 @@ export default function Browse() {
 
   const [sort, setSort] = useState('Relevance');
   const [sortOpen, setSortOpen] = useState(false);
-  const [filtersOpen, setFiltersOpen] = useState(false);
+  const [filtersOpen, setFiltersOpen] = useState(params.openFilters === '1');
   const [filters, setFilters] = useState<BrowseFilters>(() => browseFiltersFromParams(params));
   const [draftFilters, setDraftFilters] = useState<BrowseFilters>(() => browseFiltersFromParams(params));
 

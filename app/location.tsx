@@ -12,6 +12,7 @@ import { TOP_CITIES } from '@/data';
 import { resolveNearMeLocation } from '@/lib/nearMe';
 import { getSearchHistory, addSearchHistory } from '@/lib/searchHistory';
 import { locationPicker } from '@/store/locationPicker';
+import { clearTenantLocation } from '@/store/location';
 import { haptic } from '@/lib/haptics';
 
 export default function LocationScreen() {
@@ -66,6 +67,15 @@ export default function LocationScreen() {
       return;
     }
     Alert.alert('Near me', result.message);
+  };
+
+  /** Demo: simulate a denied location permission → home shows "Choose location". */
+  const denyLocation = () => {
+    pickedRef.current = true;
+    haptic.select();
+    locationPicker.cancel();
+    clearTenantLocation();
+    router.back();
   };
 
   return (
@@ -131,6 +141,16 @@ export default function LocationScreen() {
           size="lg"
           loading={loadingNear}
           onPress={nearMe}
+          style={{ marginBottom: spacing.md }}
+        />
+
+        <Button
+          label="Deny location permission (demo)"
+          icon="close-circle-outline"
+          variant="ghost"
+          full
+          size="lg"
+          onPress={denyLocation}
           style={{ marginBottom: spacing.xl }}
         />
 

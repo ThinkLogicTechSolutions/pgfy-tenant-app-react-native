@@ -64,7 +64,7 @@ export default function ProfileEdit() {
       </ScrollView>
 
       <View style={{ position: 'absolute', bottom: 0, left: 0, right: 0, paddingHorizontal: spacing.base, paddingTop: spacing.md, paddingBottom: insets.bottom + spacing.md, backgroundColor: palette.surface, borderTopWidth: 1, borderTopColor: palette.border }}>
-        <Button label="Save changes" icon="checkmark" loading={loading} onPress={save} full size="lg" />
+        <Button label="Save changes" loadingLabel="Saving…" icon="checkmark" loading={loading} onPress={save} full size="lg" />
       </View>
     </KeyboardAvoidingView>
   );

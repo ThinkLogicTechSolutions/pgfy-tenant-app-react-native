@@ -1,9 +1,22 @@
 /** Room & bed selection grid (T-S14) — tap an available bed to select it. */
 import { View } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
 import { palette, radius, spacing, bedStatus } from '@/theme';
 import type { BedStatusKey } from '@/theme/colors';
 import { Text, PressableScale } from '@/components/ui';
+import { compatibilityTone } from '@/lib/compatibility';
 import type { Room, Bed } from '@/data/types';
+
+const COMPAT_COLOR: Record<'success' | 'warning' | 'danger', { fg: string; bg: string }> = {
+  success: { fg: palette.success, bg: palette.successTint },
+  warning: { fg: '#B26A00', bg: palette.warningTint },
+  danger: { fg: palette.danger, bg: palette.dangerTint },
+};
+
+export interface RoomCompatibility {
+  score: number;
+  answered: number;
+}
 
 const ORDER: BedStatusKey[] = ['available', 'occupied', 'reserved', 'pending'];
 
@@ -46,18 +59,21 @@ export function SelectableBed({ bed, selected, onPress }: { bed: Bed; selected: 
 }
 
 export function SelectableRoom({
-  room, selectedBedId, onSelectBed, priceOverride, subtitleOverride,
+  room, selectedBedId, onSelectBed, priceOverride, subtitleOverride, compatibility, onCompatPress,
 }: {
   room: Room;
   selectedBedId: string | null;
   onSelectBed: (bed: Bed, room: Room) => void;
   priceOverride?: number;
   subtitleOverride?: string;
+  compatibility?: RoomCompatibility;
+  onCompatPress?: () => void;
 }) {
   const occupied = room.beds.filter((b) => b.status === 'occupied').length;
   const available = room.beds.filter((b) => b.status === 'available').length;
   const hasAc = room.amenities.includes('AC');
   const roomRent = priceOverride ?? room.rent;
+  const compat = compatibility && compatibility.answered > 0 ? COMPAT_COLOR[compatibilityTone(compatibility.score)] : null;
   return (
     <View style={{ backgroundColor: palette.surface, borderRadius: radius.lg, borderWidth: 1, borderColor: palette.border, padding: spacing.md, gap: spacing.md }}>
       <View style={{ flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between', gap: spacing.md }}>
@@ -66,6 +82,18 @@ export function SelectableRoom({
           <Text variant="caption" color={palette.inkSecondary} style={{ marginTop: 2 }}>
             {subtitleOverride ?? `${room.sharingType} · ${hasAc ? 'AC' : 'Non-AC'} · ${available} available`}
           </Text>
+          {compat && compatibility ? (
+            <PressableScale
+              onPress={onCompatPress}
+              haptics={false}
+              scaleTo={onCompatPress ? 0.96 : 1}
+              style={{ flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 6, alignSelf: 'flex-start', backgroundColor: compat.bg, paddingHorizontal: 8, paddingVertical: 3, borderRadius: 999 }}
+            >
+              <Ionicons name="people" size={12} color={compat.fg} />
+              <Text variant="caption" weight="700" color={compat.fg}>{compatibility.score}% roommate match</Text>
+              {onCompatPress ? <Ionicons name="information-circle-outline" size={13} color={compat.fg} /> : null}
+            </PressableScale>
+          ) : null}
         </View>
         <View style={{ alignItems: 'flex-end' }}>
           <Text variant="caption" color={palette.inkTertiary}>{occupied}/{room.capacity} filled</Text>

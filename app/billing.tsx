@@ -4,7 +4,7 @@ import { View, FlatList, ScrollView } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { palette, spacing, radius } from '@/theme';
-import { Text, ScreenHeader, Card, Sheet, Button, Divider, Chip } from '@/components/ui';
+import { Text, ScreenHeader, Card, Sheet, Button, Divider, Chip, AnimatedListItem } from '@/components/ui';
 import { StayDateRangeField } from '@/components/search';
 import { InvoiceRow } from '@/components/domain';
 import { INVOICES, type Invoice } from '@/data';
@@ -112,10 +112,12 @@ export default function Billing() {
             <Text variant="overline" color={palette.inkTertiary} style={{ marginLeft: 4 }}>ALL INVOICES</Text>
           </View>
         }
-        renderItem={({ item }) => (
-          <Card padded={false} style={{ paddingHorizontal: spacing.base, marginBottom: spacing.sm }}>
-            <InvoiceRow invoice={item} onPress={() => setSelected(item)} />
-          </Card>
+        renderItem={({ item, index }) => (
+          <AnimatedListItem index={index}>
+            <Card padded={false} style={{ paddingHorizontal: spacing.base, marginBottom: spacing.sm }}>
+              <InvoiceRow invoice={item} onPress={() => setSelected(item)} />
+            </Card>
+          </AnimatedListItem>
         )}
       />
 

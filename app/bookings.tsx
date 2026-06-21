@@ -7,7 +7,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { palette, spacing, radius } from '@/theme';
 import {
-  Text, ScreenHeader, PressableScale, EmptyState, Sheet, Chip, Button, Divider,
+  Text, ScreenHeader, PressableScale, EmptyState, Sheet, Chip, Button, Divider, AnimatedListItem,
 } from '@/components/ui';
 import { PastBookingCard, StatusPill } from '@/components/domain';
 import { EmptyBookings } from '@/components/illustrations';
@@ -171,10 +171,12 @@ export default function Bookings() {
           flexGrow: 1,
         }}
         showsVerticalScrollIndicator={false}
-        renderItem={({ item }) => (
-          item.kind === 'active'
-            ? <ActiveBookingCard item={item} onPress={() => router.push(`/booking/${item.booking.ref}`)} />
-            : <PastBookingCard booking={item.booking} onPress={() => router.push(`/booking/${item.booking.ref}`)} />
+        renderItem={({ item, index }) => (
+          <AnimatedListItem index={index}>
+            {item.kind === 'active'
+              ? <ActiveBookingCard item={item} onPress={() => router.push(`/booking/${item.booking.ref}`)} />
+              : <PastBookingCard booking={item.booking} onPress={() => router.push(`/booking/${item.booking.ref}`)} />}
+          </AnimatedListItem>
         )}
         ListEmptyComponent={
           <EmptyState
@@ -248,7 +250,11 @@ function ActiveBookingCard({ item, onPress }: { item: TenantBookingItem & { kind
             {b.locality} · {b.roomNumber}/{b.bedLabel}
           </Text>
           <Text variant="caption" color="rgba(255,255,255,0.8)" style={{ marginTop: 4 }}>
-            Since {formatDate(b.checkInDate)} · {inr(b.monthlyRent)}/mo
+            Since {formatDate(b.checkInDate)} · {b.bookingMode === 'hourly'
+              ? `${inr(b.ratePerHour ?? 0)}/hr`
+              : b.bookingMode === 'daily'
+                ? `${inr(b.ratePerDay ?? 0)}/day`
+                : `${inr(b.monthlyRent)}/mo`}
           </Text>
         </View>
         <Ionicons name="chevron-forward" size={18} color={palette.white} />

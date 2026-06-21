@@ -1,0 +1,27 @@
+diff --git a/node_modules/expo/node_modules/expo-keep-awake/src/index.ts b/node_modules/expo/node_modules/expo-keep-awake/src/index.ts
+index b7a856e..ac1ddc5 100644
+--- a/node_modules/expo/node_modules/expo-keep-awake/src/index.ts
++++ b/node_modules/expo/node_modules/expo-keep-awake/src/index.ts
+@@ -30,11 +30,17 @@ export function useKeepAwake(tag?: string, options?: KeepAwakeOptions): void {
+ 
+   useEffect(() => {
+     let isMounted = true;
+-    activateKeepAwakeAsync(tagOrDefault).then(() => {
+-      if (isMounted && ExpoKeepAwake.addListenerForTag && options?.listener) {
+-        addListener(tagOrDefault, options.listener);
+-      }
+-    });
++    activateKeepAwakeAsync(tagOrDefault)
++      .then(() => {
++        if (isMounted && ExpoKeepAwake.addListenerForTag && options?.listener) {
++          addListener(tagOrDefault, options.listener);
++        }
++      })
++      .catch(() => {
++        // Activation can transiently fail (simulators, app launch races), which
++        // otherwise surfaces as an uncaught "Unable to activate keep awake" error.
++        // Keeping the screen awake is best-effort, so swallow the rejection.
++      });
+     return () => {
+       isMounted = false;
+       if (options?.suppressDeactivateWarnings) {

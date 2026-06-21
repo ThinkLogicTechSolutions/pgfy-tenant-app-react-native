@@ -22,3 +22,5 @@ export { EmptyState } from './EmptyState';
 export { Sheet } from './Sheet';
 export { Stepper } from './Stepper';
 export { ListRow } from './ListRow';
+export { Confetti } from './Confetti';
+export { AnimatedListItem } from './AnimatedListItem';

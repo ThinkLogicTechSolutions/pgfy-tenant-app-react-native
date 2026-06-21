@@ -21,11 +21,10 @@ export default function Checkout() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const total = Number(amount ?? 39500);
-  const [plan, setPlan] = useState<'full' | 'partial'>('full');
   const [method, setMethod] = useState('upi');
   const [loading, setLoading] = useState(false);
 
-  const payable = plan === 'full' ? total : Math.round(total * 0.4);
+  const payable = total;
 
   const pay = () => {
     setLoading(true); haptic.success();
@@ -36,15 +35,6 @@ export default function Checkout() {
     <View style={{ flex: 1, paddingTop: insets.top + spacing.xs }}>
       <ScreenHeader title="Checkout" subtitle="Secure payment" />
       <ScrollView contentContainerStyle={{ paddingHorizontal: spacing.base, paddingBottom: 130, gap: spacing.base }} showsVerticalScrollIndicator={false}>
-        {/* Plan */}
-        <View>
-          <Text variant="overline" color={palette.inkTertiary} style={{ marginBottom: spacing.sm }}>PAYMENT PLAN</Text>
-          <View style={{ flexDirection: 'row', gap: spacing.md }}>
-            <PlanCard active={plan === 'full'} title="Pay in full" sub={inr(total)} onPress={() => setPlan('full')} />
-            <PlanCard active={plan === 'partial'} title="Booking deposit" sub={`${inr(Math.round(total * 0.4))} now`} onPress={() => setPlan('partial')} />
-          </View>
-        </View>
-
         {/* Methods */}
         <View>
           <Text variant="overline" color={palette.inkTertiary} style={{ marginBottom: spacing.sm }}>PAYMENT METHOD</Text>
@@ -87,23 +77,12 @@ export default function Checkout() {
           <Text variant="caption" color={palette.inkTertiary}>Paying now</Text>
           <Text variant="h3" mono color={palette.navy}>{inr(payable)}</Text>
         </View>
-        <Button label={`Pay ${inr(payable)}`} icon="lock-closed" loading={loading} onPress={pay} full size="lg" style={{ flex: 1 }} />
+        <Button label={`Pay ${inr(payable)}`} loadingLabel="Processing payment…" icon="lock-closed" loading={loading} onPress={pay} full size="lg" style={{ flex: 1 }} />
       </View>
     </View>
   );
 }
 
-function PlanCard({ active, title, sub, onPress }: { active: boolean; title: string; sub: string; onPress: () => void }) {
-  return (
-    <Card onPress={onPress} style={{ flex: 1, borderColor: active ? palette.coral : palette.border, borderWidth: 1.5, backgroundColor: active ? palette.coralTint : palette.surface }}>
-      <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
-        <Text variant="bodyMd" weight="700" color={active ? palette.coralDark : palette.ink}>{title}</Text>
-        <Ionicons name={active ? 'radio-button-on' : 'radio-button-off'} size={18} color={active ? palette.coral : palette.borderStrong} />
-      </View>
-      <Text variant="bodySm" color={palette.inkSecondary} style={{ marginTop: 4 }}>{sub}</Text>
-    </Card>
-  );
-}
 function Badge2({ icon, label }: { icon: any; label: string }) {
   return (
     <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
