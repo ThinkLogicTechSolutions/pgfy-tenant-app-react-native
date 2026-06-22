@@ -5,8 +5,9 @@ import { Text, Sheet, Chip, Button, Divider, SegmentedControl, RangeSlider } fro
 import { inrCompact } from '@/lib/format';
 import { FILTER_OPTIONS } from '@/data';
 import { defaultCheckIn, defaultCheckOut } from '@/lib/dates';
+import { PRICE_BOUNDS, listingPriceFrom } from '@/lib/listingDisplay';
 import { StayBookingFields, type StayBookingValues } from './StayBookingFields';
-import type { BookingMode } from '@/data/types';
+import type { BookingMode, Listing } from '@/data/types';
 
 export interface BrowseFilters {
   bookingType: BookingMode;
@@ -39,10 +40,13 @@ export function defaultStayValues(checkIn = defaultCheckIn()): StayBookingValues
   };
 }
 
-export const PRICE_MIN = 2000;
-export const PRICE_MAX = 25000;
-export const PRICE_STEP = 500;
 export const DISTANCE_MAX = 20; // km
+
+const PRICE_LABELS: Record<BookingMode, string> = {
+  monthly: 'Monthly rent',
+  daily: 'Daily rent',
+  hourly: 'Hourly rate',
+};
 
 export const DEFAULT_BROWSE_FILTERS: BrowseFilters = {
   bookingType: 'monthly',
@@ -52,8 +56,8 @@ export const DEFAULT_BROWSE_FILTERS: BrowseFilters = {
   acType: 'Any',
   amenities: [],
   minRating: null,
-  priceMin: PRICE_MIN,
-  priceMax: PRICE_MAX,
+  priceMin: PRICE_BOUNDS.monthly.min,
+  priceMax: PRICE_BOUNDS.monthly.max,
   distanceMax: DISTANCE_MAX,
   propertyTypes: [],
   roommateType: 'Any',
@@ -71,11 +75,15 @@ export function browseFiltersFromParams(params: {
   hours?: string;
 }): BrowseFilters {
   const checkIn = params.checkIn || defaultCheckIn();
+  const bookingType = (['hourly', 'daily', 'monthly'].includes(params.bookingType ?? '')
+    ? params.bookingType
+    : 'monthly') as BookingMode;
+  const bounds = PRICE_BOUNDS[bookingType];
   return {
     ...DEFAULT_BROWSE_FILTERS,
-    bookingType: (['hourly', 'daily', 'monthly'].includes(params.bookingType ?? '')
-      ? params.bookingType
-      : 'monthly') as BookingMode,
+    bookingType,
+    priceMin: bounds.min,
+    priceMax: bounds.max,
     stay: {
       checkIn,
       checkOut: params.checkOut || defaultCheckOut(checkIn),
@@ -137,7 +145,12 @@ export function BrowseFiltersSheet({
           <SegmentedControl
             segments={STAY_SEGMENTS}
             value={draft.bookingType}
-            onChange={(key) => set({ bookingType: key as BookingMode })}
+            onChange={(key) => {
+              const mode = key as BookingMode;
+              const bounds = PRICE_BOUNDS[mode];
+              // Rescale the price range to the new mode's bounds (resets any price filter).
+              set({ bookingType: mode, priceMin: bounds.min, priceMax: bounds.max });
+            }}
             style={{ marginBottom: spacing.md }}
           />
           <StayBookingFields
@@ -165,11 +178,11 @@ export function BrowseFiltersSheet({
 
         <Divider />
 
-        <FilterSection label="Monthly rent">
+        <FilterSection label={PRICE_LABELS[draft.bookingType]}>
           <RangeSlider
-            min={PRICE_MIN}
-            max={PRICE_MAX}
-            step={PRICE_STEP}
+            min={PRICE_BOUNDS[draft.bookingType].min}
+            max={PRICE_BOUNDS[draft.bookingType].max}
+            step={PRICE_BOUNDS[draft.bookingType].step}
             low={draft.priceMin}
             high={draft.priceMax}
             onChange={(priceMin, priceMax) => set({ priceMin, priceMax })}
@@ -299,25 +312,7 @@ export function BrowseFiltersSheet({
   );
 }
 
-export function matchesBrowseFilters(
-  listing: {
-    type: string;
-    gender: string;
-    amenities: string[];
-    foodIncluded: boolean;
-    rating: number;
-    priceFrom: number;
-    distanceKm: number;
-    roommateSummary?: {
-      mostlyProfessionals: boolean;
-      smoking: boolean;
-      alcohol: boolean;
-      sleep: 'early' | 'late';
-      diet: 'veg' | 'vegan' | 'nonveg';
-    };
-  },
-  filters: BrowseFilters,
-): boolean {
+export function matchesBrowseFilters(listing: Listing, filters: BrowseFilters): boolean {
   if (filters.propertyTypes.length > 0 && !filters.propertyTypes.includes(listing.type)) return false;
   if (filters.gender !== 'Any' && listing.gender !== filters.gender) return false;
 
@@ -355,8 +350,10 @@ export function matchesBrowseFilters(
 
   if (filters.minRating !== null && listing.rating < filters.minRating) return false;
 
-  if (listing.priceFrom < filters.priceMin) return false;
-  if (filters.priceMax < PRICE_MAX && listing.priceFrom > filters.priceMax) return false;
+  const priceBounds = PRICE_BOUNDS[filters.bookingType];
+  const price = listingPriceFrom(listing, filters.bookingType);
+  if (price < filters.priceMin) return false;
+  if (filters.priceMax < priceBounds.max && price > filters.priceMax) return false;
 
   if (filters.distanceMax < DISTANCE_MAX && listing.distanceKm > filters.distanceMax) return false;
 
@@ -372,7 +369,8 @@ export function browseFiltersActiveCount(filters: BrowseFilters): number {
   if (filters.food.length) n += filters.food.length;
   if (filters.acType !== 'Any') n += 1;
   if (filters.minRating !== null) n += 1;
-  if (filters.priceMin > PRICE_MIN || filters.priceMax < PRICE_MAX) n += 1;
+  const priceBounds = PRICE_BOUNDS[filters.bookingType];
+  if (filters.priceMin > priceBounds.min || filters.priceMax < priceBounds.max) n += 1;
   if (filters.distanceMax < DISTANCE_MAX) n += 1;
   if (filters.propertyTypes.length) n += filters.propertyTypes.length;
   n += filters.amenities.length;
