@@ -34,7 +34,7 @@ export const COUPONS: Coupon[] = [
   {
     code: 'FLASH15',
     title: 'Flash deal',
-    description: '15% off registration fee (max ₹300)',
+    description: '15% off platform fee (max ₹300)',
     discount: 300,
   },
 ];

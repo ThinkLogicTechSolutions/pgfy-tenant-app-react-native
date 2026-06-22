@@ -222,6 +222,10 @@ export interface ActiveBooking {
   endTime?: string;
   ratePerHour?: number;
   ratePerDay?: number;
+  /** Set when the tenant was onboarded offline by the owner. */
+  ownerOnboarded?: boolean;
+  /** A pending invoice raised by the owner that the tenant can clear from My Stay. */
+  pendingInvoice?: { id: string; label: string; amount: number; dueDate: string };
 }
 
 export type LeaseStatus = 'Pending Tenant Signature' | 'Signed' | 'Expired';

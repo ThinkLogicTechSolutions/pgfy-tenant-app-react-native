@@ -10,6 +10,7 @@ import { palette, spacing, radius } from '@/theme';
 import { Text, Card, Button, IconButton, PressableScale, Sheet } from '@/components/ui';
 import { StatusPill, WeeklyFoodMenuSheet, TicketRow } from '@/components/domain';
 import { ACTIVE_BOOKINGS, LEASE, TICKETS, getListing } from '@/data';
+import type { CheckoutIntent } from '@/lib/billing';
 import { inr, formatDate, daysFromNow } from '@/lib/format';
 import { useProfile } from '@/store/profile';
 
@@ -36,6 +37,20 @@ export default function Stay() {
   const { width } = useWindowDimensions();
   // Floor the tile width so 3 columns + 2 gaps never overflow & wrap unevenly.
   const tileW = Math.floor((width - spacing.base * 2 - spacing.md * 2) / 3);
+
+  const payPendingInvoice = () => {
+    if (!b.pendingInvoice) return;
+    const intent: CheckoutIntent = {
+      kind: 'invoice',
+      title: b.pendingInvoice.label,
+      subtitle: `${b.propertyName} · ${b.ref}`,
+      billingMode: 'monthly',
+      baseAmount: b.pendingInvoice.amount,
+      unitRate: b.pendingInvoice.amount,
+      allowAutopay: true,
+    };
+    router.push({ pathname: '/checkout', params: { intent: JSON.stringify(intent) } });
+  };
 
   const shareProperty = async () => {
     const link = `https://pgfy.in/p/${b.listingId}`;
@@ -134,6 +149,20 @@ export default function Stay() {
               </View>
             )}
           </Card>
+
+          {/* Pending invoice raised by the owner (offline-onboarded tenants) */}
+          {b.pendingInvoice ? (
+            <PressableScale onPress={payPendingInvoice} scaleTo={0.99} style={{ flexDirection: 'row', alignItems: 'center', gap: spacing.md, backgroundColor: palette.dangerTint, borderRadius: radius.lg, padding: spacing.base }}>
+              <View style={{ width: 44, height: 44, borderRadius: radius.md, backgroundColor: palette.danger, alignItems: 'center', justifyContent: 'center' }}>
+                <Ionicons name="receipt" size={22} color={palette.white} />
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text variant="bodyMd" weight="700" color={palette.danger}>Pending invoice · {inr(b.pendingInvoice.amount)}</Text>
+                <Text variant="caption" color={palette.danger}>{b.pendingInvoice.label} · due {formatDate(b.pendingInvoice.dueDate)} · tap to pay</Text>
+              </View>
+              <Ionicons name="chevron-forward" size={18} color={palette.danger} />
+            </PressableScale>
+          ) : null}
 
           {/* Announcements */}
           <Card>

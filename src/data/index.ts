@@ -19,6 +19,7 @@ export {
 } from './extension';
 export { NOTIFICATIONS, unreadCount } from './notifications';
 export { COUPONS, resolveCoupon, type Coupon } from './coupons';
+export { PLATFORM_FEE, computePlatformFee, type PlatformFeeConfig, type FeeType } from './platform';
 export {
   BRAND_VENDORS,
   BRAND_OFFERS,

@@ -7,7 +7,6 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { palette, spacing, radius } from '@/theme';
 import { Text, ScreenHeader, Card, Button, Divider, Badge, PressableScale, EmptyState } from '@/components/ui';
-import { SuccessBurst } from '@/components/illustrations';
 import {
   getBookingByRef,
   maxExtensionUnits,
@@ -17,14 +16,10 @@ import {
   priceExtension,
   type AvailabilityResult,
 } from '@/data';
+import { computeCheckout, type CheckoutIntent } from '@/lib/billing';
+import type { BookingMode } from '@/data/types';
 import { inr, formatDate } from '@/lib/format';
 import { haptic } from '@/lib/haptics';
-
-const METHODS = [
-  { key: 'upi', label: 'UPI', sub: 'GPay, PhonePe, Paytm', icon: 'phone-portrait-outline' },
-  { key: 'card', label: 'Card', sub: 'Visa, Mastercard, RuPay', icon: 'card-outline' },
-  { key: 'cash', label: 'Offline Cash', sub: 'Pay at property via OTP', icon: 'cash-outline' },
-] as const;
 
 function fmtTime(hhmm: string) {
   const [h, m] = hhmm.split(':').map(Number);
@@ -54,9 +49,6 @@ export default function ExtendBooking() {
 
   const [units, setUnits] = useState(1);
   const [availability, setAvailability] = useState<AvailabilityResult | null>(null);
-  const [method, setMethod] = useState<string>('upi');
-  const [paying, setPaying] = useState(false);
-  const [done, setDone] = useState(false);
 
   if (!record || record.kind !== 'active' || record.booking.bookingMode === 'monthly') {
     return (
@@ -90,33 +82,23 @@ export default function ExtendBooking() {
     ? `until ${fmtTime(addHours(b.endTime ?? '00:00', units))}`
     : `until ${formatDate(addDays(b.checkOutDate ?? b.checkInDate, units))}`;
 
-  const pay = () => {
-    setPaying(true);
-    haptic.success();
-    setTimeout(() => {
-      setPaying(false);
-      setDone(true);
-    }, 1100);
+  const intent: CheckoutIntent = {
+    kind: 'extend',
+    title: `Extend stay · ${b.propertyName}`,
+    subtitle: `${b.ref} · +${extensionUnitLabel(b, units)} (${newEnd})`,
+    billingMode: (isHourly ? 'hourly' : 'daily') as BookingMode,
+    baseAmount: price.base,
+    unitRate: rate,
+    allowAutopay: false,
+    bookingRef: b.ref,
   };
 
-  if (done) {
-    return (
-      <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', padding: spacing.xl }}>
-        <SuccessBurst size={170} />
-        <Text variant="h1" align="center" style={{ marginTop: spacing.lg }}>Stay extended!</Text>
-        <Text variant="bodyLg" color={palette.inkSecondary} align="center" style={{ marginTop: spacing.sm, maxWidth: 320 }}>
-          Your {b.bookingMode} stay at {b.propertyName} is now extended by {extensionUnitLabel(b, units)} ({newEnd}).
-        </Text>
-        <Button
-          label="Back to booking"
-          full
-          size="lg"
-          style={{ marginTop: spacing.xl, alignSelf: 'stretch' }}
-          onPress={() => (router.canGoBack() ? router.back() : router.replace('/(tabs)/stay'))}
-        />
-      </View>
-    );
-  }
+  const previewQuote = computeCheckout(intent);
+
+  const proceed = () => {
+    haptic.success();
+    router.push({ pathname: '/checkout', params: { intent: JSON.stringify(intent) } });
+  };
 
   return (
     <View style={{ flex: 1, paddingTop: insets.top + spacing.xs }}>
@@ -172,35 +154,15 @@ export default function ExtendBooking() {
             {/* Bill */}
             <Card>
               <Text variant="overline" color={palette.inkTertiary} style={{ marginBottom: spacing.sm }}>BILL SUMMARY</Text>
-              <Row k={`${isHourly ? 'Hourly' : 'Daily'} rate × ${units}`} v={inr(price.base)} />
-              <Row k="GST (18%)" v={inr(price.gst)} />
+              <Row k={`${isHourly ? 'Hourly' : 'Daily'} rate × ${units}`} v={inr(previewQuote.base)} />
+              <Row k={previewQuote.gstRate === 0 ? 'GST (exempt)' : `GST (${previewQuote.gstRate}%)`} v={inr(previewQuote.gst)} />
               <Divider style={{ marginVertical: spacing.sm }} />
-              <Row k="Payable now" v={inr(price.total)} bold last />
-            </Card>
-
-            {/* Payment method */}
-            <Card padded={false} style={{ paddingHorizontal: spacing.base }}>
-              <Text variant="overline" color={palette.inkTertiary} style={{ marginTop: spacing.md, marginBottom: spacing.xs }}>PAYMENT METHOD</Text>
-              {METHODS.map((m, i) => (
-                <View key={m.key}>
-                  <PressableScale onPress={() => setMethod(m.key)} haptics={false} style={{ flexDirection: 'row', alignItems: 'center', gap: spacing.md, paddingVertical: spacing.md }}>
-                    <View style={{ width: 40, height: 40, borderRadius: radius.md, backgroundColor: palette.surfaceRaised, alignItems: 'center', justifyContent: 'center' }}>
-                      <Ionicons name={m.icon as any} size={20} color={palette.navy} />
-                    </View>
-                    <View style={{ flex: 1 }}>
-                      <Text variant="bodyMd" weight="600">{m.label}</Text>
-                      <Text variant="caption" color={palette.inkTertiary}>{m.sub}</Text>
-                    </View>
-                    <Ionicons name={method === m.key ? 'radio-button-on' : 'radio-button-off'} size={22} color={method === m.key ? palette.coral : palette.borderStrong} />
-                  </PressableScale>
-                  {i < METHODS.length - 1 ? <Divider /> : null}
-                </View>
-              ))}
+              <Row k="Payable now" v={inr(previewQuote.total)} bold last />
             </Card>
 
             <View style={{ flexDirection: 'row', gap: spacing.sm, flexWrap: 'wrap' }}>
               <Badge label="Instant confirmation" tone="success" icon="flash" small />
-              <Badge label="Secure payment" tone="info" icon="lock-closed" small />
+              <Badge label="Secure payment · Razorpay" tone="info" icon="lock-closed" small />
             </View>
           </>
         ) : null}
@@ -210,9 +172,9 @@ export default function ExtendBooking() {
         <View style={{ position: 'absolute', bottom: 0, left: 0, right: 0, flexDirection: 'row', alignItems: 'center', gap: spacing.md, paddingHorizontal: spacing.base, paddingTop: spacing.md, paddingBottom: insets.bottom + spacing.md, backgroundColor: palette.surface, borderTopWidth: 1, borderTopColor: palette.border }}>
           <View>
             <Text variant="caption" color={palette.inkTertiary}>Payable</Text>
-            <Text variant="h3" mono color={palette.navy}>{inr(price.total)}</Text>
+            <Text variant="h3" mono color={palette.navy}>{inr(previewQuote.total)}</Text>
           </View>
-          <Button label={`Pay ${inr(price.total)}`} loadingLabel="Processing payment…" icon="lock-closed" loading={paying} onPress={pay} full size="lg" style={{ flex: 1 }} />
+          <Button label="Proceed to Pay" icon="lock-closed" onPress={proceed} full size="lg" style={{ flex: 1 }} />
         </View>
       ) : null}
     </View>

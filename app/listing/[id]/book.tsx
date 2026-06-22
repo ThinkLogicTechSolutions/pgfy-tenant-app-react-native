@@ -8,6 +8,8 @@ import { palette, spacing, radius } from '@/theme';
 import { Text, ScreenHeader, Card, Button, Input, Divider, Badge, Sheet, PressableScale } from '@/components/ui';
 import { StayDateRangeField } from '@/components/search';
 import { getListing, resolveCoupon, COUPONS } from '@/data';
+import { computeCheckout, type CheckoutIntent } from '@/lib/billing';
+import type { BookingMode } from '@/data/types';
 import { inr } from '@/lib/format';
 import { defaultCheckIn, defaultCheckOut } from '@/lib/dates';
 import { haptic } from '@/lib/haptics';
@@ -43,11 +45,23 @@ export default function BookConfig() {
   });
 
   const kyc = useKyc();
-  const rentLabel = bookingType === 'hourly' ? 'Hourly rate' : bookingType === 'daily' ? 'Daily rate' : 'First month rent';
-  const registrationFee = bookingType === 'hourly' ? 0 : 500;
-  const depositAmount = bookingType === 'hourly' ? 0 : dep;
-  const gst = Math.round((monthlyRent + registrationFee) * 0.18);
-  const netPayable = monthlyRent + depositAmount + registrationFee + gst - discount;
+  const billingMode: BookingMode = bookingType === 'hourly' ? 'hourly' : bookingType === 'daily' ? 'daily' : 'monthly';
+  const rentLabel = billingMode === 'hourly' ? 'Hourly rate' : billingMode === 'daily' ? 'Daily rate' : 'First month rent';
+  const depositAmount = billingMode === 'monthly' ? dep : 0;
+  const modeLabel = billingMode === 'monthly' ? 'Monthly' : billingMode === 'daily' ? 'Daily' : 'Hourly';
+  const intent: CheckoutIntent = {
+    kind: billingMode === 'hourly' ? 'booking-hourly' : billingMode === 'daily' ? 'booking-daily' : 'booking-monthly',
+    title: `${listing?.name ?? 'Booking'} — ${modeLabel} booking`,
+    subtitle: `${room} · Bed ${bed} · ${sharing}`,
+    billingMode,
+    baseAmount: monthlyRent,
+    unitRate: monthlyRent,
+    deposit: depositAmount,
+    allowAutopay: billingMode === 'monthly',
+    listingId: String(id),
+  };
+  const quote = computeCheckout(intent, appliedCoupon ?? undefined);
+  const netPayable = quote.total;
   const kycVerified = kyc.verified;
 
   useEffect(() => {
@@ -92,8 +106,8 @@ export default function BookConfig() {
   const proceed = () => {
     if (!kycVerified) { setKycOpen(true); return; }
     router.push({
-      pathname: `/listing/${id}/checkout`,
-      params: { amount: String(netPayable), room, bed, checkIn: stayDates.checkIn, checkOut: stayDates.checkOut },
+      pathname: '/checkout',
+      params: { intent: JSON.stringify(intent), coupon: appliedCoupon ?? '' },
     });
   };
 
@@ -181,11 +195,11 @@ export default function BookConfig() {
         {/* Bill */}
         <Card>
           <Text variant="overline" color={palette.inkTertiary} style={{ marginBottom: spacing.sm }}>BILL SUMMARY</Text>
-          <Row k={rentLabel} v={inr(monthlyRent)} />
-          {depositAmount > 0 ? <Row k="Security deposit (refundable)" v={inr(depositAmount)} /> : null}
-          {registrationFee > 0 ? <Row k="Registration fee" v={inr(registrationFee)} /> : null}
-          <Row k="GST (18%)" v={inr(gst)} />
-          {discount > 0 ? <Row k="Discount" v={`− ${inr(discount)}`} accent={palette.success} /> : null}
+          <Row k={rentLabel} v={inr(quote.base)} />
+          {quote.deposit > 0 ? <Row k="Security deposit (refundable)" v={inr(quote.deposit)} /> : null}
+          {quote.platformFee > 0 ? <Row k="Platform fee" v={inr(quote.platformFee)} /> : null}
+          <Row k={quote.gstRate === 0 ? 'GST (exempt)' : `GST (${quote.gstRate}%)`} v={inr(quote.gst)} />
+          {quote.couponDiscount > 0 ? <Row k="Discount" v={`− ${inr(quote.couponDiscount)}`} accent={palette.success} /> : null}
           <Divider style={{ marginVertical: spacing.sm }} />
           <Row k="Net payable now" v={inr(netPayable)} bold last />
         </Card>

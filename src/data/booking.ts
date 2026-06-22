@@ -26,6 +26,9 @@ export const ACTIVE_BOOKING: ActiveBooking = {
   rentOverdue: false,
   qrToken: 'PGFY-CHKN-8821-Z7K9',
   bookingMode: 'monthly',
+  // Onboarded offline by the owner — a pending invoice is surfaced on the My Stay page.
+  ownerOnboarded: true,
+  pendingInvoice: { id: 'INV-OWN-0625', label: 'June rent · owner-raised', amount: 13000, dueDate: '2026-06-05' },
 };
 
 const hourlyListing = getListing('l4')!;

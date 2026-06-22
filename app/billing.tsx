@@ -1,6 +1,7 @@
 /** T-S21 — Billing ledger & invoice history. */
 import { useMemo, useState } from 'react';
 import { View, FlatList, ScrollView } from 'react-native';
+import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { palette, spacing, radius } from '@/theme';
@@ -8,8 +9,8 @@ import { Text, ScreenHeader, Card, Sheet, Button, Divider, Chip, AnimatedListIte
 import { StayDateRangeField } from '@/components/search';
 import { InvoiceRow } from '@/components/domain';
 import { INVOICES, type Invoice } from '@/data';
+import type { CheckoutIntent } from '@/lib/billing';
 import { inr, formatDate, NOW } from '@/lib/format';
-import { haptic } from '@/lib/haptics';
 
 type FilterKey = 'last_month' | 'last_6_months' | 'last_year' | 'custom';
 
@@ -50,10 +51,29 @@ function presetRange(filter: Exclude<FilterKey, 'custom'>) {
 
 export default function Billing() {
   const insets = useSafeAreaInsets();
+  const router = useRouter();
   const [selected, setSelected] = useState<Invoice | null>(null);
   const [payOpen, setPayOpen] = useState(false);
   const [filter, setFilter] = useState<FilterKey>('last_6_months');
   const [customRange, setCustomRange] = useState(() => presetRange('last_6_months'));
+
+  // Route an invoice payment into the unified checkout. Invoice amounts already include
+  // GST, so fees are not re-added (applyPlatformFee / applyGst default off for 'invoice').
+  const payInvoice = (base: number, label: string) => {
+    if (base <= 0) return;
+    const intent: CheckoutIntent = {
+      kind: 'invoice',
+      title: label,
+      subtitle: 'Monthly rent invoice',
+      billingMode: 'monthly',
+      baseAmount: base,
+      unitRate: base,
+      allowAutopay: true,
+    };
+    setSelected(null);
+    setPayOpen(false);
+    router.push({ pathname: '/checkout', params: { intent: JSON.stringify(intent) } });
+  };
 
   const activeRange = filter === 'custom' ? customRange : presetRange(filter);
   const filteredInvoices = useMemo(
@@ -154,7 +174,7 @@ export default function Billing() {
             ) : null}
             <View style={{ flexDirection: 'row', gap: spacing.sm }}>
               <Button label="Download PDF" variant="outline" icon="download-outline" full style={{ flex: 1 }} />
-              {selected.status !== 'Paid' ? <Button label="Pay now" icon="flash" full style={{ flex: 1 }} onPress={() => { setSelected(null); setPayOpen(true); }} /> : null}
+              {selected.status !== 'Paid' ? <Button label="Pay now" icon="flash" full style={{ flex: 1 }} onPress={() => payInvoice(selected.amount - selected.paidAmount, selected.label)} /> : null}
             </View>
           </View>
         ) : null}
@@ -174,7 +194,7 @@ export default function Billing() {
               <Ionicons name="chevron-forward" size={18} color={palette.inkTertiary} />
             </View>
           ))}
-          <Button label={`Pay ${inr(outstanding)}`} icon="lock-closed" onPress={() => { haptic.success(); setPayOpen(false); }} full size="lg" />
+          <Button label={`Pay ${inr(outstanding)}`} icon="lock-closed" onPress={() => payInvoice(outstanding, 'Outstanding rent')} full size="lg" />
         </View>
       </Sheet>
     </View>
