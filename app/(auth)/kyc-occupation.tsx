@@ -1,7 +1,7 @@
 /** T-S7b — Optional 2nd KYC step: occupation verification (student / working
  *  professional). Skippable — KYC is already complete after the Aadhaar step. */
 import { useState } from 'react';
-import { View, ScrollView } from 'react-native';
+import { View, ScrollView, Linking } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
@@ -15,6 +15,8 @@ const SEGMENTS = [
   { key: 'student', label: 'Student' },
   { key: 'professional', label: 'Working Professional' },
 ];
+
+const PRIVACY_URL = 'https://pgfy.in/privacyPolicy.html';
 
 const STUDENT_DOCS = ['College / University ID card', 'Admission letter (new students)'];
 const PRO_DOCS = ['Employee ID card', 'Offer / employment letter'];
@@ -71,13 +73,6 @@ export default function KycOccupation() {
 
       <ScrollView contentContainerStyle={{ paddingHorizontal: spacing.xl, paddingBottom: spacing.xl }} showsVerticalScrollIndicator={false}>
         <View style={{ gap: spacing.base }}>
-          <View style={{ flexDirection: 'row', gap: spacing.sm, alignItems: 'center', backgroundColor: palette.infoTint, padding: spacing.md, borderRadius: radius.md }}>
-            <Ionicons name="information-circle" size={18} color={palette.info} />
-            <Text variant="bodySm" color={palette.info} style={{ flex: 1 }}>
-              Your KYC is already verified. Adding your occupation helps us match you with compatible roommates. You can skip this.
-            </Text>
-          </View>
-
           <View>
             <Text variant="bodyMd" weight="700" style={{ marginBottom: spacing.sm }}>I am a</Text>
             <SegmentedControl
@@ -128,6 +123,28 @@ export default function KycOccupation() {
               </View>
             </Card>
           )}
+
+          <View style={{ marginTop: spacing.sm, gap: spacing.xs, paddingHorizontal: spacing.xs }}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+              <Ionicons name="shield-checkmark-outline" size={15} color={palette.inkTertiary} />
+              <Text variant="caption" weight="700" color={palette.inkSecondary}>
+                Why we collect this & how we store it
+              </Text>
+            </View>
+            <Text variant="caption" color={palette.inkTertiary}>
+              We collect these documents only for legal and verification purposes. They're stored
+              securely, encrypted, and are never shared without your consent. Learn more in our{' '}
+              <Text
+                variant="caption"
+                weight="600"
+                color={palette.coralDark}
+                onPress={() => Linking.openURL(PRIVACY_URL).catch(() => {})}
+              >
+                Privacy Policy
+              </Text>
+              .
+            </Text>
+          </View>
         </View>
       </ScrollView>
 

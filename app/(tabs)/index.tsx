@@ -14,7 +14,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import { palette, spacing, radius, shadows } from '@/theme';
 import { Text, IconButton, PressableScale, Avatar, Button } from '@/components/ui';
-import { CityTile, SectionHeader, CraftedFooter } from '@/components/domain';
+import { CityTile, SectionHeader, CraftedFooter, PromotedBadge } from '@/components/domain';
 import { locationPicker } from '@/store/locationPicker';
 import { useTenantLocation } from '@/store/location';
 import { useRecentlyViewed, recordView } from '@/store/recentlyViewed';
@@ -22,7 +22,7 @@ import { useSaved } from '@/store/saved';
 import { LISTINGS, USER, unreadCount, listingsByIds, POPULAR_DESTINATIONS } from '@/data';
 import { POPULAR_AREAS } from '@/data/popularAreas';
 import { defaultCheckIn, defaultCheckOut } from '@/lib/dates';
-import { listingSupportsBookingMode } from '@/lib/listingDisplay';
+import { listingSupportsBookingMode, getPromotedPgListingId } from '@/lib/listingDisplay';
 import { inr } from '@/lib/format';
 import { haptic } from '@/lib/haptics';
 import type { BookingMode, Gender, Listing } from '@/data/types';
@@ -123,12 +123,14 @@ function StayTypeCard({ item, active, onPress }: { item: (typeof STAY_TYPES)[num
 function NearbyCard({
   listing,
   bookingType,
+  promoted,
   saved,
   onToggleSave,
   onPress,
 }: {
   listing: Listing;
   bookingType: BookingMode;
+  promoted?: boolean;
   saved: boolean;
   onToggleSave: () => void;
   onPress: () => void;
@@ -143,8 +145,11 @@ function NearbyCard({
     >
       <View>
         <Image source={{ uri: listing.coverImage }} style={{ width: '100%', height: 132 }} contentFit="cover" transition={200} />
-        <View style={{ position: 'absolute', top: 8, left: 8, backgroundColor: 'rgba(255,255,255,0.94)', borderRadius: radius.pill, paddingHorizontal: 9, paddingVertical: 3 }}>
-          <Text variant="caption" weight="700" color={palette.ink}>{listing.distanceKm} km</Text>
+        <View style={{ position: 'absolute', top: 8, left: 8, flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+          {promoted ? <PromotedBadge compact /> : null}
+          <View style={{ backgroundColor: 'rgba(255,255,255,0.94)', borderRadius: radius.pill, paddingHorizontal: 9, paddingVertical: 3 }}>
+            <Text variant="caption" weight="700" color={palette.ink}>{listing.distanceKm} km</Text>
+          </View>
         </View>
         <View style={{ position: 'absolute', top: 6, right: 6 }}>
           <IconButton
@@ -301,6 +306,8 @@ export default function Home() {
       : supported;
     return [...scoped].sort((a, b) => a.distanceKm - b.distanceKm).slice(0, 6);
   }, [stayType, area]);
+
+  const promotedPgId = useMemo(() => getPromotedPgListingId(LISTINGS), []);
 
   const viewedListings = useMemo(() => listingsByIds(viewedIds), [viewedIds]);
 
@@ -490,6 +497,7 @@ export default function Home() {
                     key={listing.id}
                     listing={listing}
                     bookingType={stayType}
+                    promoted={listing.id === promotedPgId}
                     saved={saved.isSaved(listing.id)}
                     onToggleSave={() => saved.toggle(listing.id)}
                     onPress={() => openListing(listing.id)}

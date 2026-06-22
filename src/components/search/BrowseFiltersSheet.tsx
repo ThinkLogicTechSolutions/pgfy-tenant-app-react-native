@@ -1,7 +1,8 @@
 /** Filter sheet for browse / search results. */
 import { View } from 'react-native';
 import { palette, spacing } from '@/theme';
-import { Text, Sheet, Chip, Button, Divider, SegmentedControl } from '@/components/ui';
+import { Text, Sheet, Chip, Button, Divider, SegmentedControl, RangeSlider } from '@/components/ui';
+import { inrCompact } from '@/lib/format';
 import { FILTER_OPTIONS } from '@/data';
 import { defaultCheckIn, defaultCheckOut } from '@/lib/dates';
 import { StayBookingFields, type StayBookingValues } from './StayBookingFields';
@@ -15,6 +16,11 @@ export interface BrowseFilters {
   acType: string;
   amenities: string[];
   minRating: number | null;
+  /** Monthly rent range (₹). */
+  priceMin: number;
+  priceMax: number;
+  /** Search radius in km from the area centre. */
+  distanceMax: number;
   propertyTypes: string[];
   /** Roommate compatibility filters (each 'Any' when unset). */
   roommateType: string;
@@ -33,6 +39,11 @@ export function defaultStayValues(checkIn = defaultCheckIn()): StayBookingValues
   };
 }
 
+export const PRICE_MIN = 2000;
+export const PRICE_MAX = 25000;
+export const PRICE_STEP = 500;
+export const DISTANCE_MAX = 20; // km
+
 export const DEFAULT_BROWSE_FILTERS: BrowseFilters = {
   bookingType: 'monthly',
   stay: defaultStayValues(),
@@ -41,6 +52,9 @@ export const DEFAULT_BROWSE_FILTERS: BrowseFilters = {
   acType: 'Any',
   amenities: [],
   minRating: null,
+  priceMin: PRICE_MIN,
+  priceMax: PRICE_MAX,
+  distanceMax: DISTANCE_MAX,
   propertyTypes: [],
   roommateType: 'Any',
   smoking: 'Any',
@@ -147,6 +161,36 @@ export function BrowseFiltersSheet({
               />
             ))}
           </ChipRow>
+        </FilterSection>
+
+        <Divider />
+
+        <FilterSection label="Monthly rent">
+          <RangeSlider
+            min={PRICE_MIN}
+            max={PRICE_MAX}
+            step={PRICE_STEP}
+            low={draft.priceMin}
+            high={draft.priceMax}
+            onChange={(priceMin, priceMax) => set({ priceMin, priceMax })}
+            format={(v) => inrCompact(v)}
+          />
+        </FilterSection>
+
+        <Divider />
+
+        <FilterSection label="Distance radius">
+          <RangeSlider
+            single
+            min={1}
+            max={DISTANCE_MAX}
+            step={1}
+            low={1}
+            high={draft.distanceMax}
+            onChange={(_lo, hi) => set({ distanceMax: hi })}
+            format={(v) => `${v} km`}
+            maxLabel="Any distance"
+          />
         </FilterSection>
 
         <Divider />
@@ -262,6 +306,8 @@ export function matchesBrowseFilters(
     amenities: string[];
     foodIncluded: boolean;
     rating: number;
+    priceFrom: number;
+    distanceKm: number;
     roommateSummary?: {
       mostlyProfessionals: boolean;
       smoking: boolean;
@@ -309,6 +355,11 @@ export function matchesBrowseFilters(
 
   if (filters.minRating !== null && listing.rating < filters.minRating) return false;
 
+  if (listing.priceFrom < filters.priceMin) return false;
+  if (filters.priceMax < PRICE_MAX && listing.priceFrom > filters.priceMax) return false;
+
+  if (filters.distanceMax < DISTANCE_MAX && listing.distanceKm > filters.distanceMax) return false;
+
   if (filters.amenities.length > 0 && !filters.amenities.every((a) => listing.amenities.includes(a))) return false;
 
   return true;
@@ -321,6 +372,8 @@ export function browseFiltersActiveCount(filters: BrowseFilters): number {
   if (filters.food.length) n += filters.food.length;
   if (filters.acType !== 'Any') n += 1;
   if (filters.minRating !== null) n += 1;
+  if (filters.priceMin > PRICE_MIN || filters.priceMax < PRICE_MAX) n += 1;
+  if (filters.distanceMax < DISTANCE_MAX) n += 1;
   if (filters.propertyTypes.length) n += filters.propertyTypes.length;
   n += filters.amenities.length;
   if (filters.roommateType !== 'Any') n += 1;
