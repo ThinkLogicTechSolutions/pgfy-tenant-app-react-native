@@ -17,6 +17,7 @@ import {
   bookingCheckInDate,
   type TenantBookingItem,
 } from '@/data';
+import { useBookingCancellations } from '@/store/bookingCancellations';
 import { inr, formatDate } from '@/lib/format';
 import { haptic } from '@/lib/haptics';
 
@@ -63,6 +64,7 @@ function matchesStatusFilter(status: string, filter: StatusFilter): boolean {
 export default function Bookings() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
+  const cancelStore = useBookingCancellations();
   const allBookings = useMemo(() => getAllTenantBookings(), []);
 
   const [filtersOpen, setFiltersOpen] = useState(false);
@@ -73,14 +75,13 @@ export default function Bookings() {
 
   const filtersActive = dateFilter !== 'all' || statusFilter !== 'all';
 
-  const filtered = useMemo(
-    () => allBookings.filter((item) => {
-      const checkIn = bookingCheckInDate(item);
-      const status = bookingListStatus(item);
-      return matchesDateFilter(checkIn, dateFilter) && matchesStatusFilter(status, statusFilter);
-    }),
-    [allBookings, dateFilter, statusFilter],
-  );
+  // A booking cancelled this session reads as "Cancelled" everywhere, overriding its stored status.
+  const effectiveStatus = (item: TenantBookingItem) =>
+    item.kind === 'active' && cancelStore.isCancelled(item.booking.ref) ? 'Cancelled' : bookingListStatus(item);
+
+  const filtered = allBookings.filter((item) => (
+    matchesDateFilter(bookingCheckInDate(item), dateFilter) && matchesStatusFilter(effectiveStatus(item), statusFilter)
+  ));
 
   const openFilters = () => {
     setDraftDate(dateFilter);
@@ -174,7 +175,7 @@ export default function Bookings() {
         renderItem={({ item, index }) => (
           <AnimatedListItem index={index}>
             {item.kind === 'active'
-              ? <ActiveBookingCard item={item} onPress={() => router.push(`/booking/${item.booking.ref}`)} />
+              ? <ActiveBookingCard item={item} status={effectiveStatus(item)} onPress={() => router.push(`/booking/${item.booking.ref}`)} />
               : <PastBookingCard booking={item.booking} onPress={() => router.push(`/booking/${item.booking.ref}`)} />}
           </AnimatedListItem>
         )}
@@ -233,7 +234,7 @@ export default function Bookings() {
   );
 }
 
-function ActiveBookingCard({ item, onPress }: { item: TenantBookingItem & { kind: 'active' }; onPress?: () => void }) {
+function ActiveBookingCard({ item, status, onPress }: { item: TenantBookingItem & { kind: 'active' }; status?: string; onPress?: () => void }) {
   const b = item.booking;
   return (
     <PressableScale onPress={onPress} scaleTo={0.99} style={{ backgroundColor: palette.navy, borderRadius: radius.lg, overflow: 'hidden' }}>
@@ -244,7 +245,7 @@ function ActiveBookingCard({ item, onPress }: { item: TenantBookingItem & { kind
             <Text variant="bodyMd" weight="700" color={palette.white} numberOfLines={1} style={{ flex: 1 }}>
               {b.propertyName}
             </Text>
-            <StatusPill status={b.status} small />
+            <StatusPill status={status ?? b.status} small />
           </View>
           <Text variant="caption" color="rgba(255,255,255,0.8)" style={{ marginTop: 2 }}>
             {b.locality} · {b.roomNumber}/{b.bedLabel}

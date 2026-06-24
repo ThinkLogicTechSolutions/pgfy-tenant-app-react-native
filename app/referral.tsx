@@ -23,7 +23,7 @@ export default function Referral() {
   const steps = [
     { icon: 'share-social', title: 'Share your link', text: 'Send your invite link to a friend looking for a PG — your referral code is built into the link.' },
     { icon: 'cart', title: 'They book & save', text: `Your friend installs PGfy via your link and gets ${referred} off at checkout on their first booking — no code to type.` },
-    { icon: 'checkmark-circle', title: 'Their booking is confirmed', text: 'Once their first booking is paid and confirmed, the referral is complete.' },
+    { icon: 'checkmark-circle', title: 'They check in to the property', text: 'Once your friend checks in to the property they booked, the referral is complete.' },
     { icon: 'pricetag', title: 'You get a discount', text: `Your ${referrer} discount is applied automatically on your next checkout.` },
   ];
 
@@ -106,7 +106,7 @@ export default function Referral() {
           </Card>
 
           <Text variant="caption" color={palette.inkTertiary} align="center" style={{ marginTop: spacing.xs }}>
-            Your discount is applied at your next checkout after your friend completes their first booking. Terms & conditions apply.
+            Your discount is applied at your next checkout after your friend checks in to their first booking. Terms & conditions apply.
           </Text>
         </View>
       </ScrollView>

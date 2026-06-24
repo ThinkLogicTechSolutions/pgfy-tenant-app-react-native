@@ -6,7 +6,7 @@ export * from './discovery';
 export { POPULAR_DESTINATIONS, type PopularDestination } from './popularDestinations';
 export { USER } from './user';
 export {
-  ACTIVE_BOOKING, ACTIVE_BOOKINGS, ACTIVE_HOURLY_BOOKING, ACTIVE_DAILY_BOOKING,
+  ACTIVE_BOOKING, ACTIVE_BOOKINGS, ACTIVE_HOURLY_BOOKING, ACTIVE_DAILY_BOOKING, UPCOMING_BOOKING,
   LEASE, INVOICES, VISITORS, TICKETS,
   ROOM_SWAP_REQUESTS, AVAILABLE_SWAP_ROOMS, MOVE_OUT_REQUESTS, PAST_BOOKINGS,
   getBookingByRef, getAllTenantBookings, bookingListStatus, bookingCheckInDate,
@@ -20,6 +20,11 @@ export {
 export { NOTIFICATIONS, unreadCount } from './notifications';
 export { COUPONS, resolveCoupon, type Coupon } from './coupons';
 export { PLATFORM_FEE, computePlatformFee, type PlatformFeeConfig, type FeeType } from './platform';
+export {
+  CANCELLATION_POLICY, REFUND_ETA, computeCancellationCharge,
+  type CancellationPolicy, type CancellationModePolicy, type CancellationChargeType,
+  type CancellationCharge, type BookingCancellation,
+} from './cancellation';
 export {
   BRAND_VENDORS,
   BRAND_OFFERS,

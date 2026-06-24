@@ -56,7 +56,7 @@ const TONE_MAP: Record<string, Tone> = {
   'Under Review': 'warning', 'Pending Tenant Signature': 'warning', Open: 'warning', Assigned: 'warning',
   'In Progress': 'warning',
   Suspended: 'danger', Unpaid: 'danger', Expired: 'danger', Denied: 'danger', Overdue: 'danger',
-  'Not Submitted': 'danger',
+  'Not Submitted': 'danger', Cancelled: 'danger',
   New: 'info',
 };
 

@@ -82,8 +82,32 @@ export const ACTIVE_DAILY_BOOKING: ActiveBooking = {
   ratePerDay: 560,
 };
 
-/** All checked-in stays (monthly + the extendable hourly/daily demos). */
+const upcomingListing = getListing('l3')!;
+/** Paid & confirmed, but the tenant hasn't checked in yet — eligible for cancellation. */
+export const UPCOMING_BOOKING: ActiveBooking = {
+  ref: 'PGF-9300',
+  listingId: upcomingListing.id,
+  propertyName: upcomingListing.name,
+  propertyImage: upcomingListing.coverImage,
+  locality: upcomingListing.locality,
+  roomNumber: '305',
+  bedLabel: 'A',
+  sharingType: 'Double',
+  checkInDate: '2026-07-05',
+  status: 'Confirmed',
+  stayStatus: 'Active',
+  monthlyRent: 14000,
+  deposit: 28000,
+  nextRentDue: '2026-08-05',
+  nextRentAmount: 14000,
+  rentOverdue: false,
+  qrToken: 'PGFY-CHKN-9300-U1P0',
+  bookingMode: 'monthly',
+};
+
+/** All current bookings — checked-in stays plus the upcoming (pre-check-in) one. */
 export const ACTIVE_BOOKINGS: ActiveBooking[] = [
+  UPCOMING_BOOKING,
   ACTIVE_BOOKING,
   ACTIVE_HOURLY_BOOKING,
   ACTIVE_DAILY_BOOKING,
