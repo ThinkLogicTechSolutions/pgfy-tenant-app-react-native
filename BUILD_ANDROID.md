@@ -7,66 +7,72 @@
 ## Prerequisites
 
 - Node.js 18+
-- [EAS CLI](https://docs.expo.dev/build/setup/): `npm install -g eas-cli`
-- Expo account: `eas login`
-- For local builds: Android Studio + JDK 17
+- [Android Studio](https://developer.android.com/studio) with **Android SDK** and **JDK 17**
+- `ANDROID_HOME` set (Android Studio → Settings → Android SDK shows the path)
 
-## Option A — EAS Build (recommended)
+```bash
+export ANDROID_HOME="$HOME/Library/Android/sdk"
+export PATH="$ANDROID_HOME/platform-tools:$PATH"
+```
 
-1. From `tenant-app-1/`:
+> **Disk space:** Gradle downloads several GB on the first build. If your system disk is low, the local build script stores caches on `/Volumes/Sunil_WD1/.gradle` automatically. Override with `GRADLE_USER_HOME` if needed.
+
+## Option A — Local build (no EAS quota)
+
+Use this when the Expo free-plan Android build quota is exhausted.
+
+1. From `tenant-app/`:
 
    ```bash
    npm install
-   eas login
+   npm run build:apk:local
    ```
 
-   First-time only (already done for this repo):
+2. APK output (dated filename in `dist/`):
+
+   ```
+   dist/PGfy_tenant_DD_MM_YY.apk
+   ```
+
+   Example: `dist/PGfy_tenant_12_06_26.apk`
+
+3. Install on a connected phone (USB debugging on):
 
    ```bash
-   eas init --force --non-interactive
+   adb install -r dist/PGfy_tenant_12_06_26.apk
    ```
 
-   EAS requires a git repo in `tenant-app-1/` (`git init` + at least one commit).
+### Other local commands
 
-2. Build an installable APK:
+| Command | What it does |
+|---------|----------------|
+| `npm run prebuild:android` | Regenerate `android/` from `app.json` |
+| `npm run build:apk:gradle:debug` | Gradle debug APK (requires existing `android/`) |
+| `npm run build:apk:local:release` | Release APK (needs a signing keystore) |
+| `npm run android` | Build + run on emulator/device via Expo |
 
-   ```bash
-   npm run build:apk
-   ```
+### Release APK (optional)
 
-   Or production profile:
+Release builds need a keystore configured in `android/app/build.gradle`. Then:
 
-   ```bash
-   npm run build:apk:prod
-   ```
+```bash
+npm run build:apk:local:release
+```
 
-3. Download the `.apk` from the [Expo dashboard](https://expo.dev) when the build finishes.
+Output: `android/app/build/outputs/apk/release/app-release.apk`
 
-Profiles are defined in `eas.json` (`preview` / `production` use `buildType: "apk"`).
+## Option B — EAS Build (cloud)
 
-## Option B — Local Gradle build
+Requires EAS CLI and available build quota:
 
-1. Generate the native Android project (if `android/` is missing):
+```bash
+npm install -g eas-cli
+eas login
+npm run build:apk        # preview APK
+npm run build:apk:prod   # production APK
+```
 
-   ```bash
-   npm run prebuild:android
-   ```
-
-2. Debug APK (no release keystore required):
-
-   ```bash
-   cd android && ./gradlew assembleDebug
-   ```
-
-   Output: `android/app/build/outputs/apk/debug/app-debug.apk`
-
-3. Release APK requires a signing keystore. Configure `android/app/build.gradle` signing configs, then:
-
-   ```bash
-   cd android && ./gradlew assembleRelease
-   ```
-
-   Output: `android/app/build/outputs/apk/release/app-release.apk`
+Download the `.apk` from the [Expo dashboard](https://expo.dev) when the build finishes.
 
 ## Verify package name
 

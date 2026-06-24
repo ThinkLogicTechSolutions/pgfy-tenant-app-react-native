@@ -5,16 +5,24 @@
   "private": true,
   "scripts": {
     "postinstall": "patch-package",
-    "start": "expo start",
-    "android": "expo run:android",
-    "ios": "expo run:ios",
-    "web": "expo start --web",
+    "start": "NODE_ENV=development APP_ENV=development expo start",
+    "start:staging": "NODE_ENV=development APP_ENV=staging expo start --clear",
+    "start:prod": "NODE_ENV=production APP_ENV=production expo start --clear --no-dev",
+    "android": "NODE_ENV=development APP_ENV=development expo run:android",
+    "ios": "NODE_ENV=development APP_ENV=development expo run:ios",
+    "web": "NODE_ENV=development APP_ENV=development expo start --web",
     "typecheck": "tsc --noEmit",
     "prebuild": "expo prebuild",
     "prebuild:android": "expo prebuild --platform android --clean",
-    "build:apk": "eas build --platform android --profile preview --non-interactive",
+    "build:apk:local": "bash scripts/build-android-local.sh release",
+    "build:apk:local:release": "bash scripts/build-android-local.sh release",
+    "build:apk:gradle:debug": "cd android && ./gradlew assembleDebug",
+    "build:apk:gradle:release": "cd android && ./gradlew assembleRelease",
+    "build:apk": "eas build --platform android --profile staging --non-interactive",
+    "build:apk:staging": "eas build --platform android --profile staging --non-interactive",
     "build:apk:prod": "eas build --platform android --profile production --non-interactive",
-    "build:apk:local": "expo prebuild --platform android && cd android && ./gradlew assembleRelease"
+    "update:staging": "APP_ENV=staging eas update --branch staging",
+    "update:prod": "APP_ENV=production eas update --branch production"
   },
   "dependencies": {
     "@expo-google-fonts/inter": "^0.4.2",
@@ -35,6 +43,7 @@
     "expo-splash-screen": "~31.0.13",
     "expo-status-bar": "~3.0.9",
     "expo-system-ui": "~6.0.9",
+    "expo-updates": "~29.0.18",
     "react": "19.1.0",
     "react-dom": "19.1.0",
     "react-native": "0.81.5",
@@ -49,6 +58,7 @@
   "devDependencies": {
     "@types/react": "~19.1.0",
     "babel-preset-expo": "~54.0.11",
+    "dotenv": "^17.4.2",
     "patch-package": "^8.0.1",
     "typescript": "~5.9.2"
   }
