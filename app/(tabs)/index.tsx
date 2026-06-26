@@ -76,6 +76,7 @@ type QuickService = {
 
 const QUICK_SERVICES: QuickService[] = [
   { key: 'group', label: 'Group booking', subtitle: 'Book in bulk', icon: 'people', gradient: [palette.navy, palette.navyDark], wash: palette.navyTint },
+  { key: 'invite', label: 'Invite a PG', subtitle: 'Refer a PG', icon: 'business', gradient: [palette.success, '#178A57'], wash: palette.successTint },
   { key: 'metro', label: 'Metro Ticket', subtitle: 'Coming soon', icon: 'train', gradient: ['#3B82F6', '#1D5FD8'], wash: palette.infoTint },
   { key: 'refer', label: 'Refer App', subtitle: 'Invite & save', icon: 'gift', gradient: [palette.coral, palette.coralDark], wash: palette.coralTint },
 ];
@@ -356,6 +357,7 @@ export default function Home() {
   const onQuickService = (key: string) => {
     haptic.select();
     if (key === 'group') return router.push('/group-booking');
+    if (key === 'invite') return router.push('/invite-pg');
     if (key === 'refer') return router.push('/referral');
     if (key === 'metro') {
       return router.push({
@@ -608,9 +610,11 @@ export default function Home() {
         <Text variant="h3" style={{ marginTop: spacing.xl, marginBottom: spacing.md, paddingHorizontal: spacing.base }}>
           Quick actions
         </Text>
-        <View style={{ paddingHorizontal: spacing.base, flexDirection: 'row', gap: spacing.md }}>
+        <View style={{ paddingHorizontal: spacing.base, flexDirection: 'row', flexWrap: 'wrap', gap: spacing.md }}>
           {QUICK_SERVICES.map((service) => (
-            <QuickActionTile key={service.key} service={service} onPress={() => onQuickService(service.key)} />
+            <View key={service.key} style={{ flexBasis: '47%', flexGrow: 1 }}>
+              <QuickActionTile service={service} onPress={() => onQuickService(service.key)} />
+            </View>
           ))}
         </View>
 
