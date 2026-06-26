@@ -48,18 +48,42 @@ Use this when the Expo free-plan Android build quota is exhausted.
 |---------|----------------|
 | `npm run prebuild:android` | Regenerate `android/` from `app.json` |
 | `npm run build:apk:gradle:debug` | Gradle debug APK (requires existing `android/`) |
-| `npm run build:apk:local:release` | Release APK (needs a signing keystore) |
+| `npm run build:apk:local:release` | **Signed** release APK (uses the production keystore) |
 | `npm run android` | Build + run on emulator/device via Expo |
 
-### Release APK (optional)
+### Release signing
 
-Release builds need a keystore configured in `android/app/build.gradle`. Then:
+Release builds are signed with the production upload key. The signing setup is
+durable across `expo prebuild` (which regenerates / wipes `android/`):
+
+- **Keystore + passwords:** `credentials/release.keystore` and
+  `credentials/keystore.properties`. This folder is **gitignored** — never commit it.
+  Keep a secure backup; losing it means you can no longer update the app on Play.
+- **Config plugin:** `plugins/withAndroidSigning.js` (registered in `app.json` →
+  `expo.plugins`). On every prebuild it copies the keystore into `android/` and points
+  the `release` build type at it. If the keystore is missing it falls back to the debug
+  key, so dev builds still work.
+
+Key fingerprint (verify with `keytool -list -v -keystore credentials/release.keystore`):
+
+```
+Alias: key0
+SHA1:  EE:96:46:D3:8F:3C:82:34:65:C9:2B:17:57:6E:3E:F0:B2:28:7B:33
+```
+
+Build a signed release APK:
 
 ```bash
 npm run build:apk:local:release
 ```
 
 Output: `android/app/build/outputs/apk/release/app-release.apk`
+
+Confirm a build is signed with the production key:
+
+```bash
+cd android && ./gradlew :app:signingReport   # release variant → Alias: key0
+```
 
 ## Option B — EAS Build (cloud)
 

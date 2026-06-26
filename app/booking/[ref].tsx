@@ -57,6 +57,7 @@ export default function BookingDetails() {
     haptic.success();
     setSheetOpen(false);
     setReason('');
+    router.replace({ pathname: '/booking/cancelled', params: { ref: b.ref } });
   };
 
   return (

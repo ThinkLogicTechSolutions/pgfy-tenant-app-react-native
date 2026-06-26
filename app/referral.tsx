@@ -6,7 +6,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { palette, spacing, radius } from '@/theme';
 import { Text, Card, Button, PressableScale } from '@/components/ui';
-import { REFERRAL, REFERRAL_PROGRAM, formatBenefit } from '@/data';
+import { REFERRAL, REFERRAL_PROGRAM, formatBenefit, ACTIVE_BOOKINGS } from '@/data';
 import { inr } from '@/lib/format';
 import { haptic } from '@/lib/haptics';
 
@@ -17,21 +17,27 @@ export default function Referral() {
   const referrer = formatBenefit(REFERRAL_PROGRAM.referrerReward);
   const referred = formatBenefit(REFERRAL_PROGRAM.referredReward);
 
-  // Claim flow, mirroring the admin-configured rewards: the friend who joins via the
-  // link saves at checkout (referred reward), and once their first booking succeeds the
-  // referrer's discount is applied automatically on their next checkout — no account credit.
+  // Referrals are monthly-only, and you can only refer once you yourself have booked a
+  // monthly stay and checked in — only then does a referred friend's discount activate.
+  const eligible = ACTIVE_BOOKINGS.some(
+    (b) => b.bookingMode === 'monthly' && (b.status === 'Active' || b.status === 'Notice Period'),
+  );
+
+  // Claim flow, mirroring the admin-configured rewards: the referrer must be a checked-in
+  // monthly tenant; their friend then saves on their first monthly booking, and once that
+  // friend checks in the referrer's discount applies on their next checkout — no account credit.
   const steps = [
+    { icon: 'home', title: 'Book a monthly stay & check in', text: 'Referrals unlock once you’ve booked a monthly stay and checked in — that’s what makes you eligible to refer.' },
     { icon: 'share-social', title: 'Share your link', text: 'Send your invite link to a friend looking for a PG — your referral code is built into the link.' },
-    { icon: 'cart', title: 'They book & save', text: `Your friend installs PGfy via your link and gets ${referred} off at checkout on their first booking — no code to type.` },
-    { icon: 'checkmark-circle', title: 'They check in to the property', text: 'Once your friend checks in to the property they booked, the referral is complete.' },
-    { icon: 'pricetag', title: 'You get a discount', text: `Your ${referrer} discount is applied automatically on your next checkout.` },
+    { icon: 'cart', title: 'They book a monthly stay & save', text: `Your friend installs PGfy via your link and gets ${referred} off at checkout on their first monthly booking — no code to type.` },
+    { icon: 'checkmark-circle', title: 'They check in, you both win', text: `Once your friend checks in to their monthly stay, their discount is confirmed and your ${referrer} applies automatically on your next checkout.` },
   ];
 
   const shareReferral = async () => {
     haptic.light();
     try {
       await Share.share({
-        message: `Join me on PGfy and find your next stay! Tap my invite link to get ${referred} off your first booking. ${REFERRAL.link}`,
+        message: `Join me on PGfy and find your next stay! Tap my invite link to get ${referred} off your first monthly booking. ${REFERRAL.link}`,
       });
     } catch {
       // user dismissed the share sheet
@@ -52,28 +58,41 @@ export default function Referral() {
             </View>
             <Text variant="h1" color={palette.white} align="center" style={{ marginTop: spacing.md }}>Refer & earn</Text>
             <Text variant="bodyMd" color="rgba(255,255,255,0.92)" align="center" style={{ marginTop: spacing.xs, maxWidth: 300 }}>
-              Invite friends to PGfy. You get {referrer} and they get {referred} on their first booking.
+              Invite friends to PGfy. When they book a monthly stay, you get {referrer} and they get {referred} off.
             </Text>
           </View>
         </LinearGradient>
 
         <View style={{ paddingHorizontal: spacing.base, marginTop: -spacing.xl, gap: spacing.base }}>
-          {/* Share invite link */}
-          <Card style={{ gap: spacing.md }}>
-            <Text variant="overline" color={palette.inkTertiary} align="center">YOUR INVITE LINK</Text>
-            <View style={{ flexDirection: 'row', alignItems: 'center', gap: spacing.sm, backgroundColor: palette.surfaceRaised, borderRadius: radius.md, borderWidth: 1.5, borderColor: palette.border, borderStyle: 'dashed', paddingHorizontal: spacing.base, paddingVertical: spacing.md }}>
-              <Ionicons name="link-outline" size={18} color={palette.coralDark} />
-              <Text variant="bodyMd" weight="600" color={palette.navy} numberOfLines={1} style={{ flex: 1 }}>{REFERRAL.link}</Text>
-            </View>
-            <Button label="Share invite link" icon="share-social-outline" full size="lg" onPress={shareReferral} />
-          </Card>
+          {/* Share invite link — unlocked only once the tenant has checked in to a monthly stay */}
+          {eligible ? (
+            <Card style={{ gap: spacing.md }}>
+              <Text variant="overline" color={palette.inkTertiary} align="center">YOUR INVITE LINK</Text>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: spacing.sm, backgroundColor: palette.surfaceRaised, borderRadius: radius.md, borderWidth: 1.5, borderColor: palette.border, borderStyle: 'dashed', paddingHorizontal: spacing.base, paddingVertical: spacing.md }}>
+                <Ionicons name="link-outline" size={18} color={palette.coralDark} />
+                <Text variant="bodyMd" weight="600" color={palette.navy} numberOfLines={1} style={{ flex: 1 }}>{REFERRAL.link}</Text>
+              </View>
+              <Button label="Share invite link" icon="share-social-outline" full size="lg" onPress={shareReferral} />
+            </Card>
+          ) : (
+            <Card style={{ gap: spacing.md, alignItems: 'center' }}>
+              <View style={{ width: 56, height: 56, borderRadius: 28, backgroundColor: palette.surfaceRaised, alignItems: 'center', justifyContent: 'center' }}>
+                <Ionicons name="lock-closed" size={26} color={palette.inkTertiary} />
+              </View>
+              <Text variant="h3" align="center">Referrals locked</Text>
+              <Text variant="bodySm" color={palette.inkSecondary} align="center">
+                Book a monthly stay and check in to unlock your invite link. Your friends’ discounts only apply once you’re a checked-in monthly tenant.
+              </Text>
+              <Button label="Referrals locked" icon="lock-closed-outline" full size="lg" disabled onPress={() => {}} />
+            </Card>
+          )}
 
           {/* Benefits */}
           <Card style={{ gap: spacing.md }}>
             <Text variant="h3">Referral benefits</Text>
             <View style={{ flexDirection: 'row', gap: spacing.md }}>
               <Benefit icon="person" tint={palette.navy} label="You get" value={referrer} sub="off your next checkout" />
-              <Benefit icon="people" tint={palette.coral} label="Friend gets" value={referred} sub="on their first booking" />
+              <Benefit icon="people" tint={palette.coral} label="Friend gets" value={referred} sub="on their first monthly booking" />
             </View>
           </Card>
 
@@ -106,7 +125,7 @@ export default function Referral() {
           </Card>
 
           <Text variant="caption" color={palette.inkTertiary} align="center" style={{ marginTop: spacing.xs }}>
-            Your discount is applied at your next checkout after your friend checks in to their first booking. Terms & conditions apply.
+            Referral discounts apply to monthly bookings only. You can refer once you’ve booked a monthly stay and checked in; your friend’s discount applies to their first monthly booking, and your discount is applied at your next checkout after they check in. Terms & conditions apply.
           </Text>
         </View>
       </ScrollView>

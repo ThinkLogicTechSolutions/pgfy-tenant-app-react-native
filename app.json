@@ -48,7 +48,8 @@
           "locationWhenInUsePermission": "Allow PGfy to find PGs near your current location."
         }
       ],
-      "@react-native-community/datetimepicker"
+      "@react-native-community/datetimepicker",
+      "./plugins/withAndroidSigning"
     ],
     "extra": {
       "router": {},

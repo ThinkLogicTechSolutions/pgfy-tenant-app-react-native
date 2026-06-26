@@ -2,6 +2,7 @@ import { useEffect, useRef } from 'react';
 import { View, StyleSheet } from 'react-native';
 import { Audio } from 'expo-av';
 import { Ionicons } from '@expo/vector-icons';
+import type { ComponentProps } from 'react';
 import Animated, {
   Easing,
   useAnimatedStyle,
@@ -46,10 +47,15 @@ export function useBookingSuccessSound() {
 
 type TickProps = {
   size?: number;
+  /** Accent colour for the circle + ring. Defaults to the success green. */
+  color?: string;
+  /** Glyph rendered inside the circle. Defaults to a checkmark. */
+  icon?: ComponentProps<typeof Ionicons>['name'];
 };
 
-/** Animated checkmark burst — entrance runs once on mount. */
-export function AnimatedSuccessTick({ size = 112 }: TickProps) {
+/** Animated icon burst — entrance runs once on mount. Green tick by default;
+ *  pass `color`/`icon` for other outcomes (e.g. a red cross for cancellations). */
+export function AnimatedSuccessTick({ size = 112, color = palette.success, icon = 'checkmark' }: TickProps) {
   const circleScale = useSharedValue(0);
   const checkScale = useSharedValue(0);
   const checkOpacity = useSharedValue(0);
@@ -86,10 +92,10 @@ export function AnimatedSuccessTick({ size = 112 }: TickProps) {
 
   return (
     <View style={[styles.hero, { width: size, height: size }]}>
-      <Animated.View style={[styles.ring, { width: ringSize, height: ringSize, borderRadius: ringSize / 2 }, ringStyle]} />
-      <Animated.View style={[styles.circle, { width: size, height: size, borderRadius: size / 2 }, circleStyle]}>
+      <Animated.View style={[styles.ring, { width: ringSize, height: ringSize, borderRadius: ringSize / 2, borderColor: color }, ringStyle]} />
+      <Animated.View style={[styles.circle, { width: size, height: size, borderRadius: size / 2, backgroundColor: color, shadowColor: color }, circleStyle]}>
         <Animated.View style={checkStyle}>
-          <Ionicons name="checkmark" size={iconSize} color={palette.white} />
+          <Ionicons name={icon} size={iconSize} color={palette.white} />
         </Animated.View>
       </Animated.View>
     </View>

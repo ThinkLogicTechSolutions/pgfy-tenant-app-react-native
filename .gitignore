@@ -19,6 +19,10 @@ ios/
 *.key
 *.mobileprovision
 
+# Android release signing (keystore + passwords — never commit)
+credentials/
+keystore.properties
+
 # Metro
 .metro-health-check*
 
