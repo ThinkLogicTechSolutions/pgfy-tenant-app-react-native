@@ -2,14 +2,15 @@
  *  Submits to the (mock) property-invite store; in production this POSTs to the API
  *  and surfaces in the admin panel under Properties → Property Leads. */
 import { useMemo, useState } from 'react';
-import { View, ScrollView, Alert } from 'react-native';
+import { View, ScrollView, Alert, useWindowDimensions } from 'react-native';
 import { Image } from 'expo-image';
 import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
+import Animated, { FadeInDown } from 'react-native-reanimated';
 import { palette, spacing, radius } from '@/theme';
-import { Text, ScreenHeader, Card, Button, Input, Dropdown, PressableScale } from '@/components/ui';
-import { SuccessBurst } from '@/components/illustrations';
+import { Text, ScreenHeader, Card, Button, Input, Dropdown, PressableScale, Confetti } from '@/components/ui';
+import { AnimatedSuccessTick, useBookingSuccessSound } from '@/components/booking';
 import { interiorImages } from '@/data';
 import { haptic } from '@/lib/haptics';
 import {
@@ -82,6 +83,33 @@ function PgImagePicker({ images, onChange }: { images: string[]; onChange: (next
   );
 }
 
+/** Animated confirmation — mirrors the booking-success screen: a spring tick burst,
+ *  a confetti shower and the success chime, with staggered text/button entrances. */
+function InviteSuccess({ pgName, onDone }: { pgName: string; onDone: () => void }) {
+  const { height: screenHeight } = useWindowDimensions();
+  useBookingSuccessSound();
+
+  return (
+    <View style={{ flex: 1, backgroundColor: palette.bg }}>
+      <Confetti originTop={screenHeight * 0.32} count={32} />
+      <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', padding: spacing.xl }}>
+        <AnimatedSuccessTick size={132} />
+        <Animated.View entering={FadeInDown.delay(260).duration(500)}>
+          <Text variant="h1" align="center" style={{ marginTop: spacing.xl }}>PG invited 🎉</Text>
+        </Animated.View>
+        <Animated.View entering={FadeInDown.delay(380).duration(500)}>
+          <Text variant="bodyLg" color={palette.inkSecondary} align="center" style={{ marginTop: spacing.sm, maxWidth: 320 }}>
+            Thanks for inviting {pgName}! Our team will review the details and reach out to onboard it onto PGfy.
+          </Text>
+        </Animated.View>
+        <Animated.View entering={FadeInDown.delay(500).duration(500)} style={{ marginTop: spacing.xl }}>
+          <Button label="Done" onPress={onDone} style={{ alignSelf: 'center' }} />
+        </Animated.View>
+      </View>
+    </View>
+  );
+}
+
 export default function InvitePg() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
@@ -135,16 +163,7 @@ export default function InvitePg() {
   };
 
   if (done) {
-    return (
-      <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', padding: spacing.xl }}>
-        <SuccessBurst size={170} />
-        <Text variant="h1" align="center" style={{ marginTop: spacing.lg }}>PG invited 🎉</Text>
-        <Text variant="bodyLg" color={palette.inkSecondary} align="center" style={{ marginTop: spacing.sm, maxWidth: 320 }}>
-          Thanks for inviting {pgName.trim()}! Our team will review the details and reach out to onboard it onto PGfy.
-        </Text>
-        <Button label="Done" onPress={() => router.back()} style={{ marginTop: spacing.xl, alignSelf: 'center' }} />
-      </View>
-    );
+    return <InviteSuccess pgName={pgName.trim()} onDone={() => router.back()} />;
   }
 
   return (
