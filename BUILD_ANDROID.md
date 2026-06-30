@@ -1,6 +1,6 @@
 # Android APK build — PGfy Tenant
 
-**Package name:** `com.kumarsunil17.tenant`  
+**Package name:** `in.pgfy.tenant`  
 **EAS project:** [@kumarsunil17/pgfy-tenant](https://expo.dev/accounts/kumarsunil17/projects/pgfy-tenant)  
 **Project ID:** `5e813d62-a636-48e3-a39d-8442867202c0`
 
@@ -103,7 +103,7 @@ Download the `.apk` from the [Expo dashboard](https://expo.dev) when the build f
 After prebuild, confirm:
 
 - `app.json` → `expo.android.package`
-- `android/app/build.gradle` → `applicationId 'com.kumarsunil17.tenant'`
+- `android/app/build.gradle` → `applicationId 'in.pgfy.tenant'`
 
 ## Version bumps
 

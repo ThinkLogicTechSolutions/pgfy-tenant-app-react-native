@@ -1,6 +1,6 @@
 /** Shared UI for platform and property support screens. */
 import { useState } from 'react';
-import { View } from 'react-native';
+import { View, Linking, Alert } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { palette, spacing, radius } from '@/theme';
 import { Text, Sheet, PressableScale } from '@/components/ui';
@@ -76,6 +76,24 @@ export function TicketDetailSheet({
             <View style={{ backgroundColor: palette.infoTint, borderRadius: radius.md, padding: spacing.base, flexDirection: 'row', gap: spacing.sm }}>
               <Ionicons name="chatbubble-ellipses-outline" size={18} color={palette.info} />
               <Text variant="bodySm" color={palette.info} style={{ flex: 1 }}>{ticket.response}</Text>
+            </View>
+          ) : null}
+          {ticket.housewise ? (
+            <View style={{ borderWidth: 1, borderColor: palette.border, borderRadius: radius.md, padding: spacing.base, gap: spacing.sm }}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: spacing.sm }}>
+                <Ionicons name="construct-outline" size={16} color={palette.coralDark} />
+                <Text variant="bodyMd" weight="700" style={{ flex: 1 }}>HouseWise</Text>
+              </View>
+              <Text variant="bodySm" color={palette.inkSecondary}>
+                Sent to HouseWise for servicing · {ticket.housewise.complaintId}
+              </Text>
+              <PressableScale
+                onPress={() => Linking.openURL(ticket.housewise!.url).catch(() => Alert.alert('Cannot open', 'Unable to open HouseWise.'))}
+                style={{ flexDirection: 'row', alignItems: 'center', gap: spacing.xs }}
+              >
+                <Ionicons name="open-outline" size={16} color={palette.info} />
+                <Text variant="bodySm" weight="600" color={palette.info}>View in HouseWise</Text>
+              </PressableScale>
             </View>
           ) : null}
           <View>

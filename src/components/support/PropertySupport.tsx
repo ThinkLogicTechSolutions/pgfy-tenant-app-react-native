@@ -1,14 +1,15 @@
 /** Property support — maintenance and stay-related issues for the current property. */
 import { useState } from 'react';
-import { View, ScrollView } from 'react-native';
+import { View, ScrollView, Alert } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { palette, spacing, radius } from '@/theme';
 import { Text, ScreenHeader, Button, Sheet, Input, EmptyState, Dropdown } from '@/components/ui';
 import { TicketRow } from '@/components/domain';
 import { EmptyTickets } from '@/components/illustrations';
-import { ACTIVE_BOOKING, TICKETS, getListing, type Ticket } from '@/data';
+import { ACTIVE_BOOKING, TICKETS, getListing, type Ticket, type TicketCategory } from '@/data';
 import { haptic } from '@/lib/haptics';
+import { isHouseWiseEnabled, createHouseWiseComplaint } from '@/lib/housewise';
 import { TicketDetailSheet, OptionalImagePicker } from './shared';
 
 const PROPERTY_CATEGORIES = [
@@ -32,11 +33,46 @@ const PROPERTY_CATEGORY_OPTIONS = PROPERTY_CATEGORIES.map((t) => ({ label: t, va
 export function PropertySupport() {
   const insets = useSafeAreaInsets();
   const listing = getListing(ACTIVE_BOOKING.listingId);
+  const houseWiseEnabled = isHouseWiseEnabled(ACTIVE_BOOKING.listingId);
   const [create, setCreate] = useState(false);
   const [cat, setCat] = useState<PropertyCategory | null>(null);
+  const [desc, setDesc] = useState('');
+  const [created, setCreated] = useState<Ticket[]>([]);
   const [selected, setSelected] = useState<Ticket | null>(null);
-  const openTickets = TICKETS.filter((t) => t.supportKind === 'property' && t.status !== 'Resolved');
+  const openTickets = [
+    ...created,
+    ...TICKETS.filter((t) => t.supportKind === 'property' && t.status !== 'Resolved'),
+  ];
   const resolvedTickets = TICKETS.filter((t) => t.supportKind === 'property' && t.status === 'Resolved');
+
+  const submitComplaint = () => {
+    const id = `TKT-${Math.floor(4100 + Math.random() * 899)}`;
+    const now = new Date().toISOString();
+    // Auto-create the complaint in HouseWise when this PG is enrolled.
+    const housewise = houseWiseEnabled ? createHouseWiseComplaint(id) : undefined;
+    const ticket: Ticket = {
+      id,
+      supportKind: 'property',
+      category: (cat ?? 'Other') as TicketCategory,
+      description: desc.trim() || 'Issue reported for the property.',
+      status: 'Open',
+      createdAt: now,
+      images: [],
+      timeline: [{ status: 'Open', at: now, ...(housewise ? { note: `Sent to HouseWise · ${housewise.complaintId}` } : {}) }],
+      housewise,
+    };
+    setCreated((prev) => [ticket, ...prev]);
+    haptic.success();
+    setCreate(false);
+    setCat(null);
+    setDesc('');
+    Alert.alert(
+      'Complaint raised',
+      housewise
+        ? `Your issue has been sent to HouseWise for servicing (ref ${housewise.complaintId}). The property team will close it once resolved.`
+        : 'Your issue has been logged. The property team will pick it up.',
+    );
+  };
 
   return (
     <View style={{ flex: 1, paddingTop: insets.top + spacing.xs }}>
@@ -113,9 +149,17 @@ export function PropertySupport() {
               {listing?.locality ?? ACTIVE_BOOKING.locality} · Room {ACTIVE_BOOKING.roomNumber} · Bed {ACTIVE_BOOKING.bedLabel}
             </Text>
           </View>
-          <Input label="Description" placeholder="Describe the issue in your property (max 500 chars)" multiline maxLength={500} style={{ height: 100, textAlignVertical: 'top' }} />
+          <Input label="Description" placeholder="Describe the issue in your property (max 500 chars)" value={desc} onChangeText={setDesc} multiline maxLength={500} style={{ height: 100, textAlignVertical: 'top' }} />
           <OptionalImagePicker />
-          <Button label="Submit" icon="paper-plane-outline" onPress={() => { haptic.success(); setCreate(false); }} full size="lg" />
+          {houseWiseEnabled ? (
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: spacing.sm, backgroundColor: palette.coralTint, borderRadius: radius.md, padding: spacing.base }}>
+              <Ionicons name="construct" size={18} color={palette.coralDark} />
+              <Text variant="caption" color={palette.inkSecondary} style={{ flex: 1, lineHeight: 18 }}>
+                This property uses HouseWise. Your complaint will be sent to their team for servicing.
+              </Text>
+            </View>
+          ) : null}
+          <Button label="Submit" icon="paper-plane-outline" onPress={submitComplaint} full size="lg" />
         </View>
       </Sheet>
 

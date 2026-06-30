@@ -14,6 +14,7 @@ import {
   Inter_800ExtraBold,
 } from '@expo-google-fonts/inter';
 import { palette } from '@/theme';
+import { useMessaging } from '@/lib/messaging';
 
 SplashScreen.preventAutoHideAsync();
 SystemUI.setBackgroundColorAsync(palette.bg).catch(() => {});
@@ -26,6 +27,8 @@ export default function RootLayout() {
     Inter_700Bold,
     Inter_800ExtraBold,
   });
+
+  useMessaging();
 
   useEffect(() => {
     if (loaded) SplashScreen.hideAsync().catch(() => {});

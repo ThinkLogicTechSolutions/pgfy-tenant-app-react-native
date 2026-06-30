@@ -314,6 +314,14 @@ export interface TicketEvent {
   note?: string;
 }
 
+/** Link to a complaint auto-created in the HouseWise maintenance partner (M-INT1). */
+export interface HouseWiseTicketLink {
+  complaintId: string;
+  url: string;
+  syncedAt: string;
+  status: 'synced' | 'failed';
+}
+
 export interface Ticket {
   id: string;
   supportKind: SupportKind;
@@ -324,6 +332,7 @@ export interface Ticket {
   images: string[];
   timeline: TicketEvent[];
   response?: string;
+  housewise?: HouseWiseTicketLink;
 }
 
 export type RequestStatus = 'Pending' | 'Under Review' | 'Approved' | 'Denied' | 'Refund Initiated';
