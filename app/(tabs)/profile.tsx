@@ -226,7 +226,7 @@ export default function Profile() {
       </Section>
 
       <Text variant="caption" color={palette.inkTertiary} align="center" style={{ marginTop: spacing.lg }}>
-        PGfy · v1.0.0 (mockup)
+        PGfy · v1.0.0
       </Text>
 
       <PressableScale onPress={deleteAccount} haptics={false} scaleTo={0.98} style={{ alignItems: 'center', paddingTop: spacing.xl, paddingBottom: spacing.sm }}>
