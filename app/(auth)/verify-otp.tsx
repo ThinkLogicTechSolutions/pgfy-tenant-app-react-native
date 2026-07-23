@@ -1,6 +1,6 @@
-/** T-S5 — OTP verification (demo accepts any 6 digits). */
+/** T-S5 — OTP verification. */
 import { useState, useRef, useEffect } from 'react';
-import { View, TextInput, Pressable } from 'react-native';
+import { View, TextInput, Pressable, Alert } from 'react-native';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Animated, {
@@ -13,15 +13,19 @@ import Animated, {
 import { palette, spacing, radius, fontFamily } from '@/theme';
 import { Text, Button, ScreenHeader } from '@/components/ui';
 import { haptic } from '@/lib/haptics';
+import { useAuth } from '@/context/AuthContext';
+import { errorMessage } from '@/lib/api';
 
 export default function VerifyOtp() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const { phone } = useLocalSearchParams<{ phone: string }>();
+  const { verifyOtp, sendOtp } = useAuth();
   const [code, setCode] = useState('');
   const [seconds, setSeconds] = useState(60);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(false);
+  const [errorMsg, setErrorMsg] = useState('');
   const inputRef = useRef<TextInput>(null);
   const shakeX = useSharedValue(0);
 
@@ -35,20 +39,37 @@ export default function VerifyOtp() {
     if (error) setError(false);
   };
 
-  const verify = () => {
-    // Demo: any 6 digits pass; "000000" simulates a declined OTP so the error state is reachable.
-    if (code === '000000') {
+  const shake = () => {
+    shakeX.value = withSequence(
+      withTiming(-10, { duration: 45 }),
+      withRepeat(withTiming(10, { duration: 80 }), 4, true),
+      withTiming(0, { duration: 45 }),
+    );
+  };
+
+  const verify = async () => {
+    setLoading(true);
+    try {
+      const { newLogin } = await verifyOtp(String(phone), code);
+      haptic.success();
+      router.replace(newLogin ? '/(auth)/register' : '/(tabs)');
+    } catch (e) {
       setError(true);
+      setErrorMsg(errorMessage(e, "That OTP didn't match. Please check and try again."));
       haptic.error();
-      shakeX.value = withSequence(
-        withTiming(-10, { duration: 45 }),
-        withRepeat(withTiming(10, { duration: 80 }), 4, true),
-        withTiming(0, { duration: 45 }),
-      );
-      return;
+      shake();
+    } finally {
+      setLoading(false);
     }
-    setLoading(true); haptic.success();
-    setTimeout(() => { setLoading(false); router.replace('/(auth)/register'); }, 600);
+  };
+
+  const resend = async () => {
+    setSeconds(60);
+    try {
+      await sendOtp(String(phone));
+    } catch (e) {
+      Alert.alert('Could not resend OTP', errorMessage(e));
+    }
   };
 
   const masked = phone ? `+91 ${String(phone).slice(0, 2)}••• ${String(phone).slice(7)}` : '+91 •••••';
@@ -78,7 +99,7 @@ export default function VerifyOtp() {
 
         {error ? (
           <Text variant="bodySm" color={palette.danger} style={{ marginTop: spacing.md }}>
-            That OTP didn't match. Please check and try again.
+            {errorMsg}
           </Text>
         ) : null}
 
@@ -86,7 +107,7 @@ export default function VerifyOtp() {
           {seconds > 0 ? (
             <Text variant="bodySm" color={palette.inkTertiary}>Resend OTP in 0:{String(seconds).padStart(2, '0')}</Text>
           ) : (
-            <Pressable onPress={() => setSeconds(60)}><Text variant="bodySm" weight="600" color={palette.coralDark}>Resend OTP</Text></Pressable>
+            <Pressable onPress={resend}><Text variant="bodySm" weight="600" color={palette.coralDark}>Resend OTP</Text></Pressable>
           )}
         </View>
 

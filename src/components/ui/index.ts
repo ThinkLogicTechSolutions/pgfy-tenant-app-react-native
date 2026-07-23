@@ -20,6 +20,8 @@ export { Skeleton } from './Skeleton';
 export { ScreenHeader } from './ScreenHeader';
 export { EmptyState } from './EmptyState';
 export { Sheet } from './Sheet';
+export { AlertDialog } from './AlertDialog';
+export { AlertDialogHost } from './AlertDialogHost';
 export { Stepper } from './Stepper';
 export { ListRow } from './ListRow';
 export { Confetti } from './Confetti';

@@ -2,8 +2,8 @@ import type { Listing, BookingMode } from '@/data/types';
 
 /** Card title: "PG near Forum Mall" using the closest landmark, else locality. */
 export function listingNearLandmarkTitle(listing: Listing): string {
-  const place = listing.nearby[0]?.label ?? listing.locality;
-  return `PG near ${place}`;
+  const place = listing.name; //.nearby[0]?.label ?? listing.locality;
+  return place;//`PG near ${place}`;
 }
 
 export function listingSupportsBookingMode(listing: Listing, mode: BookingMode): boolean {

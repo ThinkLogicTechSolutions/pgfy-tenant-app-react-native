@@ -4,10 +4,41 @@ import { View, ScrollView } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { palette, radius, spacing } from '@/theme';
 import { Text, Card, Sheet, PressableScale } from '@/components/ui';
-import type { FoodDay } from '@/data/types';
+import type { FoodDay, WeeklyMenuDay } from '@/data/types';
 
 export const WEEK_DAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'] as const;
 export type WeekDay = (typeof WEEK_DAYS)[number];
+
+export interface ResolvedDayMenu {
+  day: WeekDay;
+  meals: { meal: string; items: string }[];
+}
+
+/** JS `Date#getDay()` convention — 0 = Sunday .. 6 = Saturday — matching `WeeklyMenuDay.dayOfWeek`. */
+const WEEKDAY_TO_JS_DOW: Record<WeekDay, number> = { Sun: 0, Mon: 1, Tue: 2, Wed: 3, Thu: 4, Fri: 5, Sat: 6 };
+
+const API_FOOD_SLOTS = [
+  { field: 'morningTea', label: 'Morning tea' },
+  { field: 'breakfast', label: 'Breakfast' },
+  { field: 'lunch', label: 'Lunch' },
+  { field: 'eveningTea', label: 'Evening tea' },
+  { field: 'dinner', label: 'Dinner' },
+] as const;
+
+/** Real per-day-of-week menu (API-backed listings) — unlike `buildWeeklyMenu`, a day with no
+ * enabled/non-empty slots (or no entry at all) legitimately has no meals scheduled. */
+export function buildWeeklyMenuFromApi(weeklyMenu: WeeklyMenuDay[]): ResolvedDayMenu[] {
+  return WEEK_DAYS.map((day) => {
+    const apiDay = weeklyMenu.find((d) => d.dayOfWeek === WEEKDAY_TO_JS_DOW[day]);
+    const meals = apiDay
+      ? API_FOOD_SLOTS
+          .map((slot) => ({ label: slot.label, slot: apiDay[slot.field] }))
+          .filter((s) => s.slot?.enabled && String(s.slot.items ?? '').trim())
+          .map((s) => ({ meal: s.label, items: String(s.slot!.items ?? '') }))
+      : [];
+    return { day, meals };
+  });
+}
 
 const WEEKLY_MENU_SUFFIX: Record<WeekDay, [string, string, string]> = {
   Mon: ['with fruit bowl', 'with curd & salad', 'with gulab jamun'],
@@ -38,12 +69,15 @@ export function WeeklyFoodMenuSheet({
   visible,
   onClose,
   foodMenu,
+  weeklyMenu: apiWeeklyMenu,
   foodIncluded = true,
   initialDay,
 }: {
   visible: boolean;
   onClose: () => void;
   foodMenu: FoodDay[];
+  /** Real per-day-of-week menu (API-backed listings) — takes priority over `foodMenu` when present. */
+  weeklyMenu?: WeeklyMenuDay[];
   foodIncluded?: boolean;
   initialDay?: WeekDay;
 }) {
@@ -53,8 +87,11 @@ export function WeeklyFoodMenuSheet({
     if (visible) setSelectedWeekDay(initialDay ?? weekDayFromDate());
   }, [visible, initialDay]);
 
-  const weeklyMenu = useMemo(() => buildWeeklyMenu(foodMenu), [foodMenu]);
-  const dayMenu = weeklyMenu.find((menu) => menu.day === selectedWeekDay) ?? weeklyMenu[0];
+  const resolvedWeeklyMenu = useMemo(
+    () => (apiWeeklyMenu ? buildWeeklyMenuFromApi(apiWeeklyMenu) : buildWeeklyMenu(foodMenu)),
+    [apiWeeklyMenu, foodMenu],
+  );
+  const dayMenu = resolvedWeeklyMenu.find((menu) => menu.day === selectedWeekDay) ?? resolvedWeeklyMenu[0];
 
   return (
     <Sheet visible={visible} onClose={onClose} title="Weekly food menu" scroll>
@@ -86,7 +123,7 @@ export function WeeklyFoodMenuSheet({
               </PressableScale>
             ))}
           </ScrollView>
-          {dayMenu.day === 'Sun' ? (
+          {(apiWeeklyMenu ? dayMenu.meals.length === 0 : dayMenu.day === 'Sun') ? (
             <Card style={{ alignItems: 'center', paddingVertical: spacing.xl }}>
               <View
                 style={{
@@ -113,7 +150,7 @@ export function WeeklyFoodMenuSheet({
               </View>
               <Text variant="h3" align="center">Mess is off</Text>
               <Text variant="bodySm" color={palette.inkSecondary} align="center" style={{ marginTop: spacing.xs, maxWidth: 260, lineHeight: 21 }}>
-                Sunday meal service is not available for this property. Please plan outside food for this day.
+                {apiWeeklyMenu ? 'No meals are scheduled for this property today.' : 'Sunday meal service is not available for this property. Please plan outside food for this day.'}
               </Text>
             </Card>
           ) : (

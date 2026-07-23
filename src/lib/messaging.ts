@@ -43,6 +43,12 @@ async function requestPermission(): Promise<boolean> {
   );
 }
 
+/**
+ * Last known FCM token, cached so `getFcmToken()` is cheap on the auth hot path
+ * (it's sent as `fcmId` on the verify-OTP call).
+ */
+let cachedToken: string | null = null;
+
 /** Request permission and return the device FCM token (or null if unavailable). */
 export async function registerForPushNotifications(): Promise<string | null> {
   if (!FCM_SUPPORTED) return null;
@@ -50,13 +56,19 @@ export async function registerForPushNotifications(): Promise<string | null> {
     const granted = await requestPermission();
     if (!granted) return null;
     const token = await messaging().getToken();
+    cachedToken = token;
     console.log('[FCM] device token', token);
-    // TODO: POST the token to the backend so it can target this device.
     return token;
   } catch (e) {
     console.warn('[FCM] registration failed', e);
     return null;
   }
+}
+
+/** The device's FCM token for the `fcmId` auth field, or null when push is unavailable. */
+export async function getFcmToken(): Promise<string | null> {
+  if (cachedToken) return cachedToken;
+  return registerForPushNotifications();
 }
 
 /** Root-level hook: registers the device and subscribes to foreground + token-refresh events. */

@@ -6,28 +6,48 @@
  * The previous home is preserved at `src/legacy/HomeScreenClassic.tsx`.
  */
 import { useEffect, useMemo, useState } from 'react';
-import { View, ScrollView } from 'react-native';
+import { View, ScrollView, ActivityIndicator, TextInput } from 'react-native';
 import { Image } from 'expo-image';
 import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
-import { palette, spacing, radius, shadows } from '@/theme';
-import { Text, IconButton, PressableScale, Avatar, Button } from '@/components/ui';
+import { palette, spacing, radius, shadows, fontFamily } from '@/theme';
+import { Text, IconButton, PressableScale, Avatar, Button, EmptyState } from '@/components/ui';
 import { CityTile, SectionHeader, CraftedFooter, PromotedBadge } from '@/components/domain';
+import { BrowseFiltersSheet, DEFAULT_BROWSE_FILTERS, browseFiltersToParams, type BrowseFilters } from '@/components/search';
 import { locationPicker } from '@/store/locationPicker';
 import { useTenantLocation } from '@/store/location';
-import { useRecentlyViewed, recordView } from '@/store/recentlyViewed';
+import { recordView } from '@/store/recentlyViewed';
 import { useSaved } from '@/store/saved';
-import { LISTINGS, USER, unreadCount, listingsByIds, POPULAR_DESTINATIONS } from '@/data';
-import { POPULAR_AREAS } from '@/data/popularAreas';
+import { unreadCount } from '@/data';
+import { useAuth } from '@/context/AuthContext';
+import { dashboardApi, continueBrowsingApi, errorMessage, type LocalityMaster } from '@/lib/api';
+import { continueBrowsingToListing } from '@/lib/listingAdapter';
 import { defaultCheckIn, defaultCheckOut } from '@/lib/dates';
-import { listingSupportsBookingMode, getPromotedPgListingId } from '@/lib/listingDisplay';
+import { listingSupportsBookingMode } from '@/lib/listingDisplay';
 import { inr } from '@/lib/format';
 import { haptic } from '@/lib/haptics';
 import type { BookingMode, Gender, Listing } from '@/data/types';
+import { EmptyLocation, type LandmarkId } from '@/components/illustrations';
+import { useMasterData } from '@/context/MasterDataContext';
+
+const AREA_TILE_ACCENTS = ['#3B82F6', '#1FB573', '#7C5CFC', '#F5A623', '#FF4B3E', '#01264E'];
 
 const FALLBACK_CITY = 'Bengaluru';
+
+/** Built-in landmark art for well-known cities; anything else falls back to a generic skyline. */
+const CITY_LANDMARKS: Record<string, LandmarkId> = {
+  Bengaluru: 'vidhanaSoudha',
+  Chennai: 'gopuram',
+  Hyderabad: 'charminar',
+  Pune: 'fort',
+  Mumbai: 'gateway',
+  Delhi: 'indiaGate',
+  'Delhi NCR': 'indiaGate',
+  Kolkata: 'victoria',
+  Ahmedabad: 'mosque',
+};
 
 function greeting() {
   const h = new Date().getHours();
@@ -172,8 +192,7 @@ function NearbyCard({
         </View>
         <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: 2 }}>
           <Text variant="bodySm" weight="700" mono color={palette.navy}>
-            {inr(price.amount)}
-            <Text variant="caption" color={palette.inkTertiary}> {price.unit}</Text>
+            {price.amount === 0 ? 'Contact for price' : (<>{inr(price.amount)}<Text variant="caption" color={palette.inkTertiary}> {price.unit}</Text></>)}
           </Text>
           <View style={{ backgroundColor: tag.bg, borderRadius: radius.pill, paddingHorizontal: 8, paddingVertical: 3 }}>
             <Text variant="caption" weight="700" color={tag.fg}>{tag.label}</Text>
@@ -273,17 +292,56 @@ function LocationPromptBanner({ onPress }: { onPress: () => void }) {
   );
 }
 
+function NotOperationalSection({ label, onPress }: { label: string; onPress: () => void }) {
+  return (
+    <View
+      style={{
+        marginTop: spacing.base,
+        marginHorizontal: spacing.base,
+        borderRadius: radius.xl,
+        borderWidth: 1,
+        borderColor: palette.border,
+        backgroundColor: palette.surface,
+        ...shadows.card,
+      }}
+    >
+      <EmptyState
+        illustration={<EmptyLocation size={130} />}
+        title="We're not in this area yet"
+        message={`We're not operational at ${label} yet. Try searching for a different city or area we serve.`}
+        actionLabel="Try a different location"
+        onAction={onPress}
+        compact
+      />
+    </View>
+  );
+}
+
 export default function Home() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
-  const firstName = USER.name.split(' ')[0] ?? USER.name;
+  const { user } = useAuth();
+  const displayName = user?.name ?? '';
+  const firstName = displayName.split(' ')[0] || displayName;
   const saved = useSaved();
   const { location: geo, resolving: locating, attempted, detect, set: setLocation } = useTenantLocation();
-  const { ids: viewedIds } = useRecentlyViewed();
+  const operational = !!geo && geo.operational;
+  const { popularDestinations } = useMasterData();
+
+  const popularTiles = useMemo(
+    () =>
+      popularDestinations.map((d) => ({
+        id: String(d.id),
+        name: d.city.name,
+        image: d.avatar?.link,
+        landmarkId: CITY_LANDMARKS[d.city.name] ?? 'cityscape',
+      })),
+    [popularDestinations],
+  );
 
   const [stayType, setStayType] = useState<BookingMode>('monthly');
-  // Area filter within the resolved city (granted-location only).
-  const [area, setArea] = useState<string | null>(null);
+  // Free-text "property or PGID" search — submits to /tenant/search.
+  const [searchQuery, setSearchQuery] = useState('');
 
   // Prompt for the device location once on first load.
   useEffect(() => {
@@ -292,25 +350,85 @@ export default function Home() {
   }, []);
 
   const activeCity = geo?.label ?? FALLBACK_CITY;
-  // When located and an area is selected we search by it; otherwise by the city.
-  const searchCity = geo && area ? area : activeCity;
+  const searchCity = activeCity;
 
   const stayDates = useMemo(() => {
     const checkIn = defaultCheckIn();
     return { checkIn, checkOut: defaultCheckOut(checkIn), startTime: '10:00', hours: 4 };
   }, []);
 
+  // Filter sheet opens directly on Home — it's a standalone picker, not tied to navigating
+  // into /browse first. Applying it is what triggers the navigation, with the picks in tow.
+  const [filtersOpen, setFiltersOpen] = useState(false);
+  const [draftFilters, setDraftFilters] = useState<BrowseFilters>(() => ({ ...DEFAULT_BROWSE_FILTERS, bookingType: stayType, stay: stayDates }));
+
+  const openFilters = () => {
+    setDraftFilters({ ...DEFAULT_BROWSE_FILTERS, bookingType: stayType, stay: stayDates });
+    setFiltersOpen(true);
+  };
+
+  // "Near you" + "Popular areas" — location-scoped, from the tenant dashboard API.
+  const [nearYou, setNearYou] = useState<Listing[]>([]);
+  const [nearYouPromotedIds, setNearYouPromotedIds] = useState<Set<string>>(new Set());
+  const [popularAreas, setPopularAreas] = useState<LocalityMaster[]>([]);
+  const [dashboardLoading, setDashboardLoading] = useState(false);
+  const [dashboardError, setDashboardError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!operational || !geo?.cityId) {
+      setNearYou([]);
+      setNearYouPromotedIds(new Set());
+      setPopularAreas([]);
+      return;
+    }
+    let active = true;
+    setDashboardLoading(true);
+    setDashboardError(null);
+    const coordinates: [number, number] | undefined =
+      geo.source === 'gps' && geo.lat != null && geo.lng != null ? [geo.lat, geo.lng] : undefined;
+    dashboardApi
+      .getDashboard({ cityId: geo.cityId, coordinates })
+      .then((res) => {
+        if (!active) return;
+        setNearYou(res.near_you.map(continueBrowsingToListing));
+        setNearYouPromotedIds(new Set(res.near_you.filter((p) => p.is_promoted).map((p) => `cb-${p.id}`)));
+        setPopularAreas(res.popular_areas);
+      })
+      .catch((e) => {
+        if (!active) return;
+        setDashboardError(errorMessage(e));
+        setNearYou([]);
+        setPopularAreas([]);
+      })
+      .finally(() => {
+        if (active) setDashboardLoading(false);
+      });
+    return () => {
+      active = false;
+    };
+  }, [operational, geo?.cityId, geo?.lat, geo?.lng, geo?.source]);
+
   const nearby = useMemo(() => {
-    const supported = LISTINGS.filter((l) => listingSupportsBookingMode(l, stayType));
-    const scoped = area
-      ? supported.filter((l) => `${l.locality} ${l.city}`.toLowerCase().includes(area.toLowerCase()))
-      : supported;
-    return [...scoped].sort((a, b) => a.distanceKm - b.distanceKm).slice(0, 6);
-  }, [stayType, area]);
+    return nearYou.filter((l) => listingSupportsBookingMode(l, stayType)).slice(0, 6);
+  }, [nearYou, stayType]);
 
-  const promotedPgId = useMemo(() => getPromotedPgListingId(LISTINGS), []);
+  // "Continue browsing" — the tenant's recently-viewed properties, from the backend.
+  const [recentListings, setRecentListings] = useState<Listing[]>([]);
 
-  const viewedListings = useMemo(() => listingsByIds(viewedIds), [viewedIds]);
+  useEffect(() => {
+    let active = true;
+    continueBrowsingApi
+      .getContinueBrowsing({ limit: 10 })
+      .then((page) => {
+        if (active) setRecentListings(page.data.map(continueBrowsingToListing));
+      })
+      .catch(() => {
+        if (active) setRecentListings([]);
+      });
+    return () => {
+      active = false;
+    };
+  }, []);
 
   const searchParams = (extra?: Record<string, string>) => ({
     city: searchCity,
@@ -319,6 +437,8 @@ export default function Home() {
     bookingType: stayType,
     startTime: stayDates.startTime,
     hours: String(stayDates.hours),
+    ...(geo?.cityId ? { cityId: String(geo.cityId) } : {}),
+    ...(geo?.localityId ? { localityId: String(geo.localityId) } : {}),
     ...extra,
   });
 
@@ -334,6 +454,15 @@ export default function Home() {
     router.push({ pathname: '/browse', params: searchParams(extra) });
   };
 
+  const goToSearch = (query: string) => {
+    const q = query.trim();
+    if (!q) return;
+    haptic.select();
+    router.push({ pathname: '/browse', params: searchParams({ search: q }) });
+  };
+
+  const submitSearch = () => goToSearch(searchQuery);
+
   const openListing = (id: string) => {
     recordView(id);
     router.push({ pathname: `/listing/${id}`, params: listingParams() });
@@ -341,16 +470,9 @@ export default function Home() {
 
   const openLocationPicker = () => {
     haptic.select();
-    locationPicker.open((picked) => {
-      setLocation(picked, 'manual');
-      setArea(null); // a new city clears the area filter
+    locationPicker.open((picked, ids, isOperational) => {
+      setLocation(picked, 'manual', ids, isOperational);
     });
-    router.push('/location');
-  };
-
-  const openAreaPicker = () => {
-    haptic.select();
-    locationPicker.open((picked) => setArea(picked));
     router.push('/location');
   };
 
@@ -392,7 +514,7 @@ export default function Home() {
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: spacing.sm }}>
             <IconButton icon="notifications-outline" badge={unreadCount > 0} onPress={() => router.push('/notifications')} />
             <PressableScale onPress={() => router.push('/(tabs)/profile')} scaleTo={0.92}>
-              <Avatar name={USER.name} uri={USER.avatar} size={42} ring />
+              <Avatar name={displayName} uri={user?.avatar?.thumbnail ?? user?.avatar?.link} size={42} ring />
             </PressableScale>
           </View>
         </View>
@@ -416,8 +538,8 @@ export default function Home() {
           </PressableScale>
         ) : null}
 
-        {/* Search + filter (located) / location prompt banner (no permission) */}
-        {geo ? (
+        {/* Search + filter (operational) / not-operational notice / location prompt banner (no location) */}
+        {operational ? (
           <View
             style={{
               marginTop: spacing.base,
@@ -433,37 +555,40 @@ export default function Home() {
               ...shadows.card,
             }}
           >
-            <PressableScale
-              onPress={openAreaPicker}
-              scaleTo={0.995}
-              haptics={false}
-              style={{ flex: 1, height: '100%', flexDirection: 'row', alignItems: 'center', gap: spacing.sm, paddingLeft: spacing.base, paddingRight: area ? spacing.sm : spacing.base }}
-            >
+            <View style={{ flex: 1, height: '100%', flexDirection: 'row', alignItems: 'center', gap: spacing.sm, paddingLeft: spacing.base, paddingRight: spacing.sm }}>
               <Ionicons name="search" size={18} color={palette.inkTertiary} />
-              <Text variant="bodySm" color={area ? palette.ink : palette.inkTertiary} numberOfLines={1} style={{ flex: 1 }}>
-                {area ? `Area · ${area}` : 'Search for an area…'}
-              </Text>
-              {area ? (
-                <PressableScale onPress={() => setArea(null)} haptics={false} hitSlop={8} style={{ padding: 2 }}>
+              <TextInput
+                value={searchQuery}
+                onChangeText={setSearchQuery}
+                placeholder="Search for any property or PGID"
+                placeholderTextColor={palette.inkTertiary}
+                returnKeyType="search"
+                onSubmitEditing={submitSearch}
+                style={{ flex: 1, fontFamily: fontFamily.medium, fontSize: 14, color: palette.ink, paddingVertical: 0 }}
+              />
+              {searchQuery ? (
+                <PressableScale onPress={() => setSearchQuery('')} haptics={false} hitSlop={8} style={{ padding: 2 }}>
                   <Ionicons name="close-circle" size={18} color={palette.inkTertiary} />
                 </PressableScale>
               ) : null}
-            </PressableScale>
+            </View>
             <View style={{ width: 1, height: 22, backgroundColor: palette.border }} />
             <PressableScale
-              onPress={() => goToResults({ openFilters: '1' })}
+              onPress={openFilters}
               scaleTo={0.9}
               style={{ height: '100%', justifyContent: 'center', paddingHorizontal: spacing.base }}
             >
               <Ionicons name="options-outline" size={19} color={palette.inkSecondary} />
             </PressableScale>
           </View>
+        ) : geo ? (
+          <NotOperationalSection label={geo.label} onPress={openLocationPicker} />
         ) : (
           <LocationPromptBanner onPress={openLocationPicker} />
         )}
 
-        {/* Stay type — only once a location is set */}
-        {geo ? (
+        {/* Stay type — only once an operational location is set */}
+        {operational ? (
           <View style={{ marginTop: spacing.base, marginHorizontal: spacing.base, flexDirection: 'row', gap: spacing.sm }}>
             {STAY_TYPES.map((item) => (
               <StayTypeCard
@@ -476,18 +601,22 @@ export default function Home() {
           </View>
         ) : null}
 
-        {/* Near you — only when we know where the tenant is */}
-        {geo ? (
+        {/* Near you — only when we know where the tenant is and it's operational */}
+        {operational ? (
           <>
             <View style={{ marginTop: spacing.xl, paddingHorizontal: spacing.base }}>
               <SectionHeader
-                title={area ? `Stays in ${area}` : 'Near you'}
-                subtitle={area ? 'Filtered by your selected area' : 'Top picks around your location'}
+                title="Near you"
+                subtitle="Top picks around your location"
                 actionLabel="See all"
                 onAction={() => goToResults()}
               />
             </View>
-            {nearby.length > 0 ? (
+            {dashboardLoading ? (
+              <View style={{ paddingVertical: spacing.lg, alignItems: 'center' }}>
+                <ActivityIndicator color={palette.navy} />
+              </View>
+            ) : nearby.length > 0 ? (
               <ScrollView
                 horizontal
                 showsHorizontalScrollIndicator={false}
@@ -499,7 +628,7 @@ export default function Home() {
                     key={listing.id}
                     listing={listing}
                     bookingType={stayType}
-                    promoted={listing.id === promotedPgId}
+                    promoted={nearYouPromotedIds.has(listing.id)}
                     saved={saved.isSaved(listing.id)}
                     onToggleSave={() => saved.toggle(listing.id)}
                     onPress={() => openListing(listing.id)}
@@ -510,16 +639,15 @@ export default function Home() {
               <View style={{ marginHorizontal: spacing.base, paddingVertical: spacing.lg, paddingHorizontal: spacing.base, borderRadius: radius.lg, borderWidth: 1, borderColor: palette.border, backgroundColor: palette.surface, alignItems: 'center', gap: 6 }}>
                 <Ionicons name="search-outline" size={22} color={palette.inkTertiary} />
                 <Text variant="bodySm" color={palette.inkSecondary} align="center">
-                  No stays in {area} yet.
+                  {dashboardError ?? 'No stays found near you yet.'}
                 </Text>
-                <Button label="Show all areas" variant="ghost" size="sm" onPress={() => setArea(null)} />
               </View>
             )}
           </>
         ) : null}
 
-        {/* Popular areas (located) / Popular destinations (no location) */}
-        {geo ? (
+        {/* Popular areas (operational) / Popular destinations (no location or not operational) */}
+        {operational ? (
           <>
             <View style={{ marginTop: spacing.xl, paddingHorizontal: spacing.base }}>
               <SectionHeader
@@ -529,27 +657,33 @@ export default function Home() {
                 onAction={() => router.push('/popular-areas')}
               />
             </View>
-            <ScrollView
-              horizontal
-              showsHorizontalScrollIndicator={false}
-              contentContainerStyle={{ gap: spacing.md, paddingHorizontal: spacing.base }}
-              nestedScrollEnabled
-            >
-              {intoColumns(POPULAR_AREAS).map((column, columnIndex) => (
-                <View key={`area-col-${columnIndex}`} style={{ gap: spacing.md }}>
-                  {column.map((area) => (
-                    <CityTile
-                      key={area.id}
-                      label={area.name}
-                      landmarkId="cityscape"
-                      accent={area.accent}
-                      image={area.image}
-                      onPress={() => { haptic.select(); router.push({ pathname: '/browse', params: searchParams({ city: area.name }) }); }}
-                    />
-                  ))}
-                </View>
-              ))}
-            </ScrollView>
+            {popularAreas.length > 0 ? (
+              <ScrollView
+                horizontal
+                showsHorizontalScrollIndicator={false}
+                contentContainerStyle={{ gap: spacing.md, paddingHorizontal: spacing.base }}
+                nestedScrollEnabled
+              >
+                {intoColumns(popularAreas).map((column, columnIndex) => (
+                  <View key={`area-col-${columnIndex}`} style={{ gap: spacing.md }}>
+                    {column.map((locality, i) => (
+                      <CityTile
+                        key={locality.id}
+                        label={locality.name}
+                        landmarkId="cityscape"
+                        accent={AREA_TILE_ACCENTS[(columnIndex * 2 + i) % AREA_TILE_ACCENTS.length]}
+                        image={locality.avatar?.link}
+                        onPress={() => goToSearch(locality.name)}
+                      />
+                    ))}
+                  </View>
+                ))}
+              </ScrollView>
+            ) : !dashboardLoading ? (
+              <Text variant="bodySm" color={palette.inkSecondary} style={{ marginHorizontal: spacing.base }}>
+                No popular areas yet.
+              </Text>
+            ) : null}
           </>
         ) : (
           <>
@@ -565,7 +699,7 @@ export default function Home() {
               contentContainerStyle={{ gap: spacing.md, paddingHorizontal: spacing.base }}
               nestedScrollEnabled
             >
-              {intoColumns(POPULAR_DESTINATIONS).map((column, columnIndex) => (
+              {intoColumns(popularTiles).map((column, columnIndex) => (
                 <View key={`dest-col-${columnIndex}`} style={{ gap: spacing.md }}>
                   {column.map((dest) => (
                     <CityTile
@@ -583,7 +717,7 @@ export default function Home() {
         )}
 
         {/* Continue browsing */}
-        {viewedListings.length > 0 ? (
+        {recentListings.length > 0 ? (
           <>
             <View style={{ marginTop: spacing.xl, paddingHorizontal: spacing.base }}>
               <SectionHeader
@@ -599,7 +733,7 @@ export default function Home() {
               contentContainerStyle={{ gap: spacing.md, paddingHorizontal: spacing.base }}
               nestedScrollEnabled
             >
-              {viewedListings.map((listing) => (
+              {recentListings.map((listing) => (
                 <ContinueCard key={listing.id} listing={listing} onPress={() => openListing(listing.id)} />
               ))}
             </ScrollView>
@@ -622,6 +756,19 @@ export default function Home() {
           <CraftedFooter />
         </View>
       </ScrollView>
+
+      <BrowseFiltersSheet
+        visible={filtersOpen}
+        onClose={() => setFiltersOpen(false)}
+        filters={draftFilters}
+        draft={draftFilters}
+        onDraftChange={setDraftFilters}
+        onApply={() => {
+          setFiltersOpen(false);
+          goToResults(browseFiltersToParams(draftFilters));
+        }}
+        onClear={() => setDraftFilters({ ...DEFAULT_BROWSE_FILTERS, bookingType: stayType, stay: stayDates })}
+      />
     </View>
   );
 }

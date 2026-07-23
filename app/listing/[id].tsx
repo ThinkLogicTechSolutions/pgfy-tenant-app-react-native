@@ -6,9 +6,9 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { palette, spacing, radius, shadows } from '@/theme';
-import { Text, Card, IconButton, Divider, Button, EmptyState, Sheet, Input, PressableScale } from '@/components/ui';
+import { Text, Card, IconButton, Divider, Button, EmptyState, Sheet, Input, PressableScale, Skeleton } from '@/components/ui';
 import { StayBookingFields, type StayBookingValues } from '@/components/search';
-import { PgfyScore, StatusPill, RatingPill, ReviewCard, WeeklyFoodMenuSheet, buildWeeklyMenu, PropertyImageCarousel, PromotedBadge, type WeekDay } from '@/components/domain';
+import { PgfyScore, StatusPill, RatingPill, ReviewCard, WeeklyFoodMenuSheet, buildWeeklyMenu, buildWeeklyMenuFromApi, PropertyImageCarousel, PromotedBadge, type WeekDay } from '@/components/domain';
 import { listingCarouselImages, listingPhotoCount, PROPERTY_IMAGE_ASPECT } from '@/lib/media';
 import { getListing, LISTINGS } from '@/data';
 import { inr, formatDate } from '@/lib/format';
@@ -17,7 +17,10 @@ import { defaultCheckIn, defaultCheckOut } from '@/lib/dates';
 import { useSaved } from '@/store/saved';
 import { recordView } from '@/store/recentlyViewed';
 import { haptic } from '@/lib/haptics';
-import type { BookingMode } from '@/data/types';
+import type { BookingMode, Listing } from '@/data/types';
+import { propertyApi, favoritesApi, errorMessage, type ApiBookingMode } from '@/lib/api';
+import { propertyDetailsToListing, parseApiPropertyId } from '@/lib/listingAdapter';
+import { alert } from '@/lib/alertDialog';
 
 function formatTime12(t: string) {
   const [h, m] = t.split(':').map(Number);
@@ -26,12 +29,52 @@ function formatTime12(t: string) {
   return `${hr}:${String(m).padStart(2, '0')} ${suffix}`;
 }
 
-const AMENITY_ICON: Record<string, keyof typeof Ionicons.glyphMap> = {
-  'Wi-Fi': 'wifi', AC: 'snow-outline', Gym: 'barbell-outline', Parking: 'car-outline',
-  'Power Backup': 'flash-outline', 'Dedicated Security': 'shield-checkmark-outline', 'Pure Veg': 'leaf-outline',
-  'Daily Housekeeping': 'sparkles-outline', 'CCTV Surveillance': 'videocam-outline', 'Hot Water': 'thermometer-outline',
-  'RO Water': 'water-outline', 'Washing Machine': 'shirt-outline', 'Lift Facility': 'swap-vertical-outline',
-  'Medical Support': 'medkit-outline', 'Study Table': 'book-outline',
+/** Mirrors the loaded screen's layout (gallery → title → about → booking → occupancy) so the
+ * shimmer doesn't jump when the real content swaps in. */
+function PropertyDetailsSkeleton({ insetTop }: { insetTop: number }) {
+  return (
+    <View style={{ flex: 1 }}>
+      <ScrollView contentContainerStyle={{ paddingBottom: 120 }} showsVerticalScrollIndicator={false}>
+        <Skeleton width="100%" height={260 + insetTop} rounded={0} />
+        <View style={{ paddingHorizontal: spacing.base, paddingTop: spacing.base, gap: spacing.base }}>
+          <View>
+            <Skeleton width="70%" height={26} />
+            <View style={{ flexDirection: 'row', gap: spacing.sm, marginTop: spacing.sm }}>
+              <Skeleton width={64} height={22} rounded={radius.pill} />
+              <Skeleton width={72} height={22} rounded={radius.pill} />
+            </View>
+          </View>
+          <Card>
+            <Skeleton width="40%" height={18} style={{ marginBottom: spacing.sm }} />
+            <Skeleton width="100%" height={14} style={{ marginBottom: 6 }} />
+            <Skeleton width="90%" height={14} style={{ marginBottom: 6 }} />
+            <Skeleton width="60%" height={14} />
+          </Card>
+          <Card>
+            <Skeleton width="50%" height={18} style={{ marginBottom: spacing.md }} />
+            <Skeleton width="100%" height={44} />
+          </Card>
+          <Card>
+            <Skeleton width="30%" height={18} style={{ marginBottom: spacing.md }} />
+            <Skeleton width="100%" height={64} style={{ marginBottom: spacing.sm }} />
+            <Skeleton width="100%" height={64} />
+          </Card>
+        </View>
+      </ScrollView>
+    </View>
+  );
+}
+
+function capitalizeFirst(s: string): string {
+  return s.length ? s.charAt(0).toUpperCase() + s.slice(1) : s;
+}
+
+const MEAL_ICON: Record<string, keyof typeof Ionicons.glyphMap> = {
+  'Morning tea': 'cafe-outline',
+  Breakfast: 'sunny-outline',
+  Lunch: 'partly-sunny-outline',
+  'Evening tea': 'cafe-outline',
+  Dinner: 'moon-outline',
 };
 
 const MONTHLY_PLAN_ADJUSTMENTS = {
@@ -96,7 +139,16 @@ export default function ListingDetail() {
   const insets = useSafeAreaInsets();
   const { width } = useWindowDimensions();
   const saved = useSaved();
-  const listing = getListing(String(id));
+
+  const apiId = parseApiPropertyId(String(id));
+  const mockListing = apiId ? null : getListing(String(id));
+  const [apiListing, setApiListing] = useState<Listing | null>(null);
+  const [detailsLoading, setDetailsLoading] = useState(!!apiId);
+  const [detailsError, setDetailsError] = useState<string | null>(null);
+  const [retryTick, setRetryTick] = useState(0);
+  const [favorite, setFavorite] = useState<{ isFavorite: boolean; favoriteId: number | null }>({ isFavorite: false, favoriteId: null });
+  const [favoriteBusy, setFavoriteBusy] = useState(false);
+
   const [reviewOpen, setReviewOpen] = useState(false);
   const [foodSheetOpen, setFoodSheetOpen] = useState(false);
   const [selectedWeekDay, setSelectedWeekDay] = useState<WeekDay>('Mon');
@@ -104,13 +156,61 @@ export default function ListingDetail() {
   const selectedBookingMode: BookingMode = ['hourly', 'daily', 'monthly'].includes(routeBookingType ?? '')
     ? (routeBookingType as BookingMode)
     : 'monthly';
+  const apiBookingMode: ApiBookingMode = selectedBookingMode === 'hourly' ? 'HOURLY' : selectedBookingMode === 'daily' ? 'DAILY' : 'MONTHLY';
+
+  useEffect(() => {
+    if (!apiId) return;
+    let active = true;
+    setDetailsLoading(true);
+    setDetailsError(null);
+    propertyApi.getPropertyDetails(apiId, { bookingMode: apiBookingMode, recordView: true })
+      .then((data) => {
+        if (!active) return;
+        const mapped = propertyDetailsToListing(data);
+        setApiListing(mapped);
+        setFavorite({ isFavorite: mapped.isFavorite ?? false, favoriteId: mapped.favoriteId ?? null });
+      })
+      .catch((e) => { if (active) setDetailsError(errorMessage(e)); })
+      .finally(() => { if (active) setDetailsLoading(false); });
+    return () => { active = false; };
+  }, [apiId, apiBookingMode, retryTick]);
+
+  const listing = apiId ? apiListing : mockListing;
+
+  const toggleFavorite = async () => {
+    if (!apiId || favoriteBusy) {
+      if (!apiId) saved.toggle(String(id));
+      return;
+    }
+    setFavoriteBusy(true);
+    const prev = favorite;
+    try {
+      if (favorite.isFavorite && favorite.favoriteId != null) {
+        await favoritesApi.removeFavoriteProperty(favorite.favoriteId);
+        setFavorite({ isFavorite: false, favoriteId: null });
+      } else {
+        const res = await favoritesApi.addFavoriteProperty(apiId);
+        setFavorite({ isFavorite: true, favoriteId: res.id });
+      }
+    } catch (e) {
+      setFavorite(prev);
+      alert('Could not update favorite', errorMessage(e));
+    } finally {
+      setFavoriteBusy(false);
+    }
+  };
+  const isFavorite = apiId ? favorite.isFavorite : saved.isSaved(String(id));
+
   const [selectedOccupancy, setSelectedOccupancy] = useState<{
     key: string;
     sharingType: string;
+    /** Raw API layout code — needed by the choose-room/bed screen for API-backed properties. */
+    layout?: string;
     title: string;
     rent: number;
     hasAc: boolean;
     acLabel: 'AC' | 'Non-AC';
+    withFood: boolean;
   } | null>(null);
   const [stayValues, setStayValues] = useState<StayBookingValues>(() => {
     const nextCheckIn = checkIn || defaultCheckIn();
@@ -134,15 +234,6 @@ export default function ListingDetail() {
     if (listing) recordView(listing.id);
   }, [listing?.id]);
 
-  if (!listing) {
-    return <View style={{ flex: 1, paddingTop: insets.top + 60 }}><EmptyState title="Property not found" /></View>;
-  }
-  const l = listing;
-  const averageReviewRating = Math.round((Object.values(reviewRatings).reduce((sum, rating) => sum + rating, 0) / REVIEW_CATEGORIES.length) * 10) / 10;
-  const hasCompletedReview = REVIEW_CATEGORIES.every((category) => reviewRatings[category.key] > 0);
-  const weeklyMenu = buildWeeklyMenu(l.foodMenu);
-  const todayMenu = weeklyMenu.find((menu) => menu.day === selectedWeekDay) ?? weeklyMenu[0];
-
   useEffect(() => {
     if (openReview === '1') setReviewOpen(true);
   }, [openReview]);
@@ -151,7 +242,64 @@ export default function ListingDetail() {
     if (openFoodMenu === '1') setFoodSheetOpen(true);
   }, [openFoodMenu]);
 
-  const promoted = isPromotedListing(l.id, LISTINGS);
+  if (!listing) {
+    if (apiId && detailsLoading) {
+      return <PropertyDetailsSkeleton insetTop={insets.top} />;
+    }
+    if (apiId && detailsError) {
+      return (
+        <View style={{ flex: 1, paddingTop: insets.top + 60 }}>
+          <EmptyState title="Couldn't load this property" message={detailsError} actionLabel="Retry" onAction={() => setRetryTick((t) => t + 1)} />
+        </View>
+      );
+    }
+    return <View style={{ flex: 1, paddingTop: insets.top + 60 }}><EmptyState title="Property not found" /></View>;
+  }
+  const l = listing;
+  /** Mock listings have no `canRate` field — default to allowed. */
+  const canRate = l.canRate !== false;
+  const averageReviewRating = Math.round((Object.values(reviewRatings).reduce((sum, rating) => sum + rating, 0) / REVIEW_CATEGORIES.length) * 10) / 10;
+  const hasCompletedReview = REVIEW_CATEGORIES.every((category) => reviewRatings[category.key] > 0);
+  const weeklyMenu = l.weeklyFoodMenu ? buildWeeklyMenuFromApi(l.weeklyFoodMenu) : buildWeeklyMenu(l.foodMenu);
+  const todayMenu = weeklyMenu.find((menu) => menu.day === selectedWeekDay) ?? weeklyMenu[0];
+
+  const promoted = !apiId && isPromotedListing(l.id, LISTINGS);
+
+  const occupancyPriceSuffix = selectedBookingMode === 'hourly' ? '/hr' : selectedBookingMode === 'daily' ? '/day' : '/mo';
+  type OccupancyOption = { key: string; title: string; hasAc: boolean; acLabel: 'AC' | 'Non-AC'; withFood: boolean; rent: number };
+  type OccupancyTier = { sharingType: string; layout?: string; available: number; rent: number; options: OccupancyOption[] };
+  const occupancyTiers: OccupancyTier[] = l.pricingVariants
+    ? l.pricingVariants.map((v): OccupancyTier => ({
+        sharingType: v.sharingType,
+        layout: v.layout,
+        available: v.available,
+        rent: Math.min(v.acWithFood, v.acNoFood, v.nonAcWithFood, v.nonAcNoFood),
+        options: [
+          { key: `${v.layout}-ac-with-food`, title: `${v.sharingType} room with food`, hasAc: true, acLabel: 'AC', withFood: true, rent: v.acWithFood },
+          { key: `${v.layout}-ac-without-food`, title: `${v.sharingType} room without food`, hasAc: true, acLabel: 'AC', withFood: false, rent: v.acNoFood },
+          { key: `${v.layout}-nonac-with-food`, title: `${v.sharingType} room with food`, hasAc: false, acLabel: 'Non-AC', withFood: true, rent: v.nonAcWithFood },
+          { key: `${v.layout}-nonac-without-food`, title: `${v.sharingType} room without food`, hasAc: false, acLabel: 'Non-AC', withFood: false, rent: v.nonAcNoFood },
+        ],
+      }))
+    : (selectedBookingMode === 'hourly'
+        ? l.hourlyPricing.map((h) => ({ sharingType: h.sharingType, rent: h.rentPerHour, available: h.available }))
+        : selectedBookingMode === 'daily'
+          ? l.dailyPricing.map((d) => ({ sharingType: d.sharingType, rent: d.rentPerDay, available: d.available }))
+          : l.pricing
+      ).map((tier): OccupancyTier => {
+        const plans = monthlyPlansForTier(tier.rent, l.amenities.includes('AC'), l.foodIncluded);
+        return {
+          sharingType: tier.sharingType,
+          available: tier.available,
+          rent: tier.rent,
+          options: [
+            { key: `${tier.sharingType}-ac-with-food`, title: `${tier.sharingType} room with food`, hasAc: true, acLabel: 'AC', withFood: true, rent: plans.find((p) => p.key === occupancyPlanKey(true, true))?.amount ?? tier.rent },
+            { key: `${tier.sharingType}-ac-without-food`, title: `${tier.sharingType} room without food`, hasAc: true, acLabel: 'AC', withFood: false, rent: plans.find((p) => p.key === occupancyPlanKey(true, false))?.amount ?? tier.rent },
+            { key: `${tier.sharingType}-nonac-with-food`, title: `${tier.sharingType} room with food`, hasAc: false, acLabel: 'Non-AC', withFood: true, rent: plans.find((p) => p.key === occupancyPlanKey(false, true))?.amount ?? tier.rent },
+            { key: `${tier.sharingType}-nonac-without-food`, title: `${tier.sharingType} room without food`, hasAc: false, acLabel: 'Non-AC', withFood: false, rent: plans.find((p) => p.key === occupancyPlanKey(false, false))?.amount ?? tier.rent },
+          ],
+        };
+      });
 
   return (
     <View style={{ flex: 1 }}>
@@ -172,12 +320,15 @@ export default function ListingDetail() {
               {promoted ? <PromotedBadge /> : null}
             </View>
             <View style={{ flexDirection: 'row', gap: spacing.sm }}>
-              <IconButton icon={saved.isSaved(l.id) ? 'heart' : 'heart-outline'} color={saved.isSaved(l.id) ? palette.coral : palette.ink} bg="rgba(255,255,255,0.92)" onPress={() => saved.toggle(l.id)} />
+              <IconButton icon={isFavorite ? 'heart' : 'heart-outline'} color={isFavorite ? palette.coral : palette.ink} bg="rgba(255,255,255,0.92)" onPress={toggleFavorite} />
               <IconButton icon="share-social-outline" bg="rgba(255,255,255,0.92)" />
             </View>
           </View>
           <PressableScale
-            onPress={() => router.push({ pathname: `/listing/${l.id}/media`, params: { section: l.mediaSections[0]?.id } })}
+            onPress={() => router.push({
+              pathname: `/listing/${l.id}/media`,
+              params: { section: l.mediaSections[0]?.id, sections: JSON.stringify(l.mediaSections) },
+            })}
             scaleTo={0.97}
             style={{
               position: 'absolute',
@@ -250,50 +401,15 @@ export default function ListingDetail() {
             </Text>
 
             <View style={{ gap: spacing.md }}>
-              {(selectedBookingMode === 'hourly'
-                ? l.hourlyPricing.map((h) => ({ sharingType: h.sharingType, rent: h.rentPerHour, available: h.available }))
-                : selectedBookingMode === 'daily'
-                  ? l.dailyPricing.map((d) => ({ sharingType: d.sharingType, rent: d.rentPerDay, available: d.available }))
-                  : l.pricing
-              ).map((tier) => {
+              {occupancyTiers.map((tier) => {
                 const tierRent = tier.rent;
-                const priceSuffix = selectedBookingMode === 'hourly' ? '/hr' : selectedBookingMode === 'daily' ? '/day' : '/mo';
-                const plans = monthlyPlansForTier(tier.rent, l.amenities.includes('AC'), l.foodIncluded);
-                const options = [
-                  {
-                    key: `${tier.sharingType}-ac-with-food`,
-                    title: `${tier.sharingType} room with food`,
-                    hasAc: true,
-                    acLabel: 'AC' as const,
-                    rent: plans.find((plan) => plan.key === occupancyPlanKey(true, true))?.amount ?? tier.rent,
-                  },
-                  {
-                    key: `${tier.sharingType}-ac-without-food`,
-                    title: `${tier.sharingType} room without food`,
-                    hasAc: true,
-                    acLabel: 'AC' as const,
-                    rent: plans.find((plan) => plan.key === occupancyPlanKey(true, false))?.amount ?? tier.rent,
-                  },
-                  {
-                    key: `${tier.sharingType}-nonac-with-food`,
-                    title: `${tier.sharingType} room with food`,
-                    hasAc: false,
-                    acLabel: 'Non-AC' as const,
-                    rent: plans.find((plan) => plan.key === occupancyPlanKey(false, true))?.amount ?? tier.rent,
-                  },
-                  {
-                    key: `${tier.sharingType}-nonac-without-food`,
-                    title: `${tier.sharingType} room without food`,
-                    hasAc: false,
-                    acLabel: 'Non-AC' as const,
-                    rent: plans.find((plan) => plan.key === occupancyPlanKey(false, false))?.amount ?? tier.rent,
-                  },
-                ];
+                const priceSuffix = occupancyPriceSuffix;
+                const options = tier.options;
                 const expanded = expandedOccupancy === tier.sharingType;
                 const activeSelection = selectedOccupancy?.sharingType === tier.sharingType ? selectedOccupancy : null;
                 return (
                   <View
-                    key={tier.sharingType}
+                    key={tier.layout ?? tier.sharingType}
                     style={{
                       borderWidth: 1,
                       borderColor: activeSelection ? palette.coral : palette.border,
@@ -368,10 +484,12 @@ export default function ListingDetail() {
                               onPress={() => setSelectedOccupancy({
                                 key: option.key,
                                 sharingType: tier.sharingType,
+                                layout: tier.layout,
                                 title: option.title,
                                 rent: option.rent,
                                 hasAc: option.hasAc,
                                 acLabel: option.acLabel,
+                                withFood: option.withFood,
                               })}
                               scaleTo={0.99}
                               haptics={false}
@@ -431,9 +549,8 @@ export default function ListingDetail() {
             <Text variant="h3" style={{ marginBottom: spacing.md }}>Amenities</Text>
             <View style={{ flexDirection: 'row', flexWrap: 'wrap' }}>
               {l.amenities.map((a) => (
-                <View key={a} style={{ width: '50%', flexDirection: 'row', alignItems: 'center', gap: spacing.sm, paddingVertical: spacing.sm }}>
-                  <Ionicons name={AMENITY_ICON[a] ?? 'checkmark-circle-outline'} size={18} color={palette.navy} />
-                  <Text variant="bodySm" color={palette.inkSecondary} numberOfLines={1} style={{ flex: 1 }}>{a}</Text>
+                <View key={a} style={{ width: '50%', paddingVertical: spacing.sm }}>
+                  <Text variant="bodySm" color={palette.inkSecondary} numberOfLines={1}>{capitalizeFirst(a)}</Text>
                 </View>
               ))}
             </View>
@@ -474,7 +591,7 @@ export default function ListingDetail() {
                     }}
                   >
                     <View style={{ width: 36, height: 36, borderRadius: 18, backgroundColor: palette.coralTint, alignItems: 'center', justifyContent: 'center' }}>
-                      <Ionicons name={meal.meal === 'Breakfast' ? 'sunny-outline' : meal.meal === 'Lunch' ? 'partly-sunny-outline' : 'moon-outline'} size={18} color={palette.coralDark} />
+                      <Ionicons name={MEAL_ICON[meal.meal] ?? 'restaurant-outline'} size={18} color={palette.coralDark} />
                     </View>
                     <View style={{ flex: 1 }}>
                       <Text variant="bodyMd" weight="700">{meal.meal}</Text>
@@ -497,56 +614,64 @@ export default function ListingDetail() {
 
           {/* Ratings & reviews */}
           <View>
-            <Text variant="h3" style={{ marginBottom: spacing.md }}>Ratings & reviews</Text>
-
-            <Card style={{ marginBottom: spacing.base }}>
-              <Text variant="bodyMd" weight="700" style={{ marginBottom: spacing.md }}>Ratings</Text>
-              {l.ratingBreakdown.map((r) => (
-                <View key={r.label} style={{ flexDirection: 'row', alignItems: 'center', gap: spacing.md, marginBottom: spacing.sm }}>
-                  <Text variant="bodySm" color={palette.inkSecondary} style={{ width: 90 }}>{r.label}</Text>
-                  <View style={{ flex: 1, height: 8, borderRadius: 4, backgroundColor: palette.surfaceSunken, overflow: 'hidden' }}>
-                    <View style={{ width: `${(r.value / 5) * 100}%`, height: '100%', borderRadius: 4, backgroundColor: palette.success }} />
-                  </View>
-                  <Text variant="bodySm" weight="700" mono style={{ width: 30 }}>{r.value.toFixed(1)}</Text>
-                </View>
-              ))}
-            </Card>
-
             <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: spacing.md }}>
-              <Text variant="bodyMd" weight="700">Reviews</Text>
-              <PressableScale onPress={() => setReviewOpen(true)} haptics={false} style={{ flexDirection: 'row', alignItems: 'center', gap: 3 }}>
-                <Ionicons name="create-outline" size={15} color={palette.coralDark} />
-                <Text variant="bodySm" weight="600" color={palette.coralDark}>Write a review</Text>
-              </PressableScale>
+              <Text variant="h3">Ratings & reviews</Text>
+              {canRate ? (
+                <PressableScale onPress={() => setReviewOpen(true)} haptics={false} style={{ flexDirection: 'row', alignItems: 'center', gap: 3 }}>
+                  <Ionicons name="create-outline" size={15} color={palette.coralDark} />
+                  <Text variant="bodySm" weight="600" color={palette.coralDark}>Write a review</Text>
+                </PressableScale>
+              ) : null}
             </View>
 
-            <Card style={{ marginBottom: spacing.md }}>
-              {submitted ? (
-                <View style={{ flexDirection: 'row', alignItems: 'center', gap: spacing.md }}>
-                  <Ionicons name="checkmark-circle" size={26} color={palette.success} />
-                  <View style={{ flex: 1 }}>
-                    <Text variant="bodyMd" weight="700">Thanks for rating!</Text>
-                    <Text variant="caption" color={palette.inkSecondary}>You rated this property {averageReviewRating.toFixed(1)} ★</Text>
+            {l.ratingBreakdown.length > 0 ? (
+              <Card style={{ marginBottom: spacing.base }}>
+                <Text variant="bodyMd" weight="700" style={{ marginBottom: spacing.md }}>Ratings</Text>
+                {l.ratingBreakdown.map((r) => (
+                  <View key={r.label} style={{ flexDirection: 'row', alignItems: 'center', gap: spacing.md, marginBottom: spacing.sm }}>
+                    <Text variant="bodySm" color={palette.inkSecondary} style={{ width: 90 }}>{r.label}</Text>
+                    <View style={{ flex: 1, height: 8, borderRadius: 4, backgroundColor: palette.surfaceSunken, overflow: 'hidden' }}>
+                      <View style={{ width: `${(r.value / 5) * 100}%`, height: '100%', borderRadius: 4, backgroundColor: palette.success }} />
+                    </View>
+                    <Text variant="bodySm" weight="700" mono style={{ width: 30 }}>{r.value.toFixed(1)}</Text>
                   </View>
-                </View>
-              ) : (
-                <View style={{ alignItems: 'center', gap: spacing.sm }}>
-                  <Text variant="bodyMd" weight="600">Stayed here? Rate this property</Text>
-                  <View style={{ flexDirection: 'row', gap: spacing.sm }}>
-                    {[1, 2, 3, 4, 5].map((n) => (
-                      <PressableScale key={n} haptics onPress={() => setReviewOpen(true)} scaleTo={0.85} style={{ padding: 2 }}>
-                        <Ionicons name={n <= Math.round(averageReviewRating) ? 'star' : 'star-outline'} size={32} color={n <= Math.round(averageReviewRating) ? palette.star : palette.borderStrong} />
-                      </PressableScale>
-                    ))}
-                  </View>
-                  <Text variant="caption" color={palette.inkTertiary}>Rate category-wise to share your experience</Text>
-                </View>
-              )}
-            </Card>
+                ))}
+              </Card>
+            ) : null}
 
-            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: spacing.md }} style={{ marginHorizontal: -spacing.base, paddingHorizontal: spacing.base }}>
-              {l.reviews.map((r) => <ReviewCard key={r.id} review={r} />)}
-            </ScrollView>
+            {canRate ? (
+              <Card style={{ marginBottom: spacing.md }}>
+                {submitted ? (
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: spacing.md }}>
+                    <Ionicons name="checkmark-circle" size={26} color={palette.success} />
+                    <View style={{ flex: 1 }}>
+                      <Text variant="bodyMd" weight="700">Thanks for rating!</Text>
+                      <Text variant="caption" color={palette.inkSecondary}>You rated this property {averageReviewRating.toFixed(1)} ★</Text>
+                    </View>
+                  </View>
+                ) : (
+                  <View style={{ alignItems: 'center', gap: spacing.sm }}>
+                    <Text variant="bodyMd" weight="600">Stayed here? Rate this property</Text>
+                    <View style={{ flexDirection: 'row', gap: spacing.sm }}>
+                      {[1, 2, 3, 4, 5].map((n) => (
+                        <PressableScale key={n} haptics onPress={() => setReviewOpen(true)} scaleTo={0.85} style={{ padding: 2 }}>
+                          <Ionicons name={n <= Math.round(averageReviewRating) ? 'star' : 'star-outline'} size={32} color={n <= Math.round(averageReviewRating) ? palette.star : palette.borderStrong} />
+                        </PressableScale>
+                      ))}
+                    </View>
+                    <Text variant="caption" color={palette.inkTertiary}>Rate category-wise to share your experience</Text>
+                  </View>
+                )}
+              </Card>
+            ) : null}
+
+            {l.reviews.length > 0 ? (
+              <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: spacing.md }} style={{ marginHorizontal: -spacing.base, paddingHorizontal: spacing.base }}>
+                {l.reviews.map((r) => <ReviewCard key={r.id} review={r} />)}
+              </ScrollView>
+            ) : (
+              <Text variant="bodySm" color={palette.inkTertiary}>No reviews yet.</Text>
+            )}
           </View>
 
           {/* House rules */}
@@ -608,6 +733,9 @@ export default function ListingDetail() {
               acType: selectedOccupancy?.acLabel ?? '',
               selectedRent: selectedOccupancy ? String(selectedOccupancy.rent) : '',
               bookingType: selectedBookingMode,
+              layout: selectedOccupancy?.layout ?? '',
+              withFood: selectedOccupancy ? String(selectedOccupancy.withFood) : '',
+              propertyName: l.name,
             },
           }) : router.push(`/listing/${l.id}/request`)}
           disabled={l.verified && !selectedOccupancy}
@@ -619,6 +747,7 @@ export default function ListingDetail() {
         visible={foodSheetOpen}
         onClose={() => setFoodSheetOpen(false)}
         foodMenu={l.foodMenu}
+        weeklyMenu={l.weeklyFoodMenu}
         foodIncluded={l.foodIncluded}
         initialDay={selectedWeekDay}
       />

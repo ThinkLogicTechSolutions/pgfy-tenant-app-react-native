@@ -16,8 +16,16 @@ export function dateOptions(count: number, startFrom?: string): DateOption[] {
   return out;
 }
 
+/** Late-night cutoff: past this local hour, "today" no longer makes sense as a move-in date. */
+const LATE_NIGHT_CUTOFF_HOUR = 22;
+
+/** Today's date, unless it's past 10pm — then tomorrow. Applies to monthly/daily/hourly alike
+ * since every booking-mode date field defaults through this function. */
 export function defaultCheckIn(): string {
-  return dateOptions(1)[0].iso;
+  const today = dateOptions(1)[0].iso;
+  const isLateNight = new Date().getHours() >= LATE_NIGHT_CUTOFF_HOUR;
+  if (!isLateNight) return today;
+  return dateOptions(2, today)[1].iso;
 }
 
 export function defaultCheckOut(checkIn: string): string {

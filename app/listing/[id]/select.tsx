@@ -1,20 +1,22 @@
 /** T-S14 — Room & bed selection grid. Select an available bed → continue. */
-import { useState } from 'react';
-import { View, ScrollView } from 'react-native';
+import { useEffect, useState } from 'react';
+import { View, ScrollView, ActivityIndicator } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { palette, spacing, radius } from '@/theme';
 import { Text, ScreenHeader, Card, Chip, Button, EmptyState, Sheet, PressableScale } from '@/components/ui';
 import { BedLegend, SelectableRoom, StatusPill } from '@/components/domain';
-import { getListing, type Bed, type Room } from '@/data';
+import { getListing, type Bed, type Floor, type Room } from '@/data';
 import { inr } from '@/lib/format';
 import { listingNearLandmarkTitle } from '@/lib/listingDisplay';
 import { useProfile } from '@/store/profile';
 import { computeCompatibility, compatibilityTone, type CompatResult } from '@/lib/compatibility';
+import { propertyApi, errorMessage, type ApiBookingMode } from '@/lib/api';
+import { parseApiPropertyId, apiRoomAvailabilityToFloors } from '@/lib/listingAdapter';
 
 export default function SelectBed() {
-  const { id, checkIn, checkOut, occupancy, occupancyTitle, acType, selectedRent, bookingType } = useLocalSearchParams<{
+  const { id, checkIn, checkOut, occupancy, occupancyTitle, acType, selectedRent, bookingType, layout, withFood, propertyName } = useLocalSearchParams<{
     id: string;
     checkIn?: string;
     checkOut?: string;
@@ -23,10 +25,13 @@ export default function SelectBed() {
     acType?: string;
     selectedRent?: string;
     bookingType?: string;
+    layout?: string;
+    withFood?: string;
+    propertyName?: string;
   }>();
   const router = useRouter();
   const insets = useSafeAreaInsets();
-  const listing = getListing(String(id));
+  const mockListing = getListing(String(id));
   const profile = useProfile();
   const [floorIdx, setFloorIdx] = useState(0);
   const [sel, setSel] = useState<{ bed: Bed; room: Room } | null>(null);
@@ -39,10 +44,47 @@ export default function SelectBed() {
     setSel({ bed, room });
   };
 
-  if (!listing) return <View style={{ flex: 1, paddingTop: insets.top + 60 }}><EmptyState title="Not found" /></View>;
-  const floor = listing.floors[floorIdx];
+  const apiId = parseApiPropertyId(String(id));
   const acLabel = acType === 'AC' || acType === 'Non-AC' ? acType : null;
   const wantsAc = acLabel === 'AC';
+  const apiBookingMode: ApiBookingMode = bookingType === 'hourly' ? 'HOURLY' : bookingType === 'daily' ? 'DAILY' : 'MONTHLY';
+  const [apiFloors, setApiFloors] = useState<Floor[] | null>(null);
+  const [floorsLoading, setFloorsLoading] = useState(!!(apiId && layout));
+  const [floorsError, setFloorsError] = useState<string | null>(null);
+  const [retryTick, setRetryTick] = useState(0);
+
+  useEffect(() => {
+    if (!apiId || !layout) return;
+    let active = true;
+    setFloorsLoading(true);
+    setFloorsError(null);
+    propertyApi.getRoomBedAvailability(apiId, { bookingMode: apiBookingMode, layout, isAc: wantsAc, withFood: withFood === 'true' })
+      .then((data) => { if (active) setApiFloors(apiRoomAvailabilityToFloors(data, mockListing?.gender ?? 'Co-ed')); })
+      .catch((e) => { if (active) setFloorsError(errorMessage(e)); })
+      .finally(() => { if (active) setFloorsLoading(false); });
+    return () => { active = false; };
+  }, [apiId, layout, apiBookingMode, wantsAc, withFood, retryTick]);
+
+  const floors = apiId ? apiFloors : mockListing?.floors ?? null;
+  const headerSubtitle = apiId ? (propertyName || 'Property') : mockListing ? listingNearLandmarkTitle(mockListing) : '';
+
+  if (!floors || floors.length === 0) {
+    if (apiId && floorsLoading) {
+      return <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', paddingTop: insets.top }}><ActivityIndicator color={palette.coral} /></View>;
+    }
+    if (apiId && floorsError) {
+      return (
+        <View style={{ flex: 1, paddingTop: insets.top + 60 }}>
+          <EmptyState title="Couldn't load rooms" message={floorsError} actionLabel="Retry" onAction={() => setRetryTick((t) => t + 1)} />
+        </View>
+      );
+    }
+    if (apiId && floors) {
+      return <View style={{ flex: 1, paddingTop: insets.top + 60 }}><EmptyState title="No rooms available" message="There are no rooms configured for this option yet." /></View>;
+    }
+    return <View style={{ flex: 1, paddingTop: insets.top + 60 }}><EmptyState title="Not found" /></View>;
+  }
+  const floor = floors[Math.min(floorIdx, floors.length - 1)];
   const rooms = floor.rooms.filter((room) => {
     if (occupancy && room.sharingType !== occupancy) return false;
     if (acLabel) {
@@ -56,7 +98,7 @@ export default function SelectBed() {
 
   return (
     <View style={{ flex: 1, paddingTop: insets.top + spacing.xs }}>
-      <ScreenHeader title="Choose room / bed" subtitle={listingNearLandmarkTitle(listing)} />
+      <ScreenHeader title="Choose room / bed" subtitle={headerSubtitle} />
       <ScrollView contentContainerStyle={{ paddingHorizontal: spacing.base, paddingBottom: sel ? 120 : spacing.xl }} showsVerticalScrollIndicator={false}>
         <Card style={{ marginBottom: spacing.base }}>
           <Text variant="bodyMd" weight="700" style={{ marginBottom: spacing.sm }}>Bed availability</Text>
@@ -82,7 +124,7 @@ export default function SelectBed() {
           </Card>
         ) : null}
         <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: spacing.sm, marginBottom: spacing.base }}>
-          {listing.floors.map((f, i) => (
+          {floors.map((f, i) => (
             <Chip key={f.id} label={f.name === 'Ground' ? 'Ground floor' : `Floor ${f.name}`} active={floorIdx === i} onPress={() => setFloorIdx(i)} />
           ))}
         </ScrollView>

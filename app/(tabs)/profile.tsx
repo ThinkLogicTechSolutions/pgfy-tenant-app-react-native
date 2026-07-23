@@ -6,14 +6,16 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { palette, spacing, radius } from '@/theme';
-import { Text, Card, Avatar, Divider, ListRow, PressableScale } from '@/components/ui';
+import { Text, Card, Avatar, Divider, ListRow, PressableScale, EmptyState } from '@/components/ui';
 import { VerifiedBadge } from '@/components/domain';
-import { USER, REFERRAL, REFERRAL_PROGRAM, formatBenefit } from '@/data';
-import { session } from '@/lib/session';
+import { EmptyAuth } from '@/components/illustrations';
+import { REFERRAL, REFERRAL_PROGRAM, formatBenefit } from '@/data';
+import { useAuth } from '@/context/AuthContext';
+import { alert } from '@/lib/alertDialog';
+import { LOGIN_ROUTE } from '@/lib/guestGuard';
 import { haptic } from '@/lib/haptics';
+import { isBankDetailsComplete, bankDetailsSummary } from '@/lib/bankDetails';
 import { useSaved } from '@/store/saved';
-import { useKyc } from '@/store/kyc';
-import { useBank } from '@/store/bank';
 import { useRewards } from '@/store/rewards';
 
 const PRIVACY_URL = 'https://pgfy.in/privacyPolicy.html';
@@ -27,12 +29,45 @@ export default function Profile() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const saved = useSaved();
-  const kyc = useKyc();
-  const bank = useBank();
   const { lockedCount, revealed } = useRewards();
+  const auth = useAuth();
+  const { user, isGuest } = auth;
+  const bankComplete = isBankDetailsComplete(user?.bank_details);
+  const bankSummary = bankDetailsSummary(user?.bank_details);
+  const guardianName = user?.personal_details?.guardian_name;
+  const guardianRelation = user?.personal_details?.guardian_relation;
+  const occupation = user?.occupation_details?.occupation;
+  const kycVerified = user?.kyc_status === 'VERIFIED';
+  const hasOccupationDetails = !!occupation;
+  const profileVerified = kycVerified && hasOccupationDetails;
   const [push, setPush] = useState(true);
 
-  const logout = async () => { haptic.warning(); await session.logout(); router.replace('/landing'); };
+  /** "Complete your KYC" — KYC first, then occupation details, whichever is missing. */
+  const completeVerification = () => {
+    if (!kycVerified) {
+      router.push('/(auth)/kyc-intro');
+      return;
+    }
+    if (!hasOccupationDetails) {
+      router.push('/occupation-edit');
+    }
+  };
+
+  const logout = () => {
+    alert('Log out?', 'You will need to sign in again to manage your bookings.', [
+      { text: 'Cancel', style: 'cancel' },
+      {
+        text: 'Log out',
+        style: 'destructive',
+        onPress: async () => {
+          haptic.warning();
+          // signOut invalidates the token server-side and clears local session state.
+          await auth.signOut();
+          router.replace('/(auth)/login');
+        },
+      },
+    ]);
+  };
 
   const shareReferral = async () => {
     haptic.light();
@@ -56,6 +91,23 @@ export default function Profile() {
     );
   };
 
+  if (isGuest) {
+    return (
+      <ScrollView contentContainerStyle={{ flexGrow: 1, paddingTop: insets.top + spacing.sm, paddingHorizontal: spacing.base, paddingBottom: insets.bottom + spacing['3xl'] }} showsVerticalScrollIndicator={false}>
+        <Text variant="h1" style={{ marginBottom: spacing.base }}>Profile</Text>
+        <View style={{ flex: 1, justifyContent: 'center' }}>
+          <EmptyState
+            illustration={<EmptyAuth />}
+            title="You haven't logged in"
+            message="Login to continue and manage your profile."
+            actionLabel="Log in"
+            onAction={() => router.push(LOGIN_ROUTE)}
+          />
+        </View>
+      </ScrollView>
+    );
+  }
+
   return (
     <ScrollView contentContainerStyle={{ paddingTop: insets.top + spacing.sm, paddingHorizontal: spacing.base, paddingBottom: insets.bottom + spacing['3xl'] }} showsVerticalScrollIndicator={false}>
       <Text variant="h1" style={{ marginBottom: spacing.base }}>Profile</Text>
@@ -63,12 +115,12 @@ export default function Profile() {
       {/* Identity */}
       <Card onPress={() => router.push('/profile-edit')} style={{ marginBottom: spacing.xl }}>
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: spacing.md }}>
-          <Avatar name={USER.name} uri={USER.avatar} size={64} ring />
+          <Avatar name={user?.name ?? ''} uri={user?.avatar?.thumbnail ?? user?.avatar?.link} size={64} ring />
           <View style={{ flex: 1 }}>
-            <Text variant="h3">{USER.name}</Text>
-            <Text variant="bodySm" color={palette.inkSecondary}>{USER.phone}</Text>
+            <Text variant="h3">{user?.name}</Text>
+            <Text variant="bodySm" color={palette.inkSecondary}>{user?.phone}</Text>
             <View style={{ marginTop: 6, flexDirection: 'row' }}>
-              <VerifiedBadge verified={kyc.verified} small />
+              <VerifiedBadge verified={profileVerified} small />
             </View>
           </View>
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 3 }}>
@@ -78,9 +130,9 @@ export default function Profile() {
         </View>
       </Card>
 
-      {/* KYC banner when not verified */}
-      {!kyc.verified ? (
-        <PressableScale onPress={() => router.push('/(auth)/kyc-intro')} scaleTo={0.99} style={{ flexDirection: 'row', alignItems: 'center', gap: spacing.md, backgroundColor: palette.coralTint, borderRadius: radius.lg, padding: spacing.base, marginBottom: spacing.xl }}>
+      {/* KYC + occupation banner when not fully verified */}
+      {!profileVerified ? (
+        <PressableScale onPress={completeVerification} scaleTo={0.99} style={{ flexDirection: 'row', alignItems: 'center', gap: spacing.md, backgroundColor: palette.coralTint, borderRadius: radius.lg, padding: spacing.base, marginBottom: spacing.xl }}>
           <View style={{ width: 44, height: 44, borderRadius: 22, backgroundColor: palette.coral, alignItems: 'center', justifyContent: 'center' }}>
             <Ionicons name="shield-half-outline" size={22} color={palette.white} />
           </View>
@@ -119,28 +171,42 @@ export default function Profile() {
       <Section title="ACCOUNT">
         <ListRow
           icon="shield-checkmark-outline"
-          iconColor={kyc.verified ? palette.success : palette.warning}
-          iconBg={kyc.verified ? palette.successTint : palette.warningTint}
+          iconColor={kycVerified ? palette.success : palette.warning}
+          iconBg={kycVerified ? palette.successTint : palette.warningTint}
           title="KYC status"
-          subtitle={kyc.verified ? 'SnapKYC verified' : 'Verification required'}
-          right={<Text variant="bodySm" weight="600" color={kyc.verified ? palette.success : palette.coralDark}>{kyc.verified ? 'Verified' : 'Complete now'}</Text>}
-          chevron={!kyc.verified}
-          onPress={kyc.verified ? undefined : () => router.push('/(auth)/kyc-intro')}
+          subtitle={kycVerified ? 'SnapKYC verified' : 'Verification required'}
+          right={<Text variant="bodySm" weight="600" color={kycVerified ? palette.success : palette.coralDark}>{kycVerified ? 'Verified' : 'Complete now'}</Text>}
+          chevron={!kycVerified}
+          onPress={kycVerified ? undefined : () => router.push('/(auth)/kyc-intro')}
         />
-        <Divider />
-        <ListRow icon="heart-outline" iconColor={palette.coral} iconBg={palette.coralTint} title="Saved properties" subtitle={`${saved.count} shortlisted`} onPress={() => router.push('/saved')} />
         <Divider />
         <ListRow
           icon="card-outline"
           iconColor={palette.navy}
           iconBg={palette.navyTint}
           title="Bank details"
-          subtitle={bank.isComplete ? (bank.summary ?? 'Saved for refund') : 'Required for deposit refund'}
-          right={bank.isComplete ? <Ionicons name="checkmark-circle" size={20} color={palette.success} /> : undefined}
+          subtitle={bankComplete ? (bankSummary ?? 'Saved for refund') : 'Required for deposit refund'}
+          right={bankComplete ? <Ionicons name="checkmark-circle" size={20} color={palette.success} /> : undefined}
           onPress={() => router.push('/bank-details')}
         />
         <Divider />
-        <ListRow icon="people-outline" title="Guardian & emergency" subtitle={`${USER.guardianName} (${USER.guardianRelation})`} onPress={() => router.push('/profile-edit')} />
+        <ListRow
+          icon="briefcase-outline"
+          iconColor={palette.navy}
+          iconBg={palette.navyTint}
+          title="Occupation details"
+          subtitle={occupation === 'STUDENT' ? 'Student' : occupation === 'WORKING_PROFESSIONAL' ? 'Working professional' : 'Add occupation details'}
+          onPress={() => router.push('/occupation-edit')}
+        />
+        <Divider />
+        <ListRow
+          icon="people-outline"
+          title="Guardian & emergency"
+          subtitle={guardianName ? `${guardianName}${guardianRelation ? ` (${guardianRelation})` : ''}` : 'Add guardian details'}
+          onPress={() => router.push('/profile-edit')}
+        />
+        <Divider />
+        <ListRow icon="heart-outline" iconColor={palette.coral} iconBg={palette.coralTint} title="Saved properties" subtitle={`${saved.count} shortlisted`} onPress={() => router.push('/saved')} />
       </Section>
 
       <Section title="REWARDS">
@@ -164,17 +230,6 @@ export default function Profile() {
             ) : undefined
           }
           onPress={() => router.push('/rewards')}
-        />
-      </Section>
-
-      <Section title="MORE">
-        <ListRow
-          icon="heart-outline"
-          iconColor={palette.coral}
-          iconBg={palette.coralTint}
-          title="Liked PGs"
-          subtitle={`${saved.count} properties you love`}
-          onPress={() => router.push('/saved')}
         />
         <Divider />
         <ListRow

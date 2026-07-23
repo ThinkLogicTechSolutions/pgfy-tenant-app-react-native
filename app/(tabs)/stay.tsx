@@ -7,12 +7,15 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { palette, spacing, radius } from '@/theme';
-import { Text, Card, Button, IconButton, PressableScale, Sheet } from '@/components/ui';
+import { Text, Card, Button, IconButton, PressableScale, Sheet, EmptyState } from '@/components/ui';
 import { StatusPill, WeeklyFoodMenuSheet, TicketRow } from '@/components/domain';
+import { EmptyAuth } from '@/components/illustrations';
 import { ACTIVE_BOOKINGS, LEASE, TICKETS, getListing } from '@/data';
 import type { CheckoutIntent } from '@/lib/billing';
 import { inr, formatDate, daysFromNow } from '@/lib/format';
 import { useProfile } from '@/store/profile';
+import { useAuth } from '@/context/AuthContext';
+import { LOGIN_ROUTE } from '@/lib/guestGuard';
 
 const QUICK = [
   { icon: 'receipt-outline', label: 'Invoices', route: '/billing', tint: palette.success },
@@ -26,6 +29,7 @@ const QUICK = [
 export default function Stay() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
+  const { isGuest } = useAuth();
   const [selectedRef, setSelectedRef] = useState(ACTIVE_BOOKINGS[0].ref);
   const [switcherOpen, setSwitcherOpen] = useState(false);
   const b = ACTIVE_BOOKINGS.find((stay) => stay.ref === selectedRef) ?? ACTIVE_BOOKINGS[0];
@@ -37,6 +41,20 @@ export default function Stay() {
   const { width } = useWindowDimensions();
   // Floor the tile width so 3 columns + 2 gaps never overflow & wrap unevenly.
   const tileW = Math.floor((width - spacing.base * 2 - spacing.md * 2) / 3);
+
+  if (isGuest) {
+    return (
+      <View style={{ flex: 1, justifyContent: 'center', paddingTop: insets.top, paddingHorizontal: spacing.base }}>
+        <EmptyState
+          illustration={<EmptyAuth />}
+          title="You haven't logged in"
+          message="Login to continue and view your stay."
+          actionLabel="Log in"
+          onAction={() => router.push(LOGIN_ROUTE)}
+        />
+      </View>
+    );
+  }
 
   const payPendingInvoice = () => {
     if (!b.pendingInvoice) return;

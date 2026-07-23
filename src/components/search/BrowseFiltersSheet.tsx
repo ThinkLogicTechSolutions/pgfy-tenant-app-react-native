@@ -67,13 +67,29 @@ export const DEFAULT_BROWSE_FILTERS: BrowseFilters = {
   diet: 'Any',
 };
 
-export function browseFiltersFromParams(params: {
+export interface BrowseFiltersParams {
   bookingType?: string;
   checkIn?: string;
   checkOut?: string;
   startTime?: string;
   hours?: string;
-}): BrowseFilters {
+  gender?: string;
+  food?: string;
+  acType?: string;
+  amenities?: string;
+  minRating?: string;
+  priceMin?: string;
+  priceMax?: string;
+  distanceMax?: string;
+  propertyTypes?: string;
+  roommateType?: string;
+  smoking?: string;
+  alcohol?: string;
+  sleep?: string;
+  diet?: string;
+}
+
+export function browseFiltersFromParams(params: BrowseFiltersParams): BrowseFilters {
   const checkIn = params.checkIn || defaultCheckIn();
   const bookingType = (['hourly', 'daily', 'monthly'].includes(params.bookingType ?? '')
     ? params.bookingType
@@ -82,14 +98,52 @@ export function browseFiltersFromParams(params: {
   return {
     ...DEFAULT_BROWSE_FILTERS,
     bookingType,
-    priceMin: bounds.min,
-    priceMax: bounds.max,
+    gender: params.gender || DEFAULT_BROWSE_FILTERS.gender,
+    food: params.food ? params.food.split(',').filter(Boolean) : DEFAULT_BROWSE_FILTERS.food,
+    acType: params.acType || DEFAULT_BROWSE_FILTERS.acType,
+    amenities: params.amenities ? params.amenities.split(',').filter(Boolean) : DEFAULT_BROWSE_FILTERS.amenities,
+    minRating: params.minRating ? Number(params.minRating) : DEFAULT_BROWSE_FILTERS.minRating,
+    priceMin: params.priceMin ? Number(params.priceMin) : bounds.min,
+    priceMax: params.priceMax ? Number(params.priceMax) : bounds.max,
+    distanceMax: params.distanceMax ? Number(params.distanceMax) : DEFAULT_BROWSE_FILTERS.distanceMax,
+    propertyTypes: params.propertyTypes ? params.propertyTypes.split(',').filter(Boolean) : DEFAULT_BROWSE_FILTERS.propertyTypes,
+    roommateType: params.roommateType || DEFAULT_BROWSE_FILTERS.roommateType,
+    smoking: params.smoking || DEFAULT_BROWSE_FILTERS.smoking,
+    alcohol: params.alcohol || DEFAULT_BROWSE_FILTERS.alcohol,
+    sleep: params.sleep || DEFAULT_BROWSE_FILTERS.sleep,
+    diet: params.diet || DEFAULT_BROWSE_FILTERS.diet,
     stay: {
       checkIn,
       checkOut: params.checkOut || defaultCheckOut(checkIn),
       startTime: params.startTime || '10:00',
       hours: params.hours ? Number(params.hours) : 4,
     },
+  };
+}
+
+/** Inverse of `browseFiltersFromParams` — serializes a filter set to route params so any
+ * screen can hand a fully-picked filter set to `/browse` without re-deriving it there. */
+export function browseFiltersToParams(filters: BrowseFilters): Record<string, string> {
+  return {
+    bookingType: filters.bookingType,
+    checkIn: filters.stay.checkIn,
+    checkOut: filters.stay.checkOut,
+    startTime: filters.stay.startTime,
+    hours: String(filters.stay.hours),
+    gender: filters.gender,
+    food: filters.food.join(','),
+    acType: filters.acType,
+    amenities: filters.amenities.join(','),
+    minRating: filters.minRating != null ? String(filters.minRating) : '',
+    priceMin: String(filters.priceMin),
+    priceMax: String(filters.priceMax),
+    distanceMax: String(filters.distanceMax),
+    propertyTypes: filters.propertyTypes.join(','),
+    roommateType: filters.roommateType,
+    smoking: filters.smoking,
+    alcohol: filters.alcohol,
+    sleep: filters.sleep,
+    diet: filters.diet,
   };
 }
 

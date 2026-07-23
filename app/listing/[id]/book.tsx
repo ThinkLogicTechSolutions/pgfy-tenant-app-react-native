@@ -14,6 +14,11 @@ import { inr } from '@/lib/format';
 import { defaultCheckIn, defaultCheckOut } from '@/lib/dates';
 import { haptic } from '@/lib/haptics';
 import { useKyc } from '@/store/kyc';
+import { useAuth } from '@/context/AuthContext';
+import { requireLogin } from '@/lib/guestGuard';
+import { propertyApi } from '@/lib/api';
+import { parseApiPropertyId, propertyDetailsToListing } from '@/lib/listingAdapter';
+import type { Listing } from '@/data/types';
 
 export default function BookConfig() {
   const { id, room, bed, rent, sharing, appliedCode, checkIn, checkOut, bookingType } = useLocalSearchParams<{
@@ -29,7 +34,16 @@ export default function BookConfig() {
   }>();
   const router = useRouter();
   const insets = useSafeAreaInsets();
-  const listing = getListing(String(id));
+  const apiId = parseApiPropertyId(String(id));
+  const mockListing = apiId ? null : getListing(String(id));
+  const [apiListing, setApiListing] = useState<Listing | null>(null);
+  useEffect(() => {
+    if (!apiId) return;
+    let active = true;
+    propertyApi.getPropertyDetails(apiId).then((data) => { if (active) setApiListing(propertyDetailsToListing(data)); }).catch(() => {});
+    return () => { active = false; };
+  }, [apiId]);
+  const listing = apiId ? apiListing : mockListing;
   const monthlyRent = Number(rent ?? 13000);
   const dep = listing?.securityDeposit ?? 26000;
   const [promo, setPromo] = useState('');
@@ -45,6 +59,7 @@ export default function BookConfig() {
   });
 
   const kyc = useKyc();
+  const { isGuest } = useAuth();
   const billingMode: BookingMode = bookingType === 'hourly' ? 'hourly' : bookingType === 'daily' ? 'daily' : 'monthly';
   const rentLabel = billingMode === 'hourly' ? 'Hourly rate' : billingMode === 'daily' ? 'Daily rate' : 'First month rent';
   const depositAmount = billingMode === 'monthly' ? dep : 0;
@@ -104,6 +119,7 @@ export default function BookConfig() {
   };
 
   const proceed = () => {
+    if (isGuest) { requireLogin(router, 'Please login to continue with your booking.'); return; }
     if (!kycVerified) { setKycOpen(true); return; }
     router.push({
       pathname: '/checkout',

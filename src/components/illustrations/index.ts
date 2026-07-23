@@ -10,6 +10,8 @@ export {
   EmptyNotifications,
   EmptyTenants,
   EmptyInvoices,
+  EmptyLocation,
+  EmptyAuth,
   KycShield,
   SuccessBurst,
 } from './EmptyStates';

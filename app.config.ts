@@ -13,14 +13,15 @@ loadEnv({ path: path.resolve(__dirname, '.env') });
 
 // Per-environment defaults used when the matching `.env.<APP_ENV>` value is absent.
 const DEFAULTS: Record<AppEnv, { name: string; apiUrl: string }> = {
-  development: { name: 'PGfy (Dev)', apiUrl: 'http://10.0.2.2:4000/api' },
-  staging: { name: 'PGfy (Staging)', apiUrl: 'https://staging-api.pgfy.app/api' },
-  production: { name: 'PGfy', apiUrl: 'https://api.pgfy.app/api' },
+  development: { name: 'PGfy (Dev)', apiUrl: 'https://api-dev.pgfy.in' },
+  staging: { name: 'PGfy (Staging)', apiUrl: 'https://staging-api.pgfy.app' },
+  production: { name: 'PGfy', apiUrl: 'https://api.pgfy.app' },
 };
 
 export default ({ config }: ConfigContext): ExpoConfig => {
   const defaults = DEFAULTS[APP_ENV];
   const apiUrl = process.env.API_URL || defaults.apiUrl;
+  const googleMapsApiKey = process.env.GOOGLE_MAPS_API_KEY || '';
   const projectId = config.extra?.eas?.projectId as string | undefined;
 
   return {
@@ -36,6 +37,7 @@ export default ({ config }: ConfigContext): ExpoConfig => {
       ...config.extra,
       appEnv: APP_ENV,
       apiUrl,
+      googleMapsApiKey,
     },
   };
 };
