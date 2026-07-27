@@ -16,10 +16,12 @@ import { propertyApi, errorMessage, type ApiBookingMode } from '@/lib/api';
 import { parseApiPropertyId, apiRoomAvailabilityToFloors } from '@/lib/listingAdapter';
 
 export default function SelectBed() {
-  const { id, checkIn, checkOut, occupancy, occupancyTitle, acType, selectedRent, bookingType, layout, withFood, propertyName } = useLocalSearchParams<{
+  const { id, checkIn, checkOut, startTime, hours, occupancy, occupancyTitle, acType, selectedRent, bookingType, layout, withFood, propertyName } = useLocalSearchParams<{
     id: string;
     checkIn?: string;
     checkOut?: string;
+    startTime?: string;
+    hours?: string;
     occupancy?: string;
     occupancyTitle?: string;
     acType?: string;
@@ -194,9 +196,21 @@ export default function SelectBed() {
                   sharing: sel.room.sharingType,
                   checkIn: checkIn ?? '',
                   checkOut: checkOut ?? '',
+                  startTime: startTime ?? '',
+                  hours: hours ?? '',
                   occupancyTitle: occupancyTitle ?? '',
                   acType: acLabel ?? '',
                   bookingType: bookingType ?? 'monthly',
+                  // Real-property fields — only meaningful (and only present) for API-backed rooms.
+                  ...(apiId ? {
+                    propertyId: String(apiId),
+                    roomId: sel.room.id,
+                    bedId: sel.bed.id,
+                    floorId: floor.id,
+                    layout: layout ?? '',
+                    isAc: String(wantsAc),
+                    withFood: withFood ?? 'false',
+                  } : {}),
                 },
               })}
             />

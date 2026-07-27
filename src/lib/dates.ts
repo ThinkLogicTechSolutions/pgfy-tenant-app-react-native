@@ -1,10 +1,11 @@
-import { formatDate, NOW } from '@/lib/format';
+import { formatDate } from '@/lib/format';
 
 export type DateOption = { iso: string; label: string };
 
-/** Upcoming calendar days from a start date (default today per mock NOW). */
+/** Upcoming calendar days from a start date (default: the real device date — booking dates
+ * are sent to a real API, so they must track actual today, not the app's mock `NOW`). */
 export function dateOptions(count: number, startFrom?: string): DateOption[] {
-  const base = startFrom ? new Date(`${startFrom}T00:00:00`) : new Date(NOW);
+  const base = startFrom ? new Date(`${startFrom}T00:00:00`) : new Date();
   base.setHours(0, 0, 0, 0);
   const out: DateOption[] = [];
   for (let i = 0; i < count; i++) {

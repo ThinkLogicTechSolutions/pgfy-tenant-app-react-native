@@ -6,7 +6,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { palette, spacing, radius, shadows } from '@/theme';
-import { Text, Card, IconButton, Divider, Button, EmptyState, Sheet, Input, PressableScale, Skeleton } from '@/components/ui';
+import { Text, Card, IconButton, Divider, Button, EmptyState, Sheet, Input, PressableScale, Skeleton, SegmentedControl } from '@/components/ui';
 import { StayBookingFields, type StayBookingValues } from '@/components/search';
 import { PgfyScore, StatusPill, RatingPill, ReviewCard, WeeklyFoodMenuSheet, buildWeeklyMenu, buildWeeklyMenuFromApi, PropertyImageCarousel, PromotedBadge, type WeekDay } from '@/components/domain';
 import { listingCarouselImages, listingPhotoCount, PROPERTY_IMAGE_ASPECT } from '@/lib/media';
@@ -20,6 +20,7 @@ import { haptic } from '@/lib/haptics';
 import type { BookingMode, Listing } from '@/data/types';
 import { propertyApi, favoritesApi, errorMessage, type ApiBookingMode } from '@/lib/api';
 import { propertyDetailsToListing, parseApiPropertyId } from '@/lib/listingAdapter';
+import { cachePropertyDetails } from '@/store/propertyDetailsCache';
 import { alert } from '@/lib/alertDialog';
 
 function formatTime12(t: string) {
@@ -68,6 +69,13 @@ function PropertyDetailsSkeleton({ insetTop }: { insetTop: number }) {
 function capitalizeFirst(s: string): string {
   return s.length ? s.charAt(0).toUpperCase() + s.slice(1) : s;
 }
+
+/** Same monthly/daily/hourly switch as Home's stay-type picker. */
+const BOOKING_MODE_SEGMENTS: { key: BookingMode; label: string }[] = [
+  { key: 'monthly', label: 'Monthly' },
+  { key: 'daily', label: 'Daily' },
+  { key: 'hourly', label: 'Hourly' },
+];
 
 const MEAL_ICON: Record<string, keyof typeof Ionicons.glyphMap> = {
   'Morning tea': 'cafe-outline',
@@ -153,9 +161,11 @@ export default function ListingDetail() {
   const [foodSheetOpen, setFoodSheetOpen] = useState(false);
   const [selectedWeekDay, setSelectedWeekDay] = useState<WeekDay>('Mon');
   const [expandedOccupancy, setExpandedOccupancy] = useState<string | null>(null);
-  const selectedBookingMode: BookingMode = ['hourly', 'daily', 'monthly'].includes(routeBookingType ?? '')
-    ? (routeBookingType as BookingMode)
-    : 'monthly';
+  // Editable here (not just inherited from the route) so the tenant can switch monthly/daily/
+  // hourly on this page the same way Home's stay-type + date/time picker works.
+  const [selectedBookingMode, setSelectedBookingMode] = useState<BookingMode>(
+    ['hourly', 'daily', 'monthly'].includes(routeBookingType ?? '') ? (routeBookingType as BookingMode) : 'monthly',
+  );
   const apiBookingMode: ApiBookingMode = selectedBookingMode === 'hourly' ? 'HOURLY' : selectedBookingMode === 'daily' ? 'DAILY' : 'MONTHLY';
 
   useEffect(() => {
@@ -169,6 +179,8 @@ export default function ListingDetail() {
         const mapped = propertyDetailsToListing(data);
         setApiListing(mapped);
         setFavorite({ isFavorite: mapped.isFavorite ?? false, favoriteId: mapped.favoriteId ?? null });
+        // Review-booking reads this instead of re-fetching the same property.
+        cachePropertyDetails(apiId, mapped);
       })
       .catch((e) => { if (active) setDetailsError(errorMessage(e)); })
       .finally(() => { if (active) setDetailsLoading(false); });
@@ -221,6 +233,15 @@ export default function ListingDetail() {
       hours: routeHours ? Number(routeHours) : 4,
     };
   });
+
+  /** Switching mode changes the pricing tiers entirely, so any in-progress occupancy pick
+   * no longer applies. */
+  const changeBookingMode = (mode: BookingMode) => {
+    setSelectedBookingMode(mode);
+    setSelectedOccupancy(null);
+    setExpandedOccupancy(null);
+  };
+
   const [reviewRatings, setReviewRatings] = useState<Record<ReviewCategoryKey, number>>({
     cleanliness: 0,
     food: 0,
@@ -264,6 +285,11 @@ export default function ListingDetail() {
   const todayMenu = weeklyMenu.find((menu) => menu.day === selectedWeekDay) ?? weeklyMenu[0];
 
   const promoted = !apiId && isPromotedListing(l.id, LISTINGS);
+  const availableModeSegments = BOOKING_MODE_SEGMENTS.filter((s) => (
+    s.key === 'monthly' ? l.bookingConfig.monthlyEnabled
+      : s.key === 'daily' ? l.bookingConfig.dailyEnabled
+        : l.bookingConfig.hourlyEnabled
+  ));
 
   const occupancyPriceSuffix = selectedBookingMode === 'hourly' ? '/hr' : selectedBookingMode === 'daily' ? '/day' : '/mo';
   type OccupancyOption = { key: string; title: string; hasAc: boolean; acLabel: 'AC' | 'Non-AC'; withFood: boolean; rent: number };
@@ -375,11 +401,19 @@ export default function ListingDetail() {
           {/* Booking details */}
           <Card>
             <Text variant="h3" style={{ marginBottom: spacing.md }}>Your booking details</Text>
+            {availableModeSegments.length > 1 ? (
+              <SegmentedControl
+                segments={availableModeSegments}
+                value={selectedBookingMode}
+                onChange={(key) => changeBookingMode(key as BookingMode)}
+                style={{ marginBottom: spacing.md }}
+              />
+            ) : null}
             <StayBookingFields
               mode={selectedBookingMode}
               values={stayValues}
               onChange={setStayValues}
-              showModeLabel
+              showModeLabel={availableModeSegments.length <= 1}
             />
             {selectedBookingMode === 'hourly' && l.bookingConfig.hourly ? (
               <Text variant="caption" color={palette.inkTertiary} style={{ marginTop: spacing.md }}>
@@ -534,14 +568,18 @@ export default function ListingDetail() {
                 );
               })}
             </View>
-            <Divider style={{ marginTop: spacing.md, marginBottom: spacing.md }} />
-            <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
-              <View style={{ flex: 1, paddingRight: spacing.md }}>
-                <Text variant="bodyMd" weight="600">Safety deposit</Text>
-                <Text variant="caption" color={palette.inkTertiary}>One-time refundable · same for all room types</Text>
-              </View>
-              <Text variant="bodyMd" weight="700" mono color={palette.navy}>{inr(l.securityDeposit)}</Text>
-            </View>
+            {selectedBookingMode === 'monthly' ? (
+              <>
+                <Divider style={{ marginTop: spacing.md, marginBottom: spacing.md }} />
+                <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+                  <View style={{ flex: 1, paddingRight: spacing.md }}>
+                    <Text variant="bodyMd" weight="600">Safety deposit</Text>
+                    <Text variant="caption" color={palette.inkTertiary}>One-time refundable · same for all room types</Text>
+                  </View>
+                  <Text variant="bodyMd" weight="700" mono color={palette.navy}>{inr(l.securityDeposit)}</Text>
+                </View>
+              </>
+            ) : null}
           </Card>
 
           {/* Amenities */}

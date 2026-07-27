@@ -9,7 +9,41 @@
  */
 import type { BookingMode } from '@/data/types';
 import { computePlatformFee } from '@/data/platform';
-import { resolveCoupon } from '@/data/coupons';
+import type { ApiCoupon, MasterConfig } from '@/lib/api';
+
+/** Real platform commission from master data (auth_api.md), not the mock fee table. */
+export function platformFeeFromMasterConfig(base: number, config: MasterConfig | null | undefined): number {
+  if (!config) return 0;
+  if (config.platform_commission_type === 'FLAT') return Math.max(0, Math.round(config.platform_commission_value));
+  return Math.max(0, Math.round((base * config.platform_commission_value) / 100));
+}
+
+/** Whether a real coupon (billing_api.md) is currently redeemable — active, within its
+ * validity window, and (if capped) not yet exhausted. Per-user caps aren't checkable
+ * client-side, so those are left for the server to enforce on apply. */
+export function isCouponUsable(coupon: ApiCoupon): boolean {
+  if (coupon.status !== 'ACTIVE') return false;
+  const now = Date.now();
+  if (coupon.valid_from && now < new Date(coupon.valid_from).getTime()) return false;
+  if (coupon.expiry_date && now > new Date(coupon.expiry_date).getTime()) return false;
+  if (coupon.max_uses != null && coupon.used_count >= coupon.max_uses) return false;
+  return true;
+}
+
+/** The real ₹ discount a coupon works out to against a given base amount — percentage
+ * resolved to currency and capped by `max_discount` when set. */
+export function couponDiscountAmount(coupon: ApiCoupon, base: number): number {
+  const raw = coupon.discount_type === 'PERCENTAGE' ? (base * coupon.discount_amount) / 100 : coupon.discount_amount;
+  const capped = coupon.max_discount != null ? Math.min(raw, coupon.max_discount) : raw;
+  return Math.max(0, Math.round(capped));
+}
+
+/** A coupon already resolved to a specific ₹ amount for this checkout — computed by the
+ * caller (who has the real coupon list) via `couponDiscountAmount`. */
+export interface AppliedCoupon {
+  code: string;
+  amount: number;
+}
 
 export type GstRate = 0 | 5 | 12 | 18;
 export type GstMode = 'auto' | 'manual';
@@ -46,6 +80,31 @@ export type CheckoutKind =
   | 'extend'
   | 'invoice';
 
+/** Present only when this checkout should create a real booking via the booking API
+ * (booking_api.md) on payment — everything `createBooking` needs besides the payment
+ * method/frequency (chosen at checkout) and coupon code (already on the intent below). */
+export interface CheckoutBookingPayload {
+  propertyId: number;
+  roomId: number;
+  bedId: number;
+  floorId?: number;
+  bookingMode: 'MONTHLY' | 'DAILY' | 'HOURLY';
+  isAc: boolean;
+  hasFood: boolean;
+  roomLayout: string;
+  checkInDate: string;
+  /** Daily bookings only. */
+  checkOutDate?: string;
+  /** Hourly bookings only. */
+  durationHours?: number;
+}
+
+/** Present only when this checkout should pay a real rent invoice via `POST /tenant/pay-rent`
+ * (billing_api.md) on payment. */
+export interface CheckoutInvoicePayload {
+  invoiceId: number;
+}
+
 /** Everything the unified checkout needs to render & price a single transaction. */
 export interface CheckoutIntent {
   kind: CheckoutKind;
@@ -65,10 +124,17 @@ export interface CheckoutIntent {
   allowAutopay: boolean;
   listingId?: string;
   bookingRef?: string;
+  /** Set for a genuine new-booking checkout — triggers `bookingApi.createBooking` on payment. */
+  booking?: CheckoutBookingPayload;
+  /** Set for a genuine invoice-payment checkout — triggers `billingApi.payRent` on payment. */
+  invoicePayment?: CheckoutInvoicePayload;
   /** Optional owner GST override carried from the property's price config. */
   gstConfig?: GstConfig;
   /** Charge the platform fee (defaults: true for new bookings, false otherwise). */
   applyPlatformFee?: boolean;
+  /** Real platform fee from master data (see `platformFeeFromMasterConfig`) — takes priority
+   * over the mock fee table whenever the caller has it. */
+  platformFeeOverride?: number;
   /** Add GST on the base (defaults: true unless the amount already includes it, e.g. an invoice). */
   applyGst?: boolean;
 }
@@ -95,25 +161,25 @@ export interface CheckoutQuote {
   gstRate: GstRate;
   gst: number;
   couponCode?: string;
-  couponTitle?: string;
   couponDiscount: number;
   total: number;
   lines: CheckoutLine[];
 }
 
-/** Price a checkout intent, optionally applying a coupon code. */
-export function computeCheckout(intent: CheckoutIntent, couponCode?: string): CheckoutQuote {
+/** Price a checkout intent, optionally applying an already-resolved coupon (see
+ * `AppliedCoupon` — the caller looks the code up against the real coupon list and computes
+ * its ₹ amount via `couponDiscountAmount` before calling this). */
+export function computeCheckout(intent: CheckoutIntent, coupon?: AppliedCoupon): CheckoutQuote {
   const base = Math.max(0, Math.round(intent.baseAmount));
   const deposit = Math.max(0, Math.round(intent.deposit ?? 0));
   const wantsFee = intent.applyPlatformFee ?? defaultPlatformFee(intent.kind);
   const wantsGst = intent.applyGst ?? defaultGst(intent.kind);
-  const platformFee = wantsFee ? computePlatformFee(base) : 0;
+  const platformFee = wantsFee ? intent.platformFeeOverride ?? computePlatformFee(base) : 0;
   const rate = wantsGst ? gstRate(intent.billingMode, intent.unitRate, intent.gstConfig) : 0;
   const gst = Math.round((base * rate) / 100);
 
-  const coupon = couponCode ? resolveCoupon(couponCode) : undefined;
   const preDiscount = base + deposit + platformFee + gst;
-  const couponDiscount = coupon ? Math.min(coupon.discount, preDiscount) : 0;
+  const couponDiscount = coupon ? Math.max(0, Math.min(Math.round(coupon.amount), preDiscount)) : 0;
   const total = Math.max(0, preDiscount - couponDiscount);
 
   const lines: CheckoutLine[] = [
@@ -133,7 +199,6 @@ export function computeCheckout(intent: CheckoutIntent, couponCode?: string): Ch
     gstRate: rate,
     gst,
     couponCode: coupon?.code,
-    couponTitle: coupon?.title,
     couponDiscount,
     total,
     lines,

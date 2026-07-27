@@ -8,7 +8,6 @@ import { Ionicons } from '@expo/vector-icons';
 import { palette, radius, spacing, fontFamily } from '@/theme';
 import { Text, Button, IconButton, PressableScale } from '@/components/ui';
 import { LOCATION_SEARCH_PLACEHOLDER } from '@/data/locationSearch';
-import { TOP_CITIES } from '@/data';
 import { resolveNearMeLocation } from '@/lib/nearMe';
 import { autocompletePlaces, geocodePlaceId, newPlacesSessionToken, type PlaceAutocompletePrediction } from '@/lib/googleMaps';
 import { matchOperationalLocation } from '@/lib/operationalLocation';
@@ -32,6 +31,16 @@ export default function LocationScreen() {
   const [suggestions, setSuggestions] = useState<PlaceAutocompletePrediction[]>([]);
 
   const showSuggestions = query.trim().length > 0 && suggestions.length > 0;
+
+  const topCities = useMemo(
+    () =>
+      cities
+        .filter((c) => c.status === 'ACTIVE')
+        .sort((a, b) => a.priority - b.priority)
+        .slice(0, 8),
+    [cities],
+  );
+  const stateName = (stateId: number) => states.find((s) => s.id === stateId)?.name;
 
   const loadHistory = useCallback(async () => {
     setHistory(await getSearchHistory());
@@ -211,19 +220,19 @@ export default function LocationScreen() {
           </View>
         ) : null}
 
-        {!showSuggestions ? (
+        {!showSuggestions && topCities.length > 0 ? (
           <View>
             <Text variant="overline" color={palette.inkTertiary} style={{ marginBottom: spacing.sm }}>
               TOP CITIES
             </Text>
-            {TOP_CITIES.map((city, i) => (
+            {topCities.map((city, i) => (
               <SuggestionRow
-                key={city.name}
+                key={city.id}
                 icon="business-outline"
                 label={city.name}
-                subtitle={city.state}
-                onPress={() => selectHistoryOrCity(city.name)}
-                divider={i < TOP_CITIES.length - 1}
+                subtitle={stateName(city.state_id)}
+                onPress={() => finishPick(city.name, { stateId: city.state_id, cityId: city.id })}
+                divider={i < topCities.length - 1}
               />
             ))}
           </View>

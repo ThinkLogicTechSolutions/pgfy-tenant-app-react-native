@@ -18,7 +18,6 @@ export {
   type AvailabilityResult, type ExtensionPrice,
 } from './extension';
 export { NOTIFICATIONS, unreadCount } from './notifications';
-export { COUPONS, resolveCoupon, type Coupon } from './coupons';
 export { PLATFORM_FEE, computePlatformFee, type PlatformFeeConfig, type FeeType } from './platform';
 export {
   CANCELLATION_POLICY, REFUND_ETA, computeCancellationCharge,
