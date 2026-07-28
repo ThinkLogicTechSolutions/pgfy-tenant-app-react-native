@@ -2,8 +2,8 @@
 import { View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { palette, radius, spacing } from '@/theme';
-import { Text, Avatar, PressableScale } from '@/components/ui';
-import { StatusPill } from './Badges';
+import { Text, Avatar, PressableScale, Card, Badge } from '@/components/ui';
+import { StatusPill, statusTone } from './Badges';
 import { inr, formatDate, formatDayMonth, timeAgo } from '@/lib/format';
 import type { Review, Invoice, Visitor, Ticket, NotificationItem, NotificationType, TicketCategory } from '@/data/types';
 
@@ -93,17 +93,28 @@ const CAT_ICON: Record<TicketCategory, keyof typeof Ionicons.glyphMap> = {
 
 export function TicketRow({ ticket, onPress }: { ticket: Ticket; onPress?: () => void }) {
   const t = ticket;
-  const resolved = t.status === 'Resolved';
   return (
-    <PressableScale onPress={onPress} scaleTo={0.99} style={{ flexDirection: 'row', alignItems: 'center', gap: spacing.md, backgroundColor: palette.surface, borderRadius: radius.lg, borderWidth: 1, borderColor: palette.border, padding: spacing.base }}>
-      <View style={{ width: 42, height: 42, borderRadius: radius.md, backgroundColor: palette.surfaceRaised, alignItems: 'center', justifyContent: 'center' }}>
-        <Ionicons name={CAT_ICON[t.category]} size={20} color={resolved ? palette.success : palette.navy} />
-      </View>
-      <View style={{ flex: 1 }}>
-        <Text variant="bodyMd" weight="600" numberOfLines={1}>{t.category}</Text>
-        <Text variant="caption" color={palette.inkTertiary} numberOfLines={1}>{t.id} · {timeAgo(t.createdAt)}</Text>
-      </View>
-      <StatusPill status={t.status} small />
+    <PressableScale onPress={onPress} scaleTo={0.99}>
+      <Card>
+        <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: spacing.sm }}>
+          <Badge label={t.status} tone={statusTone(t.status)} />
+          <Text variant="caption" color={palette.inkTertiary}>{timeAgo(t.createdAt)}</Text>
+        </View>
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: spacing.sm }}>
+          <View style={{ width: 30, height: 30, borderRadius: radius.sm, backgroundColor: palette.surfaceRaised, alignItems: 'center', justifyContent: 'center' }}>
+            <Ionicons name={CAT_ICON[t.category]} size={16} color={palette.inkSecondary} />
+          </View>
+          <Text variant="bodyMd" weight="700" numberOfLines={1} style={{ flex: 1 }}>{t.category}</Text>
+        </View>
+        <Text variant="bodySm" color={palette.inkSecondary} numberOfLines={2} style={{ marginTop: spacing.xs }}>{t.description}</Text>
+        <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: spacing.sm }}>
+          <Text variant="caption" color={palette.inkTertiary}>{t.id}</Text>
+          <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+            <Text variant="bodySm" color={palette.info} weight="600">View details</Text>
+            <Ionicons name="chevron-forward" size={16} color={palette.info} />
+          </View>
+        </View>
+      </Card>
     </PressableScale>
   );
 }

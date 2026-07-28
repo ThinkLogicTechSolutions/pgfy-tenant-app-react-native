@@ -25,3 +25,4 @@ export { ListRow } from './ListRow';
 export { Confetti } from './Confetti';
 export { AnimatedListItem } from './AnimatedListItem';
 export { RangeSlider } from './RangeSlider';
+export { DateRangePicker } from './DateRangePicker';

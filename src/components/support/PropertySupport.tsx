@@ -10,6 +10,7 @@ import { EmptyTickets } from '@/components/illustrations';
 import { ACTIVE_BOOKING, TICKETS, getListing, type Ticket, type TicketCategory } from '@/data';
 import { haptic } from '@/lib/haptics';
 import { isHouseWiseEnabled, createHouseWiseComplaint } from '@/lib/housewise';
+import { useTicketCancellations } from '@/store/ticketCancellations';
 import { TicketDetailSheet, OptionalImagePicker } from './shared';
 
 const PROPERTY_CATEGORIES = [
@@ -39,11 +40,25 @@ export function PropertySupport() {
   const [desc, setDesc] = useState('');
   const [created, setCreated] = useState<Ticket[]>([]);
   const [selected, setSelected] = useState<Ticket | null>(null);
-  const openTickets = [
+  const cancelStore = useTicketCancellations();
+
+  const effectiveStatus = (t: Ticket): Ticket['status'] => (cancelStore.isCancelled(t.id) ? 'Cancelled' : t.status);
+  const withEffectiveStatus = (t: Ticket): Ticket => ({ ...t, status: effectiveStatus(t) });
+
+  const allPropertyTickets = [
     ...created,
-    ...TICKETS.filter((t) => t.supportKind === 'property' && t.status !== 'Resolved'),
-  ];
-  const resolvedTickets = TICKETS.filter((t) => t.supportKind === 'property' && t.status === 'Resolved');
+    ...TICKETS.filter((t) => t.supportKind === 'property'),
+  ].map(withEffectiveStatus);
+
+  const openTickets = allPropertyTickets.filter((t) => t.status !== 'Resolved' && t.status !== 'Cancelled');
+  const resolvedTickets = allPropertyTickets.filter((t) => t.status === 'Resolved');
+  const cancelledTickets = allPropertyTickets.filter((t) => t.status === 'Cancelled');
+
+  const cancelTicket = (ticket: Ticket) => {
+    cancelStore.cancel(ticket.id);
+    haptic.warning();
+    setSelected((prev) => (prev && prev.id === ticket.id ? { ...prev, status: 'Cancelled' } : prev));
+  };
 
   const submitComplaint = () => {
     const id = `TKT-${Math.floor(4100 + Math.random() * 899)}`;
@@ -131,6 +146,15 @@ export function PropertySupport() {
             </View>
           )}
         </View>
+
+        {cancelledTickets.length ? (
+          <View>
+            <Text variant="overline" color={palette.inkTertiary} style={{ marginBottom: spacing.sm, marginLeft: 4 }}>CANCELLED PROPERTY TICKETS</Text>
+            <View style={{ gap: spacing.md }}>
+              {cancelledTickets.map((item) => <TicketRow key={item.id} ticket={item} onPress={() => setSelected(item)} />)}
+            </View>
+          </View>
+        ) : null}
       </ScrollView>
 
       <Sheet visible={create} onClose={() => setCreate(false)} title="Raise a property issue" scroll>
@@ -163,7 +187,7 @@ export function PropertySupport() {
         </View>
       </Sheet>
 
-      <TicketDetailSheet ticket={selected} visible={!!selected} onClose={() => setSelected(null)} />
+      <TicketDetailSheet ticket={selected} visible={!!selected} onClose={() => setSelected(null)} onCancel={cancelTicket} />
     </View>
   );
 }

@@ -1,61 +1,23 @@
 /** T-S21 — Billing ledger & invoice history. */
 import { useMemo, useState } from 'react';
-import { View, FlatList, ScrollView } from 'react-native';
+import { View, FlatList } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { palette, spacing, radius } from '@/theme';
-import { Text, ScreenHeader, Card, Sheet, Button, Divider, Chip, AnimatedListItem } from '@/components/ui';
-import { StayDateRangeField } from '@/components/search';
+import { Text, ScreenHeader, Card, Sheet, Button, Divider, AnimatedListItem, DateRangePicker } from '@/components/ui';
 import { InvoiceRow } from '@/components/domain';
 import { INVOICES, type Invoice } from '@/data';
 import type { CheckoutIntent } from '@/lib/billing';
-import { inr, formatDate, NOW } from '@/lib/format';
-
-type FilterKey = 'last_month' | 'last_6_months' | 'last_year' | 'custom';
-
-const FILTERS: { key: FilterKey; label: string }[] = [
-  { key: 'last_month', label: 'Last month' },
-  { key: 'last_6_months', label: 'Last 6 months' },
-  { key: 'last_year', label: 'Last year' },
-  { key: 'custom', label: 'Custom range' },
-];
-
-function toIso(date: Date) {
-  return date.toISOString().slice(0, 10);
-}
-
-function monthStart(date: Date) {
-  return new Date(date.getFullYear(), date.getMonth(), 1);
-}
-
-function monthEnd(date: Date) {
-  return new Date(date.getFullYear(), date.getMonth() + 1, 0);
-}
-
-function shiftMonth(date: Date, delta: number) {
-  return new Date(date.getFullYear(), date.getMonth() + delta, 1);
-}
-
-function presetRange(filter: Exclude<FilterKey, 'custom'>) {
-  const base = new Date(NOW);
-  if (filter === 'last_month') {
-    const target = shiftMonth(base, -1);
-    return { start: toIso(monthStart(target)), end: toIso(monthEnd(target)) };
-  }
-  if (filter === 'last_6_months') {
-    return { start: toIso(monthStart(shiftMonth(base, -5))), end: toIso(monthEnd(base)) };
-  }
-  return { start: toIso(monthStart(shiftMonth(base, -11))), end: toIso(monthEnd(base)) };
-}
+import { inr, formatDate } from '@/lib/format';
+import { defaultDateRange, type DateRangeValue } from '@/lib/dateRange';
 
 export default function Billing() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
   const [selected, setSelected] = useState<Invoice | null>(null);
   const [payOpen, setPayOpen] = useState(false);
-  const [filter, setFilter] = useState<FilterKey>('last_6_months');
-  const [customRange, setCustomRange] = useState(() => presetRange('last_6_months'));
+  const [range, setRange] = useState<DateRangeValue>(defaultDateRange);
 
   // Route an invoice payment into the unified checkout. Invoice amounts already include
   // GST, so fees are not re-added (applyPlatformFee / applyGst default off for 'invoice').
@@ -75,10 +37,9 @@ export default function Billing() {
     router.push({ pathname: '/checkout', params: { intent: JSON.stringify(intent) } });
   };
 
-  const activeRange = filter === 'custom' ? customRange : presetRange(filter);
   const filteredInvoices = useMemo(
-    () => INVOICES.filter((i) => i.dueDate >= activeRange.start && i.dueDate <= activeRange.end),
-    [activeRange.end, activeRange.start],
+    () => INVOICES.filter((i) => i.dueDate >= range.from && i.dueDate <= range.to),
+    [range],
   );
   const outstanding = filteredInvoices.filter((i) => i.status !== 'Paid').reduce((s, i) => s + (i.amount - i.paidAmount), 0);
   const paidYTD = filteredInvoices.filter((i) => i.status === 'Paid').reduce((s, i) => s + i.amount, 0);
@@ -106,29 +67,9 @@ export default function Billing() {
                 </View>
               </View>
             </Card>
-            <ScrollView
-              horizontal
-              showsHorizontalScrollIndicator={false}
-              contentContainerStyle={{ gap: spacing.sm, marginBottom: spacing.base }}
-            >
-              {FILTERS.map((item) => (
-                <Chip key={item.key} label={item.label} active={filter === item.key} onPress={() => setFilter(item.key)} />
-              ))}
-            </ScrollView>
-            {filter === 'custom' ? (
-              <Card style={{ marginBottom: spacing.base }}>
-                <Text variant="overline" color={palette.inkTertiary} style={{ marginBottom: spacing.sm }}>CUSTOM DATE RANGE</Text>
-                <StayDateRangeField
-                  checkIn={customRange.start}
-                  checkOut={customRange.end}
-                  onChange={({ checkIn, checkOut }) => setCustomRange({ start: checkIn, end: checkOut })}
-                  checkInLabel="From"
-                  checkOutLabel="To"
-                  sheetTitle="Select invoice date range"
-                  applyLabel="Apply range"
-                />
-              </Card>
-            ) : null}
+            <View style={{ marginBottom: spacing.base }}>
+              <DateRangePicker value={range} onChange={setRange} />
+            </View>
             <Text variant="overline" color={palette.inkTertiary} style={{ marginLeft: 4 }}>ALL INVOICES</Text>
           </View>
         }

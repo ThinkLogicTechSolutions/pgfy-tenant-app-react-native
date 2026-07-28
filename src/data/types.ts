@@ -306,7 +306,7 @@ export type TicketCategory =
   | 'Invoice issue'
   | 'Login or account issue'
   | 'Delete account request';
-export type TicketStatus = 'Open' | 'Assigned' | 'In Progress' | 'Resolved';
+export type TicketStatus = 'Open' | 'Assigned' | 'In Progress' | 'Resolved' | 'Cancelled';
 
 export interface TicketEvent {
   status: TicketStatus;

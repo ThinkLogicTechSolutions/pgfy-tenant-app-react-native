@@ -1,12 +1,15 @@
 /** Shared UI for platform and property support screens. */
 import { useState } from 'react';
 import { View, Linking, Alert } from 'react-native';
+import { Image } from 'expo-image';
 import { Ionicons } from '@expo/vector-icons';
 import { palette, spacing, radius } from '@/theme';
-import { Text, Sheet, PressableScale } from '@/components/ui';
-import { StatusPill } from '@/components/domain';
+import { Text, Sheet, PressableScale, Card, Badge, Button, Divider } from '@/components/ui';
+import { statusTone } from '@/components/domain';
 import type { Ticket } from '@/data';
 import { timeAgo } from '@/lib/format';
+
+const CANCELLABLE: Ticket['status'][] = ['Open', 'Assigned', 'In Progress'];
 
 export function FaqAccordion({ items }: { items: { q: string; a: string }[] }) {
   const [openIndex, setOpenIndex] = useState<number | null>(0);
@@ -56,22 +59,58 @@ export function TicketDetailSheet({
   ticket,
   visible,
   onClose,
+  onCancel,
 }: {
   ticket: Ticket | null;
   visible: boolean;
   onClose: () => void;
+  /** When provided, a "Cancel ticket" action is offered while the ticket is still open. */
+  onCancel?: (ticket: Ticket) => void;
 }) {
+  const cancellable = !!onCancel && !!ticket && CANCELLABLE.includes(ticket.status);
+
+  const confirmCancel = () => {
+    if (!ticket || !onCancel) return;
+    Alert.alert('Cancel this ticket?', 'The property team will no longer act on this issue.', [
+      { text: 'Keep ticket', style: 'cancel' },
+      { text: 'Cancel ticket', style: 'destructive', onPress: () => onCancel(ticket) },
+    ]);
+  };
+
   return (
     <Sheet visible={visible} onClose={onClose} title={ticket ? `${ticket.category} · ${ticket.id}` : ''} scroll>
       {ticket ? (
         <View style={{ gap: spacing.base }}>
           <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+            <Badge label={ticket.status} tone={statusTone(ticket.status)} />
             <Text variant="caption" color={palette.inkTertiary}>Raised {timeAgo(ticket.createdAt)}</Text>
-            <StatusPill status={ticket.status} small />
           </View>
-          <View style={{ backgroundColor: palette.surfaceRaised, borderRadius: radius.md, padding: spacing.base }}>
-            <Text variant="body" color={palette.inkSecondary}>{ticket.description}</Text>
+
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: spacing.sm }}>
+            <View style={{ width: 32, height: 32, borderRadius: radius.sm, backgroundColor: palette.coralTint, alignItems: 'center', justifyContent: 'center' }}>
+              <Ionicons name="pricetag-outline" size={16} color={palette.coral} />
+            </View>
+            <Text variant="bodySm" weight="600">{ticket.category}</Text>
           </View>
+
+          <View>
+            <Text variant="caption" color={palette.inkTertiary} style={{ marginBottom: 4 }}>DESCRIPTION</Text>
+            <Card style={{ backgroundColor: palette.surfaceRaised }}>
+              <Text variant="bodySm" color={palette.inkSecondary} style={{ lineHeight: 20 }}>{ticket.description}</Text>
+            </Card>
+          </View>
+
+          {ticket.images.length ? (
+            <View>
+              <Text variant="caption" color={palette.inkTertiary} style={{ marginBottom: spacing.xs }}>PHOTOS</Text>
+              <View style={{ flexDirection: 'row', gap: spacing.sm }}>
+                {ticket.images.map((uri) => (
+                  <Image key={uri} source={{ uri }} style={{ width: 72, height: 72, borderRadius: radius.md }} contentFit="cover" />
+                ))}
+              </View>
+            </View>
+          ) : null}
+
           {ticket.response ? (
             <View style={{ backgroundColor: palette.infoTint, borderRadius: radius.md, padding: spacing.base, flexDirection: 'row', gap: spacing.sm }}>
               <Ionicons name="chatbubble-ellipses-outline" size={18} color={palette.info} />
@@ -114,6 +153,25 @@ export function TicketDetailSheet({
               </View>
             ))}
           </View>
+
+          {onCancel ? (
+            <>
+              <Divider />
+              {cancellable ? (
+                <Button label="Cancel ticket" variant="outline" icon="close-circle-outline" full onPress={confirmCancel} />
+              ) : ticket.status === 'Cancelled' ? (
+                <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, paddingVertical: spacing.sm }}>
+                  <Ionicons name="close-circle" size={18} color={palette.danger} />
+                  <Text variant="bodyMd" weight="600" color={palette.danger}>Ticket cancelled</Text>
+                </View>
+              ) : (
+                <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, paddingVertical: spacing.sm }}>
+                  <Ionicons name="checkmark-circle" size={18} color={palette.success} />
+                  <Text variant="bodyMd" weight="600" color={palette.success}>Resolved</Text>
+                </View>
+              )}
+            </>
+          ) : null}
         </View>
       ) : null}
     </Sheet>

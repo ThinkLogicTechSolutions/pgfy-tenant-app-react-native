@@ -7,7 +7,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { palette, spacing, radius } from '@/theme';
 import {
-  Text, ScreenHeader, PressableScale, EmptyState, Sheet, Chip, Button, Divider, AnimatedListItem,
+  Text, ScreenHeader, PressableScale, EmptyState, Sheet, Chip, AnimatedListItem, DateRangePicker,
 } from '@/components/ui';
 import { PastBookingCard, StatusPill } from '@/components/domain';
 import { EmptyBookings } from '@/components/illustrations';
@@ -20,19 +20,9 @@ import {
 import { useBookingCancellations } from '@/store/bookingCancellations';
 import { inr, formatDate } from '@/lib/format';
 import { haptic } from '@/lib/haptics';
+import { defaultDateRange, type DateRangeValue } from '@/lib/dateRange';
 
-type DateFilter = 'all' | '3m' | '6m' | '12m' | '2026' | '2025' | '2024';
 type StatusFilter = 'all' | 'Active' | 'Completed' | 'Moved Out' | 'Cancelled';
-
-const DATE_FILTERS: { key: DateFilter; label: string }[] = [
-  { key: 'all', label: 'All time' },
-  { key: '3m', label: 'Last 3 months' },
-  { key: '6m', label: 'Last 6 months' },
-  { key: '12m', label: 'Last 12 months' },
-  { key: '2026', label: '2026' },
-  { key: '2025', label: '2025' },
-  { key: '2024', label: '2024' },
-];
 
 const STATUS_FILTERS: { key: StatusFilter; label: string }[] = [
   { key: 'all', label: 'All statuses' },
@@ -41,20 +31,6 @@ const STATUS_FILTERS: { key: StatusFilter; label: string }[] = [
   { key: 'Moved Out', label: 'Moved out' },
   { key: 'Cancelled', label: 'Cancelled' },
 ];
-
-function monthsAgoIso(months: number): string {
-  const d = new Date();
-  d.setMonth(d.getMonth() - months);
-  return d.toISOString().slice(0, 10);
-}
-
-function matchesDateFilter(checkIn: string, filter: DateFilter): boolean {
-  if (filter === 'all') return true;
-  if (filter === '3m') return checkIn >= monthsAgoIso(3);
-  if (filter === '6m') return checkIn >= monthsAgoIso(6);
-  if (filter === '12m') return checkIn >= monthsAgoIso(12);
-  return checkIn.startsWith(filter);
-}
 
 function matchesStatusFilter(status: string, filter: StatusFilter): boolean {
   if (filter === 'all') return true;
@@ -67,42 +43,20 @@ export default function Bookings() {
   const cancelStore = useBookingCancellations();
   const allBookings = useMemo(() => getAllTenantBookings(), []);
 
-  const [filtersOpen, setFiltersOpen] = useState(false);
-  const [dateFilter, setDateFilter] = useState<DateFilter>('all');
+  const [range, setRange] = useState<DateRangeValue>(defaultDateRange);
+  const [statusFilterOpen, setStatusFilterOpen] = useState(false);
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('all');
-  const [draftDate, setDraftDate] = useState<DateFilter>('all');
-  const [draftStatus, setDraftStatus] = useState<StatusFilter>('all');
 
-  const filtersActive = dateFilter !== 'all' || statusFilter !== 'all';
+  const statusFilterActive = statusFilter !== 'all';
 
   // A booking cancelled this session reads as "Cancelled" everywhere, overriding its stored status.
   const effectiveStatus = (item: TenantBookingItem) =>
     item.kind === 'active' && cancelStore.isCancelled(item.booking.ref) ? 'Cancelled' : bookingListStatus(item);
 
-  const filtered = allBookings.filter((item) => (
-    matchesDateFilter(bookingCheckInDate(item), dateFilter) && matchesStatusFilter(effectiveStatus(item), statusFilter)
-  ));
-
-  const openFilters = () => {
-    setDraftDate(dateFilter);
-    setDraftStatus(statusFilter);
-    setFiltersOpen(true);
-  };
-
-  const applyFilters = () => {
-    haptic.select();
-    setDateFilter(draftDate);
-    setStatusFilter(draftStatus);
-    setFiltersOpen(false);
-  };
-
-  const clearFilters = () => {
-    setDraftDate('all');
-    setDraftStatus('all');
-    setDateFilter('all');
-    setStatusFilter('all');
-    setFiltersOpen(false);
-  };
+  const filtered = allBookings.filter((item) => {
+    const checkIn = bookingCheckInDate(item);
+    return checkIn >= range.from && checkIn <= range.to && matchesStatusFilter(effectiveStatus(item), statusFilter);
+  });
 
   return (
     <View style={{ flex: 1, paddingTop: insets.top + spacing.xs }}>
@@ -110,21 +64,21 @@ export default function Bookings() {
         title="Booking history"
         subtitle={`${filtered.length} of ${allBookings.length} bookings`}
         right={
-          <PressableScale onPress={openFilters} scaleTo={0.92}>
+          <PressableScale onPress={() => setStatusFilterOpen(true)} scaleTo={0.92}>
             <View
               style={{
                 width: 40,
                 height: 40,
                 borderRadius: 20,
-                backgroundColor: filtersActive ? palette.navyTint : palette.surface,
+                backgroundColor: statusFilterActive ? palette.navyTint : palette.surface,
                 borderWidth: 1,
-                borderColor: filtersActive ? palette.navy : palette.border,
+                borderColor: statusFilterActive ? palette.navy : palette.border,
                 alignItems: 'center',
                 justifyContent: 'center',
               }}
             >
-              <Ionicons name="options-outline" size={20} color={filtersActive ? palette.navy : palette.ink} />
-              {filtersActive ? (
+              <Ionicons name="options-outline" size={20} color={statusFilterActive ? palette.navy : palette.ink} />
+              {statusFilterActive ? (
                 <View
                   style={{
                     position: 'absolute',
@@ -142,24 +96,16 @@ export default function Bookings() {
         }
       />
 
-      {filtersActive ? (
-        <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm, paddingHorizontal: spacing.base, marginBottom: spacing.sm }}>
-          {dateFilter !== 'all' ? (
-            <Chip
-              label={DATE_FILTERS.find((f) => f.key === dateFilter)?.label ?? dateFilter}
-              active
-              onPress={openFilters}
-            />
-          ) : null}
-          {statusFilter !== 'all' ? (
-            <Chip
-              label={STATUS_FILTERS.find((f) => f.key === statusFilter)?.label ?? statusFilter}
-              active
-              onPress={openFilters}
-            />
-          ) : null}
-        </View>
-      ) : null}
+      <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm, paddingHorizontal: spacing.base, marginBottom: spacing.sm }}>
+        <DateRangePicker value={range} onChange={setRange} />
+        {statusFilter !== 'all' ? (
+          <Chip
+            label={STATUS_FILTERS.find((f) => f.key === statusFilter)?.label ?? statusFilter}
+            active
+            onPress={() => setStatusFilterOpen(true)}
+          />
+        ) : null}
+      </View>
 
       <FlatList
         data={filtered}
@@ -188,46 +134,33 @@ export default function Bookings() {
         }
       />
 
-      <Sheet visible={filtersOpen} onClose={() => setFiltersOpen(false)} title="Filters" scroll>
-        <View style={{ gap: spacing.lg }}>
-          <View>
-            <Text variant="overline" color={palette.inkTertiary} style={{ marginBottom: spacing.sm }}>
-              DATE
-            </Text>
-            <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm }}>
-              {DATE_FILTERS.map((f) => (
-                <Chip
-                  key={f.key}
-                  label={f.label}
-                  active={draftDate === f.key}
-                  onPress={() => setDraftDate(f.key)}
-                />
-              ))}
-            </View>
-          </View>
-
-          <Divider />
-
-          <View>
-            <Text variant="overline" color={palette.inkTertiary} style={{ marginBottom: spacing.sm }}>
-              BOOKING STATUS
-            </Text>
-            <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm }}>
-              {STATUS_FILTERS.map((f) => (
-                <Chip
-                  key={f.key}
-                  label={f.label}
-                  active={draftStatus === f.key}
-                  onPress={() => setDraftStatus(f.key)}
-                />
-              ))}
-            </View>
-          </View>
-
-          <View style={{ gap: spacing.sm, marginTop: spacing.sm }}>
-            <Button label="Apply filters" full size="lg" onPress={applyFilters} />
-            <Button label="Clear all" variant="ghost" full onPress={clearFilters} />
-          </View>
+      <Sheet visible={statusFilterOpen} onClose={() => setStatusFilterOpen(false)} title="Filter by status">
+        <View style={{ gap: spacing.xs }}>
+          {STATUS_FILTERS.map((f) => {
+            const active = statusFilter === f.key;
+            return (
+              <PressableScale
+                key={f.key}
+                onPress={() => { setStatusFilter(f.key); setStatusFilterOpen(false); haptic.select(); }}
+                scaleTo={0.98}
+                style={{
+                  flexDirection: 'row',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                  padding: spacing.base,
+                  backgroundColor: active ? palette.navyTint : palette.surfaceRaised,
+                  borderRadius: radius.md,
+                  borderWidth: 1,
+                  borderColor: active ? palette.navy : 'transparent',
+                }}
+              >
+                <Text variant="bodyMd" weight={active ? '700' : '500'} color={active ? palette.navy : palette.ink}>
+                  {f.label}
+                </Text>
+                {active ? <Ionicons name="checkmark-circle" size={20} color={palette.navy} /> : null}
+              </PressableScale>
+            );
+          })}
         </View>
       </Sheet>
     </View>
