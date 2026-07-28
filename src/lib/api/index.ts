@@ -17,6 +17,9 @@ export * as favoritesApi from './favorites';
 export * as bookingApi from './booking';
 export * as billingApi from './billing';
 export * as couponsApi from './coupons';
+export * as stayApi from './stay';
+export * as maintenanceApi from './maintenance';
+export * as visitorLogApi from './visitorLog';
 export * as continueBrowsingApi from './continueBrowsing';
 export * as dashboardApi from './dashboard';
 export * as searchApi from './search';
@@ -55,6 +58,8 @@ export type { UploadPurpose, UploadResult, UploadFileInput } from './upload';
 export type { ListBookingsQuery } from './booking';
 export type { ListBillingRentQuery } from './billing';
 export type { ListCouponsQuery } from './coupons';
+export type { ListMaintenanceQuery } from './maintenance';
+export type { ListVisitorLogsQuery } from './visitorLog';
 
 export type {
   ApiProfile,
@@ -140,4 +145,26 @@ export type {
   CouponDiscountType,
   CouponStatus,
   ApiCoupon,
+  ApiStayProperty,
+  ApiStayBookingSummary,
+  ApiStayFloor,
+  ApiStayRoom,
+  ApiStayBed,
+  ApiStayBilling,
+  ApiBedStay,
+  ApiMyStayOwner,
+  ApiMyStayProperty,
+  ApiMyStayRoom,
+  ApiMyStayBooking,
+  ApiMyStayInvoice,
+  ApiMyStayBilling,
+  ApiMyStayResponse,
+  MaintenanceStatus,
+  ApiMaintenanceTicket,
+  MaintenanceSummary,
+  ApiMaintenanceListResponse,
+  CreateMaintenanceInput,
+  VisitorLogStatus,
+  ApiVisitorLog,
+  CreateVisitorLogInput,
 } from './types';

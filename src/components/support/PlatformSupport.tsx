@@ -50,6 +50,7 @@ export function PlatformSupport() {
   const insets = useSafeAreaInsets();
   const [create, setCreate] = useState(false);
   const [cat, setCat] = useState<PlatformCategory | null>(null);
+  const [images, setImages] = useState<string[]>([]);
   const [selected, setSelected] = useState<Ticket | null>(null);
   const openTickets = TICKETS.filter((t) => t.supportKind === 'platform' && t.status !== 'Resolved');
   const resolvedTickets = TICKETS.filter((t) => t.supportKind === 'platform' && t.status === 'Resolved');
@@ -123,7 +124,7 @@ export function PlatformSupport() {
             pickerTitle="Select category"
           />
           <Input label="Description" placeholder="Describe the platform issue (max 500 chars)" multiline maxLength={500} style={{ height: 100, textAlignVertical: 'top' }} />
-          <OptionalImagePicker />
+          <OptionalImagePicker onChange={setImages} />
           <Button label="Submit" icon="paper-plane-outline" onPress={() => { haptic.success(); setCreate(false); }} full size="lg" />
         </View>
       </Sheet>

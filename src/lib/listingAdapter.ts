@@ -266,7 +266,7 @@ const LAYOUT_TO_SHARING: Record<string, SharingType> = {
 
 /** Formats a layout code the map above doesn't know about, e.g. `DORM_10` → `Dorm 10`,
  * `QUAD` → `Quad` — title-cased per underscore-separated part, numbers left as-is. */
-function formatLayoutFallback(layout: string): string {
+export function formatLayoutFallback(layout: string): string {
   return layout
     .split('_')
     .filter(Boolean)

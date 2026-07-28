@@ -10,6 +10,7 @@ const KEYS = {
   accessToken: 'pgfy.accessToken',
   user: 'pgfy.user',
   isGuest: 'pgfy.isGuest',
+  selectedBedId: 'pgfy.selectedBedId',
 } as const;
 
 export interface StoredAuth {
@@ -71,7 +72,19 @@ export const session = {
     }
   },
 
+  /** Remembers which bed the tenant last viewed on My Stay, across app restarts —
+   * history only, cleared on logout so it never leaks into the next account. */
+  async saveSelectedBed(bedId: number) {
+    await AsyncStorage.setItem(KEYS.selectedBedId, String(bedId));
+  },
+
+  async getSelectedBed(): Promise<number | null> {
+    const raw = await AsyncStorage.getItem(KEYS.selectedBedId);
+    const id = raw ? Number(raw) : NaN;
+    return Number.isFinite(id) ? id : null;
+  },
+
   async logout() {
-    await AsyncStorage.multiRemove([KEYS.accessToken, KEYS.user, KEYS.isGuest]);
+    await AsyncStorage.multiRemove([KEYS.accessToken, KEYS.user, KEYS.isGuest, KEYS.selectedBedId]);
   },
 };

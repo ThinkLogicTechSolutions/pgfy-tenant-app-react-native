@@ -93,3 +93,8 @@ export async function uploadProfileDocument(uri: string, name?: string, mimeType
   const fileType = ext === 'pdf' ? UploadFileType.DOCUMENT : UploadFileType.IMAGE;
   return uploadFile({ uri, fileType, purpose: 'USER', name, mimeType });
 }
+
+/** A photo attached to a maintenance/property-issue report. */
+export async function uploadMaintenanceImage(uri: string): Promise<UploadResult> {
+  return uploadFile({ uri, fileType: UploadFileType.IMAGE, purpose: 'USER' });
+}

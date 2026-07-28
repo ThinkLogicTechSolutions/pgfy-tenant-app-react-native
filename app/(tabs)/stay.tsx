@@ -1,25 +1,28 @@
-/** T-S20 — Tenant dashboard (post-booking home hub). Driven by the tenant's real confirmed/
- *  checked-in bookings (`GET /tenant/booking`); the selected booking's full property details
- *  are fetched separately (cached) to power food menu / directions / share. */
+/** T-S20 — Tenant dashboard (post-booking home hub). Driven by the tenant's active beds
+ *  (`GET /tenant/beds`); the selected bed's full stay detail (`GET /tenant/my-stay`) fills in
+ *  billing/owner/pass info, and the property's own details are fetched separately (cached) to
+ *  power food menu / directions / share. The last-viewed bed is remembered in `session` across
+ *  app restarts (cleared on logout) so re-opening the tab lands back on the same stay. */
 import { useEffect, useState } from 'react';
-import { View, ScrollView, useWindowDimensions, Linking, Alert, Platform, Share, ActivityIndicator } from 'react-native';
+import { View, ScrollView, useWindowDimensions, Linking, Alert, Platform, Share } from 'react-native';
 import { Image } from 'expo-image';
 import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { palette, spacing, radius } from '@/theme';
-import { Text, Card, Button, IconButton, PressableScale, Sheet, EmptyState, Badge } from '@/components/ui';
+import { Text, Card, Button, IconButton, PressableScale, Sheet, EmptyState, Badge, Skeleton } from '@/components/ui';
 import { WeeklyFoodMenuSheet } from '@/components/domain';
 import { EmptyAuth, EmptyBookings } from '@/components/illustrations';
-import { bookingApi, propertyApi, errorMessage, type ApiBooking } from '@/lib/api';
-import { bookingCoverImage, bookingModeLabel, bookingStatusLabel, bookingStatusTone, isCheckedIn } from '@/lib/bookingDisplay';
-import { propertyDetailsToListing } from '@/lib/listingAdapter';
+import { stayApi, propertyApi, errorMessage, type ApiBedStay, type ApiMyStayResponse } from '@/lib/api';
+import { bookingCoverImage, bookingModeLabel, bookingStatusLabel, bookingStatusTone } from '@/lib/bookingDisplay';
+import { propertyDetailsToListing, formatLayoutFallback } from '@/lib/listingAdapter';
 import { getCachedPropertyDetails, cachePropertyDetails } from '@/store/propertyDetailsCache';
 import { inr, formatDate } from '@/lib/format';
 import { useProfile } from '@/store/profile';
 import { useAuth } from '@/context/AuthContext';
 import { LOGIN_ROUTE } from '@/lib/guestGuard';
+import { session } from '@/lib/session';
 import type { Listing } from '@/data/types';
 
 const QUICK = [
@@ -31,18 +34,16 @@ const QUICK = [
   { icon: 'exit-outline', label: 'Move Out', route: '/move-out', tint: palette.danger },
 ];
 
-/** A confirmed hold or an ongoing checked-in stay — the two states "My Stay" shows. */
-const MY_STAY_STATUSES = ['CONFIRMED', 'CHECKED_IN'];
-
 export default function Stay() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const { isGuest } = useAuth();
 
-  const [bookings, setBookings] = useState<ApiBooking[]>([]);
-  const [selectedId, setSelectedId] = useState<number | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const [beds, setBeds] = useState<ApiBedStay[] | null>(null);
+  const [selectedBedId, setSelectedBedId] = useState<number | null>(null);
+  const [listLoading, setListLoading] = useState(true);
+  const [listError, setListError] = useState<string | null>(null);
+  const [stayDetail, setStayDetail] = useState<ApiMyStayResponse | null>(null);
   const [switcherOpen, setSwitcherOpen] = useState(false);
   const [foodMenuOpen, setFoodMenuOpen] = useState(false);
   const [propertyListing, setPropertyListing] = useState<Listing | null>(null);
@@ -51,42 +52,63 @@ export default function Stay() {
   // Floor the tile width so 3 columns + 2 gaps never overflow & wrap unevenly.
   const tileW = Math.floor((width - spacing.base * 2 - spacing.md * 2) / 3);
 
-  const load = () => {
-    setLoading(true);
-    setError(null);
-    bookingApi.listBookings({ limit: 50 })
-      .then((page) => {
-        const stays = page.data.filter((b) => MY_STAY_STATUSES.includes(b.status));
-        setBookings(stays);
-        setSelectedId((prev) => (prev && stays.some((s) => s.id === prev) ? prev : stays[0]?.id ?? null));
+  const loadBeds = () => {
+    setListLoading(true);
+    setListError(null);
+    stayApi.listBeds()
+      .then(async (list) => {
+        setBeds(list);
+        const preferred = await session.getSelectedBed();
+        const match = preferred != null && list.some((s) => s.bed.id === preferred)
+          ? preferred
+          : list[0]?.bed.id ?? null;
+        setSelectedBedId(match);
       })
-      .catch((e) => setError(errorMessage(e)))
-      .finally(() => setLoading(false));
+      .catch((e) => setListError(errorMessage(e)))
+      .finally(() => setListLoading(false));
   };
 
   useEffect(() => {
-    if (!isGuest) load();
+    if (!isGuest) loadBeds();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isGuest]);
 
-  const b = bookings.find((s) => s.id === selectedId) ?? null;
+  const selectBed = (bedId: number) => {
+    setSelectedBedId(bedId);
+    session.saveSelectedBed(bedId);
+    setSwitcherOpen(false);
+  };
+
+  const selectedBed = beds?.find((s) => s.bed.id === selectedBedId) ?? null;
+
+  // Stay detail (owner contact, billing due, check-in pass) for the selected bed — kept in
+  // full so the pass screen can reuse it instead of re-fetching `getMyStay` on its own.
+  useEffect(() => {
+    if (selectedBedId == null) { setStayDetail(null); return; }
+    let active = true;
+    stayApi.getMyStay(selectedBedId)
+      .then((data) => { if (active) setStayDetail(data); })
+      .catch(() => { if (active) setStayDetail(null); });
+    return () => { active = false; };
+  }, [selectedBedId]);
 
   // Full property details (food menu, coordinates, amenities) for the selected stay —
   // reuses the listing-detail cache so re-visiting a property doesn't re-fetch it.
   useEffect(() => {
-    if (!b) { setPropertyListing(null); return; }
-    const cached = getCachedPropertyDetails(b.property.id);
+    if (!selectedBed) { setPropertyListing(null); return; }
+    const propertyId = selectedBed.property.id;
+    const cached = getCachedPropertyDetails(propertyId);
     if (cached) { setPropertyListing(cached); return; }
     let active = true;
-    propertyApi.getPropertyDetails(b.property.id).then((data) => {
+    propertyApi.getPropertyDetails(propertyId).then((data) => {
       if (!active) return;
       const mapped = propertyDetailsToListing(data);
       setPropertyListing(mapped);
-      cachePropertyDetails(b.property.id, mapped);
+      cachePropertyDetails(propertyId, mapped);
     }).catch(() => {});
     return () => { active = false; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [b?.property.id]);
+  }, [selectedBed?.property.id]);
 
   if (isGuest) {
     return (
@@ -102,30 +124,45 @@ export default function Stay() {
     );
   }
 
-  if (loading) {
-    return (
-      <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', paddingTop: insets.top }}>
-        <ActivityIndicator color={palette.coral} />
-      </View>
-    );
+  if (listLoading && !beds) {
+    return <StaySkeleton insetTop={insets.top} />;
   }
 
-  if (error || !b) {
+  if (listError && !beds) {
     return (
       <View style={{ flex: 1, justifyContent: 'center', paddingTop: insets.top, paddingHorizontal: spacing.base }}>
         <EmptyState
           illustration={<EmptyBookings />}
-          title={error ? "Couldn't load your stay" : 'No active stay yet'}
-          message={error ?? 'Once a booking is confirmed, it shows up here.'}
-          actionLabel={error ? 'Retry' : 'Browse properties'}
-          onAction={error ? load : () => router.push('/(tabs)')}
+          title="Couldn't load your stay"
+          message={listError}
+          actionLabel="Retry"
+          onAction={loadBeds}
         />
       </View>
     );
   }
 
-  const checkedIn = isCheckedIn(b);
-  const rateSuffix = b.booking_mode === 'HOURLY' ? '/hr' : b.booking_mode === 'DAILY' ? '/day' : '/mo';
+  if (!selectedBed) {
+    return (
+      <View style={{ flex: 1, justifyContent: 'center', paddingTop: insets.top, paddingHorizontal: spacing.base }}>
+        <EmptyState
+          illustration={<EmptyBookings />}
+          title="No active stay yet"
+          message="Once a booking is confirmed, it shows up here."
+          actionLabel="Browse properties"
+          onAction={() => router.push('/(tabs)')}
+        />
+      </View>
+    );
+  }
+
+  const b = selectedBed;
+  const checkedIn = b.booking.status === 'CHECKED_IN';
+  const rateSuffix = b.booking.booking_mode === 'HOURLY' ? '/hr' : b.booking.booking_mode === 'DAILY' ? '/day' : '/mo';
+  // Only trust `stayDetail` once it actually matches the selected bed — it lags one
+  // fetch behind while switching stays.
+  const detailForSelected = stayDetail?.booking.bed.id === b.bed.id ? stayDetail : null;
+  const dueDate = detailForSelected?.billing.next_due_date ?? b.billing.next_rent_due;
 
   const shareProperty = async () => {
     const link = `https://pgfy.in/p/api-${b.property.id}`;
@@ -162,11 +199,11 @@ export default function Stay() {
           <Image source={{ uri: bookingCoverImage(b.property) }} style={{ width: '100%', height: 200 + insets.top }} contentFit="cover" />
           <LinearGradient colors={['rgba(1,38,78,0.5)', 'rgba(1,38,78,0.2)', 'rgba(1,38,78,0.85)']} style={{ position: 'absolute', inset: 0 }} />
           <View style={{ position: 'absolute', top: insets.top + spacing.xs, left: spacing.base, right: spacing.base, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
-            <PressableScale onPress={() => setSwitcherOpen(true)} disabled={bookings.length <= 1}>
+            <PressableScale onPress={() => setSwitcherOpen(true)} disabled={(beds?.length ?? 0) <= 1}>
               <Text variant="bodySm" weight="700" color="rgba(255,255,255,0.92)">YOUR STAY</Text>
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 2 }}>
-                <Text variant="bodyMd" weight="700" color={palette.white}>{b.code}</Text>
-                {bookings.length > 1 ? (
+                <Text variant="bodyMd" weight="700" color={palette.white}>{b.booking.code}</Text>
+                {(beds?.length ?? 0) > 1 ? (
                   <View style={{ width: 20, height: 20, borderRadius: 10, backgroundColor: 'rgba(255,255,255,0.22)', alignItems: 'center', justifyContent: 'center' }}>
                     <Ionicons name="chevron-down" size={13} color={palette.white} />
                   </View>
@@ -181,10 +218,10 @@ export default function Stay() {
           <View style={{ position: 'absolute', bottom: spacing.base, left: spacing.base, right: spacing.base }}>
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: spacing.sm }}>
               <Text variant="h1" color={palette.white} style={{ flex: 1 }} numberOfLines={1}>{b.property.name}</Text>
-              <Badge label={bookingStatusLabel(b.status)} tone={bookingStatusTone(b.status)} small />
+              <Badge label={bookingStatusLabel(b.booking.status)} tone={bookingStatusTone(b.booking.status)} small />
             </View>
             <Text variant="bodySm" color="rgba(255,255,255,0.85)" style={{ marginTop: 2 }}>
-              {propertyListing?.addressLine ? `${propertyListing.addressLine}, ` : ''}{b.property.locality} · Since {formatDate(b.check_in_date)}
+              {propertyListing?.addressLine ? `${propertyListing.addressLine}, ` : ''}{b.property.locality} · Since {formatDate(b.booking.check_in_date)}
             </Text>
           </View>
         </View>
@@ -194,16 +231,16 @@ export default function Stay() {
           <Card style={{ flexDirection: 'row', alignItems: 'center' }}>
             <View style={{ flex: 1 }}>
               <Text variant="caption" color={palette.inkTertiary}>
-                {b.booking_mode === 'MONTHLY' ? 'MONTHLY RENT' : b.booking_mode === 'HOURLY' ? 'HOURLY RATE' : 'DAILY RATE'}
+                {b.booking.booking_mode === 'MONTHLY' ? 'MONTHLY RENT' : b.booking.booking_mode === 'HOURLY' ? 'HOURLY RATE' : 'DAILY RATE'}
               </Text>
-              <Text variant="numLg" mono color={palette.ink} style={{ marginTop: 2 }}>{inr(b.base_rent)}{rateSuffix}</Text>
+              <Text variant="numLg" mono color={palette.ink} style={{ marginTop: 2 }}>{inr(b.billing.base_rent)}{rateSuffix}</Text>
               <Text variant="caption" color={palette.inkSecondary}>
-                {b.booking_mode === 'MONTHLY' && b.next_rent_due
-                  ? `Next due ${formatDate(b.next_rent_due)}`
-                  : b.check_out_date ? `Until ${formatDate(b.check_out_date)}` : 'Active stay'}
+                {b.booking.booking_mode === 'MONTHLY' && dueDate
+                  ? `Next due ${formatDate(dueDate)}`
+                  : 'Active stay'}
               </Text>
             </View>
-            {b.booking_mode === 'MONTHLY' ? <Button label="Pay now" icon="flash" onPress={() => router.push('/billing')} /> : null}
+            {b.booking.booking_mode === 'MONTHLY' ? <Button label="Pay now" icon="flash" onPress={() => router.push('/billing')} /> : null}
           </Card>
 
           <Card>
@@ -217,11 +254,11 @@ export default function Stay() {
               </View>
             </View>
             <View style={{ flexDirection: 'row' }}>
-              <InfoTile label="Room" value={b.room_number} />
+              <InfoTile label="Room" value={b.room.room_number} />
               <DividerVertical />
-              <InfoTile label="Bed" value={b.bed_number} />
+              <InfoTile label="Bed" value={b.bed.bed_number} />
               <DividerVertical />
-              <InfoTile label="Layout" value={bookingModeLabel(b.room_layout)} />
+              <InfoTile label="Layout" value={formatLayoutFallback(b.room.layout)} />
             </View>
           </Card>
 
@@ -240,7 +277,17 @@ export default function Stay() {
           ) : null}
 
           {/* QR pass — pre-arrival check-in pass, or the ongoing PG pass once checked in */}
-          <PressableScale onPress={() => router.push({ pathname: '/pass', params: { id: String(b.id) } })} scaleTo={0.99} style={{ flexDirection: 'row', alignItems: 'center', gap: spacing.md, backgroundColor: palette.navy, borderRadius: radius.lg, padding: spacing.base }}>
+          <PressableScale
+            onPress={() => router.push({
+              pathname: '/pass',
+              params: {
+                bedId: String(b.bed.id),
+                ...(detailForSelected ? { stay: JSON.stringify(detailForSelected) } : {}),
+              },
+            })}
+            scaleTo={0.99}
+            style={{ flexDirection: 'row', alignItems: 'center', gap: spacing.md, backgroundColor: palette.navy, borderRadius: radius.lg, padding: spacing.base }}
+          >
             <View style={{ width: 44, height: 44, borderRadius: radius.md, backgroundColor: 'rgba(255,255,255,0.15)', alignItems: 'center', justifyContent: 'center' }}>
               <Ionicons name="qr-code" size={24} color={palette.white} />
             </View>
@@ -314,12 +361,12 @@ export default function Stay() {
 
       <Sheet visible={switcherOpen} onClose={() => setSwitcherOpen(false)} title="Switch stay" scroll>
         <View style={{ gap: spacing.sm }}>
-          {bookings.map((stay) => {
-            const active = stay.id === selectedId;
+          {(beds ?? []).map((stay) => {
+            const active = stay.bed.id === selectedBedId;
             return (
               <PressableScale
-                key={stay.id}
-                onPress={() => { setSelectedId(stay.id); setSwitcherOpen(false); }}
+                key={stay.bed.id}
+                onPress={() => selectBed(stay.bed.id)}
                 scaleTo={0.98}
                 style={{ flexDirection: 'row', alignItems: 'center', gap: spacing.md, padding: spacing.sm, borderRadius: radius.lg, borderWidth: 1.5, borderColor: active ? palette.coral : palette.border, backgroundColor: active ? palette.coralTint : palette.surface }}
               >
@@ -327,11 +374,11 @@ export default function Stay() {
                 <View style={{ flex: 1 }}>
                   <Text variant="bodyMd" weight="700" numberOfLines={1}>{stay.property.name}</Text>
                   <Text variant="caption" color={palette.inkSecondary} numberOfLines={1}>
-                    {stay.code} · Room {stay.room_number} · Bed {stay.bed_number}
+                    {stay.booking.code} · Room {stay.room.room_number} · Bed {stay.bed.bed_number}
                   </Text>
                   <View style={{ flexDirection: 'row', alignItems: 'center', gap: spacing.sm, marginTop: 6 }}>
-                    <Badge label={bookingStatusLabel(stay.status)} tone={bookingStatusTone(stay.status)} small />
-                    <Text variant="caption" color={palette.inkTertiary}>{bookingModeLabel(stay.booking_mode)}</Text>
+                    <Badge label={bookingStatusLabel(stay.booking.status)} tone={bookingStatusTone(stay.booking.status)} small />
+                    <Text variant="caption" color={palette.inkTertiary}>{bookingModeLabel(stay.booking.booking_mode)}</Text>
                   </View>
                 </View>
                 {active
@@ -357,6 +404,24 @@ function InfoTile({ label, value }: { label: string; value: string }) {
       <Text variant="bodyMd" weight="700" style={{ marginTop: 4 }}>
         {value}
       </Text>
+    </View>
+  );
+}
+
+function StaySkeleton({ insetTop }: { insetTop: number }) {
+  return (
+    <View style={{ flex: 1 }}>
+      <Skeleton width="100%" height={200 + insetTop} rounded={0} />
+      <View style={{ padding: spacing.base, gap: spacing.base }}>
+        <Skeleton width="100%" height={84} rounded={radius.lg} />
+        <Skeleton width="100%" height={110} rounded={radius.lg} />
+        <Skeleton width="100%" height={68} rounded={radius.lg} />
+        <View style={{ flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'space-between', rowGap: spacing.md }}>
+          {[0, 1, 2, 3, 4, 5].map((i) => (
+            <Skeleton key={i} width={100} height={100} rounded={radius.lg} />
+          ))}
+        </View>
+      </View>
     </View>
   );
 }

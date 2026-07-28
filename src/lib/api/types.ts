@@ -884,3 +884,242 @@ export interface ApiCoupon {
   created_at: string;
   updated_at: string;
 }
+
+// ===========================================================================
+// My Stay (`GET /tenant/beds`, `GET /tenant/my-stay`)
+// ===========================================================================
+
+export interface ApiStayProperty {
+  id: number;
+  name: string;
+  media: PropertyMediaSection[];
+  locality: string;
+  city: string;
+  code: string;
+  property_type: string;
+}
+
+export interface ApiStayBookingSummary {
+  id: number;
+  code: string;
+  status: BookingStatusApi;
+  booking_mode: ApiBookingMode;
+  check_in_date: string;
+}
+
+export interface ApiStayFloor {
+  id: number;
+  name: string;
+}
+
+export interface ApiStayRoom {
+  id: number;
+  room_number: string;
+  layout: string;
+  sharing_count: number;
+}
+
+export interface ApiStayBed {
+  id: number;
+  bed_number: string;
+  status: string;
+}
+
+export interface ApiStayBilling {
+  base_rent: number;
+  security_deposit: number;
+  next_rent_due: string | null;
+}
+
+/** `GET /tenant/beds` list item — one row per active bed/stay the tenant currently holds. */
+export interface ApiBedStay {
+  booking: ApiStayBookingSummary;
+  property: ApiStayProperty;
+  floor: ApiStayFloor;
+  room: ApiStayRoom;
+  bed: ApiStayBed;
+  billing: ApiStayBilling;
+  has_check_in_pass: boolean;
+}
+
+export interface ApiMyStayOwner {
+  name: string;
+  avatar: ProfileAsset | null;
+  phone: string;
+  email: string;
+  type: string;
+  role: string;
+}
+
+export interface ApiMyStayProperty extends ApiStayProperty {
+  owner: ApiMyStayOwner;
+}
+
+export interface ApiMyStayRoom {
+  id: number;
+  room_number: string;
+}
+
+export interface ApiMyStayBooking {
+  id: number;
+  code: string;
+  status: BookingStatusApi;
+  booking_mode: ApiBookingMode;
+  check_in_date: string;
+  check_in_otp: string | null;
+  /** A real, pre-rendered QR image when the backend has generated one — prefer this over
+   * building one client-side (see `buildCheckInPassPayload`) whenever it's present. */
+  check_in_qr: ProfileAsset | null;
+  property: ApiMyStayProperty;
+  floor: ApiStayFloor;
+  room: ApiMyStayRoom;
+  bed: ApiStayBed;
+}
+
+/** Note: unlike `ApiInvoice.pdf_attachment` (an asset object), this endpoint's invoice
+ * summaries give the PDF as a bare URL string. */
+export interface ApiMyStayInvoice {
+  id: number;
+  invoice_number: string;
+  type: InvoiceTypeApi;
+  amount: number;
+  paid: number;
+  status: InvoiceStatusApi;
+  due_date: string;
+  paid_on: string | null;
+  billing_month: string | null;
+  pdf_attachment: string | null;
+}
+
+export interface ApiMyStayBilling {
+  next_due_amount: number;
+  next_due_date: string | null;
+  due_invoice_id: number | null;
+  outstanding_balance: number;
+  invoices: ApiMyStayInvoice[];
+}
+
+/** `GET /tenant/my-stay?bed_id=` — full stay detail for one bed. `announcements`/
+ * `maintenance` shapes aren't documented (always empty in observed responses), so they're
+ * left as opaque arrays rather than guessed at. */
+export interface ApiMyStayResponse {
+  booking: ApiMyStayBooking;
+  billing: ApiMyStayBilling;
+  announcements: unknown[];
+  maintenance: unknown[];
+}
+
+// ---------------------------------------------------------------------------
+// Maintenance (`GET/POST /maintenance-management/maintenance`)
+// ---------------------------------------------------------------------------
+
+export type MaintenanceStatus =
+  | 'NEW'
+  | 'ASSIGNED'
+  | 'IN_PROGRESS'
+  | 'RESOLVED'
+  | 'DISMISSED'
+  | 'CANCELLED'
+  | (string & {});
+
+/** One maintenance ticket — list rows and the `:id` detail response share this shape. */
+export interface ApiMaintenanceTicket {
+  id: number;
+  tenant_id: number;
+  tenant_name: string;
+  property_name: string;
+  floor_name: string;
+  room_number: string;
+  bed_number: string;
+  tenant_avatar: ProfileAsset | null;
+  property_id: number;
+  floor_id: number;
+  room_id: number;
+  bed_id: number;
+  category_id: number;
+  category_name: string;
+  /** Assigned once the property team picks it up — `null` immediately after creation. */
+  code: string | null;
+  description: string;
+  images: string[];
+  priority: MaintenancePriority;
+  status: MaintenanceStatus;
+  sla_deadline: string;
+  assigned_staff_id: number | null;
+  assigned_staff_name: string | null;
+  assigned_on: string | null;
+  started_on: string | null;
+  dismissed_on: string | null;
+  cancelled_on: string | null;
+  dismissed_by_id: number | null;
+  dismissed_by_name: string | null;
+  manager_notes: string | null;
+  resolved_by_id: number | null;
+  resolved_by_name: string | null;
+  resolved_on: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface CreateMaintenanceInput {
+  category_id: number;
+  description: string;
+  images?: string[];
+  property_id: number;
+  floor_id: number;
+  room_id: number;
+  bed_id: number;
+}
+
+export interface MaintenanceSummary {
+  open: number;
+  in_progress: number;
+  resolved: number;
+}
+
+/** `GET /maintenance-management/maintenance` wraps the paginated list in a `listing` key
+ * alongside a tenant-wide `summary` (counts aren't scoped to the current page). */
+export interface ApiMaintenanceListResponse {
+  summary: MaintenanceSummary;
+  listing: Paginated<ApiMaintenanceTicket>;
+}
+
+// ---------------------------------------------------------------------------
+// Visitor log (`GET/POST/PATCH/DELETE /tenant-management/visitor-log`)
+// ---------------------------------------------------------------------------
+
+export type VisitorLogStatus = 'PENDING' | 'APPROVED' | 'REJECTED' | 'CHECKED_IN' | 'CHECKED_OUT' | (string & {});
+
+export interface ApiVisitorLog {
+  id: number;
+  tenant_id: number;
+  property_id: number;
+  floor_id: number;
+  room_id: number;
+  bed_id: number;
+  name: string;
+  phone: string;
+  visit_date: string;
+  visit_purpose: string;
+  expected_exit_time: string;
+  otp_code: string;
+  status: VisitorLogStatus;
+  approved_on: string | null;
+  rejected_on: string | null;
+  actual_in_time: string | null;
+  actual_out_time: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface CreateVisitorLogInput {
+  name: string;
+  phone: string;
+  visit_date: string;
+  visit_purpose: string;
+  expected_exit_time: string;
+  property_id: number;
+  floor_id: number;
+  room_id: number;
+  bed_id: number;
+}
