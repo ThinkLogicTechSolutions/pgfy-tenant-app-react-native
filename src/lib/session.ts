@@ -1,10 +1,24 @@
-/** Tiny persisted session flags for the mockup (onboarding seen / logged in). */
+/**
+ * Persisted session: onboarding-seen flag plus the API access token + cached tenant profile.
+ * `AuthContext` owns validating/refreshing the token; this module only persists it.
+ */
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import type { ApiProfile } from './api/types';
 
 const KEYS = {
   onboarded: 'pgfy.onboarded',
-  loggedIn: 'pgfy.loggedIn',
+  accessToken: 'pgfy.accessToken',
+  user: 'pgfy.user',
+  isGuest: 'pgfy.isGuest',
+  selectedBedId: 'pgfy.selectedBedId',
 } as const;
+
+export interface StoredAuth {
+  token: string;
+  /** Null for a guest session — guests have no tenant profile. */
+  user: ApiProfile | null;
+  isGuest: boolean;
+}
 
 export const session = {
   async isOnboarded() {
@@ -16,13 +30,61 @@ export const session = {
   async resetOnboarded() {
     await AsyncStorage.removeItem(KEYS.onboarded);
   },
-  async isLoggedIn() {
-    return (await AsyncStorage.getItem(KEYS.loggedIn)) === '1';
+
+  /** Persist the token + user from an auth response. */
+  async saveAuth(token: string, user: ApiProfile) {
+    await AsyncStorage.multiSet([
+      [KEYS.accessToken, token],
+      [KEYS.user, JSON.stringify(user)],
+    ]);
+    await AsyncStorage.removeItem(KEYS.isGuest);
   },
-  async login() {
-    await AsyncStorage.setItem(KEYS.loggedIn, '1');
+
+  /** Persist a guest session's token — guests have no tenant profile to store. */
+  async saveGuestAuth(token: string) {
+    await AsyncStorage.multiSet([
+      [KEYS.accessToken, token],
+      [KEYS.isGuest, '1'],
+    ]);
+    await AsyncStorage.removeItem(KEYS.user);
   },
+
+  /** Refresh the cached user without touching the token. */
+  async saveUser(user: ApiProfile) {
+    await AsyncStorage.setItem(KEYS.user, JSON.stringify(user));
+  },
+
+  /** Restore the session written by `saveAuth`/`saveGuestAuth`, or null when absent/corrupt. */
+  async getAuth(): Promise<StoredAuth | null> {
+    const [[, token], [, rawUser], [, guestFlag]] = await AsyncStorage.multiGet([
+      KEYS.accessToken,
+      KEYS.user,
+      KEYS.isGuest,
+    ]);
+    if (!token) return null;
+    if (guestFlag === '1') return { token, user: null, isGuest: true };
+    if (!rawUser) return null;
+    try {
+      return { token, user: JSON.parse(rawUser) as ApiProfile, isGuest: false };
+    } catch {
+      await AsyncStorage.multiRemove([KEYS.accessToken, KEYS.user]);
+      return null;
+    }
+  },
+
+  /** Remembers which bed the tenant last viewed on My Stay, across app restarts —
+   * history only, cleared on logout so it never leaks into the next account. */
+  async saveSelectedBed(bedId: number) {
+    await AsyncStorage.setItem(KEYS.selectedBedId, String(bedId));
+  },
+
+  async getSelectedBed(): Promise<number | null> {
+    const raw = await AsyncStorage.getItem(KEYS.selectedBedId);
+    const id = raw ? Number(raw) : NaN;
+    return Number.isFinite(id) ? id : null;
+  },
+
   async logout() {
-    await AsyncStorage.removeItem(KEYS.loggedIn);
+    await AsyncStorage.multiRemove([KEYS.accessToken, KEYS.user, KEYS.isGuest, KEYS.selectedBedId]);
   },
 };

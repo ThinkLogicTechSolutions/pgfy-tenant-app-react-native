@@ -21,7 +21,7 @@ export function PgfyScore({ score, verified }: { score: number; verified: boolea
     >
       <Ionicons name="shield-checkmark" size={15} color={verified ? palette.success : palette.inkTertiary} />
       <Text variant="caption" weight="700" color={verified ? palette.success : palette.inkSecondary}>
-        {verified ? `${score.toFixed(1)}/5 PGfy Verified` : 'Not verified'}
+        {verified ? `${Math.round(score)}/5` : 'Not verified'}
       </Text>
     </View>
   );

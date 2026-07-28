@@ -55,6 +55,38 @@ export interface PricingTier {
   available: number;
 }
 
+/**
+ * Real per-combination pricing for a room layout, as returned by the property-details API.
+ * Only populated for API-backed listings — mock listings synthesize these combos instead
+ * (see `monthlyPlansForTier` in the listing-detail screen).
+ */
+export interface PricingVariant {
+  sharingType: SharingType;
+  /** Raw API layout code (e.g. `SINGLE`, `DUO`) — required to query room/bed availability. */
+  layout: string;
+  available: number;
+  acWithFood: number;
+  acNoFood: number;
+  nonAcWithFood: number;
+  nonAcNoFood: number;
+}
+
+export interface FoodMenuSlot {
+  enabled: boolean;
+  items: string;
+}
+
+/** A single calendar day's meal schedule, as returned by the property-details API. */
+export interface WeeklyMenuDay {
+  /** 0 = Sunday .. 6 = Saturday (matches `Date#getDay()`). */
+  dayOfWeek: number;
+  morningTea?: FoodMenuSlot;
+  breakfast?: FoodMenuSlot;
+  lunch?: FoodMenuSlot;
+  eveningTea?: FoodMenuSlot;
+  dinner?: FoodMenuSlot;
+}
+
 export interface Bed {
   id: string;
   label: string;
@@ -150,6 +182,8 @@ export interface Listing {
   foodRating?: number;
   foodMenu: FoodDay[];
   pricing: PricingTier[];
+  /** Real per-combination pricing (API-backed listings only) — see `PricingVariant`. */
+  pricingVariants?: PricingVariant[];
   floors: Floor[];
   vacantBeds: number;
   occupancyPct: number;
@@ -173,6 +207,12 @@ export interface Listing {
   };
   /** Appointed on-site property manager the tenant can reach. */
   manager: { name: string; phone: string };
+  /** Real per-day-of-week meal schedule (API-backed listings only) — see `WeeklyMenuDay`. */
+  weeklyFoodMenu?: WeeklyMenuDay[];
+  /** Whether the signed-in tenant may rate this property (API-backed listings only). */
+  canRate?: boolean;
+  isFavorite?: boolean;
+  favoriteId?: number | null;
 }
 
 export interface CuratedRail {
@@ -306,7 +346,7 @@ export type TicketCategory =
   | 'Invoice issue'
   | 'Login or account issue'
   | 'Delete account request';
-export type TicketStatus = 'Open' | 'Assigned' | 'In Progress' | 'Resolved' | 'Cancelled';
+export type TicketStatus = 'Open' | 'Assigned' | 'In Progress' | 'Resolved';
 
 export interface TicketEvent {
   status: TicketStatus;

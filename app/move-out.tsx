@@ -11,12 +11,18 @@ import { BankDetailsForm } from '@/components/profile/BankDetailsForm';
 import { ACTIVE_BOOKING, LEASE } from '@/data';
 import { inr } from '@/lib/format';
 import { haptic } from '@/lib/haptics';
-import { useBank } from '@/store/bank';
+import { isBankDetailsComplete, bankDetailsSummary } from '@/lib/bankDetails';
+import { useAuth } from '@/context/AuthContext';
+import { errorMessage, type BankDetails } from '@/lib/api';
+import { alert } from '@/lib/alertDialog';
 
 export default function MoveOut() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
-  const bank = useBank();
+  const { user, updateProfile } = useAuth();
+  const bankDetails = user?.bank_details ?? null;
+  const bankComplete = isBankDetailsComplete(bankDetails);
+  const bankSummary = bankDetailsSummary(bankDetails);
   const [done, setDone] = useState(false);
   const [bankSheetOpen, setBankSheetOpen] = useState(false);
   const [savingBank, setSavingBank] = useState(false);
@@ -33,22 +39,26 @@ export default function MoveOut() {
   };
 
   const onSubmitPress = () => {
-    if (!bank.isComplete) {
+    if (!bankComplete) {
       setBankSheetOpen(true);
       return;
     }
     submitExit();
   };
 
-  const saveBankAndSubmit = (details: Parameters<typeof bank.set>[0]) => {
+  const saveBankAndSubmit = async (details: BankDetails) => {
     setSavingBank(true);
-    bank.set(details);
-    haptic.success();
-    setTimeout(() => {
-      setSavingBank(false);
+    try {
+      await updateProfile({ bank_details: details });
+      haptic.success();
       setBankSheetOpen(false);
       submitExit();
-    }, 400);
+    } catch (e) {
+      haptic.error();
+      alert("Couldn't save bank details", errorMessage(e));
+    } finally {
+      setSavingBank(false);
+    }
   };
 
   if (done) {
@@ -59,9 +69,9 @@ export default function MoveOut() {
         <Text variant="bodyLg" color={palette.inkSecondary} align="center" style={{ marginTop: spacing.sm, maxWidth: 300 }}>
           Status: Under Review → Approved → Refund Initiated. Your manager has been notified.
         </Text>
-        {bank.summary ? (
+        {bankSummary ? (
           <Text variant="caption" color={palette.inkTertiary} align="center" style={{ marginTop: spacing.md }}>
-            Refund will be sent to {bank.summary}
+            Refund will be sent to {bankSummary}
           </Text>
         ) : null}
         <Button label="Back to stay" onPress={() => router.replace('/(tabs)/stay')} style={{ marginTop: spacing.xl }} />
@@ -104,16 +114,16 @@ export default function MoveOut() {
           <Row k="Estimated refund" v={inr(estRefund)} bold last />
         </Card>
 
-        <Card onPress={bank.isComplete ? () => router.push('/bank-details') : () => setBankSheetOpen(true)}>
+        <Card onPress={bankComplete ? () => router.push('/bank-details') : () => setBankSheetOpen(true)}>
           <Text variant="overline" color={palette.inkTertiary} style={{ marginBottom: spacing.sm }}>REFUND BANK ACCOUNT</Text>
-          {bank.isComplete ? (
+          {bankComplete ? (
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: spacing.md }}>
               <View style={{ width: 40, height: 40, borderRadius: radius.md, backgroundColor: palette.successTint, alignItems: 'center', justifyContent: 'center' }}>
                 <Ionicons name="checkmark-circle" size={22} color={palette.success} />
               </View>
               <View style={{ flex: 1 }}>
-                <Text variant="bodyMd" weight="600">{bank.details.accountHolderName}</Text>
-                <Text variant="caption" color={palette.inkTertiary}>{bank.summary}</Text>
+                <Text variant="bodyMd" weight="600">{bankDetails?.account_holder_name}</Text>
+                <Text variant="caption" color={palette.inkTertiary}>{bankSummary}</Text>
               </View>
               <Ionicons name="chevron-forward" size={18} color={palette.inkTertiary} />
             </View>
@@ -147,7 +157,7 @@ export default function MoveOut() {
           Enter the account where your security deposit refund should be credited. You can update this later from Profile → Bank details.
         </Text>
         <BankDetailsForm
-          initial={bank.details}
+          initial={bankDetails ?? {}}
           onSubmit={saveBankAndSubmit}
           submitLabel="Save & submit exit request"
           loading={savingBank}

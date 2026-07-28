@@ -1,18 +1,21 @@
 /** T-S16 — Unified checkout for every transaction type (monthly/daily/hourly booking,
  *  extend, monthly invoice). Driven by a CheckoutIntent param. Shows the platform-fee +
- *  GST + coupon breakdown, lets monthly payers set up UPI Autopay or pay once, and
- *  simulates a Razorpay payment. */
+ *  GST breakdown, lets monthly payers set up UPI Autopay or pay once, and opens the real
+ *  Razorpay checkout for a genuine new-booking payment. */
 import { useMemo, useState } from 'react';
 import { View, ScrollView } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { palette, spacing, radius } from '@/theme';
-import { Text, ScreenHeader, Card, Button, Divider, Input, PressableScale, Badge, EmptyState } from '@/components/ui';
-import { COUPONS, resolveCoupon } from '@/data';
-import { computeCheckout, type CheckoutIntent } from '@/lib/billing';
+import { Text, ScreenHeader, Card, Button, Divider, PressableScale, EmptyState } from '@/components/ui';
+import { computeCheckout, type CheckoutIntent, type AppliedCoupon } from '@/lib/billing';
 import { inr } from '@/lib/format';
 import { haptic } from '@/lib/haptics';
+import { bookingApi, billingApi, errorMessage, type PaymentMethod, type ApiBookingCreateResponse, type ApiPayRentResponse } from '@/lib/api';
+import { alert } from '@/lib/alertDialog';
+import { useAuth } from '@/context/AuthContext';
+import { RazorpayCheckout, type RazorpayOrder, type RazorpaySuccess } from '@/components/booking';
 
 const METHODS = [
   { key: 'upi', label: 'UPI', sub: 'GPay, PhonePe, Paytm', icon: 'phone-portrait-outline' },
@@ -30,16 +33,27 @@ export default function Checkout() {
   const { intent: intentRaw, coupon: couponParam } = useLocalSearchParams<{ intent?: string; coupon?: string }>();
   const router = useRouter();
   const insets = useSafeAreaInsets();
+  const { user } = useAuth();
   const intent = useMemo(() => parseIntent(intentRaw), [intentRaw]);
 
-  const [couponInput, setCouponInput] = useState(couponParam ?? '');
-  const [appliedCode, setAppliedCode] = useState<string | null>(couponParam && resolveCoupon(couponParam) ? couponParam.toUpperCase() : null);
-  const [couponError, setCouponError] = useState(false);
+  // A coupon applied (and already resolved to a ₹ amount) on the previous screen still
+  // prices in here — this screen just doesn't let you edit it anymore.
+  const appliedCoupon = useMemo<AppliedCoupon | undefined>(() => {
+    if (!couponParam) return undefined;
+    try { return JSON.parse(couponParam) as AppliedCoupon; } catch { return undefined; }
+  }, [couponParam]);
   const [autopay, setAutopay] = useState(false);
   const [method, setMethod] = useState<string>('upi');
   const [loading, setLoading] = useState(false);
+  const [rzpVisible, setRzpVisible] = useState(false);
+  const [rzpOrder, setRzpOrder] = useState<RazorpayOrder | null>(null);
+  // 'mandate' only follows 'invoice' — an AUTOPAY pay-rent needs a second, separate Razorpay
+  // order to authorize the recurring mandate after the invoice's own payment succeeds.
+  const [rzpStep, setRzpStep] = useState<'booking' | 'invoice' | 'mandate' | null>(null);
+  const [pendingCreated, setPendingCreated] = useState<ApiBookingCreateResponse | null>(null);
+  const [pendingInvoicePay, setPendingInvoicePay] = useState<ApiPayRentResponse | null>(null);
 
-  const quote = useMemo(() => (intent ? computeCheckout(intent, appliedCode ?? undefined) : null), [intent, appliedCode]);
+  const quote = useMemo(() => (intent ? computeCheckout(intent, appliedCoupon) : null), [intent, appliedCoupon]);
 
   if (!intent || !quote) {
     return (
@@ -50,17 +64,133 @@ export default function Checkout() {
     );
   }
 
-  const applyCoupon = () => {
-    const c = resolveCoupon(couponInput);
-    if (c) { setAppliedCode(c.code); setCouponInput(c.code); setCouponError(false); haptic.success(); }
-    else { setAppliedCode(null); setCouponError(true); haptic.error(); }
-  };
-
   // Monthly bookings & invoices can set up UPI Autopay; offline cash forces one-time.
   const payMethod = autopay ? 'upi' : method;
   const payLabel = autopay ? `Set up Autopay · ${inr(quote.total)}` : `Pay ${inr(quote.total)}`;
 
-  const pay = () => {
+  const goToBookingSuccess = (created: ApiBookingCreateResponse) => {
+    router.replace({
+      pathname: '/payment-success',
+      params: {
+        amount: String(created.total_payable),
+        method: autopay ? 'UPI Autopay' : created.payment_method,
+        title: intent.title,
+        kind: intent.kind,
+        autopay: autopay ? '1' : '0',
+        bookingId: String(created.id),
+        bookingCode: created.code,
+      },
+    });
+  };
+
+  const goToInvoicePaySuccess = (res: ApiPayRentResponse) => {
+    router.replace({
+      pathname: '/payment-success',
+      params: {
+        amount: String(res.amount_due),
+        method: autopay ? 'UPI Autopay' : res.payment_method,
+        title: intent.title,
+        kind: intent.kind,
+        autopay: autopay ? '1' : '0',
+        note: res.payment_hint?.note,
+      },
+    });
+  };
+
+  const pay = async () => {
+    // Both branches below hit a real endpoint (booking_api.md / billing_api.md); anything
+    // else (extend, a mock-listing booking) has nothing real to create, so stays simulated.
+    if (intent.booking) {
+      setLoading(true);
+      try {
+        const created = await bookingApi.createBooking({
+          property_id: intent.booking.propertyId,
+          room_id: intent.booking.roomId,
+          bed_id: intent.booking.bedId,
+          floor_id: intent.booking.floorId,
+          booking_mode: intent.booking.bookingMode,
+          is_ac: intent.booking.isAc,
+          has_food: intent.booking.hasFood,
+          room_layout: intent.booking.roomLayout,
+          check_in_date: intent.booking.checkInDate,
+          check_out_date: intent.booking.checkOutDate ?? null,
+          duration_hours: intent.booking.durationHours ?? null,
+          payment_method: (autopay ? 'UPI' : payMethod.toUpperCase()) as PaymentMethod,
+          payment_frequency: autopay ? 'AUTOPAY' : 'PAY_ONCE',
+          coupon_code: appliedCoupon?.code ?? null,
+        });
+
+        const tx = created.transaction;
+        const isOnlineGateway = payMethod !== 'cash' && !!tx?.key && !!tx?.gateway_transaction_id;
+        if (isOnlineGateway) {
+          // The booking hold now exists server-side (status PENDING_PAYMENT) — open the
+          // real Razorpay checkout to actually collect payment against it.
+          setPendingCreated(created);
+          setRzpStep('booking');
+          setRzpOrder({
+            key: tx!.key!,
+            orderId: tx!.gateway_transaction_id!,
+            amountPaise: Math.round((tx!.total_amount ?? created.total_payable) * 100),
+            name: 'PGfy',
+            description: intent.title,
+            prefill: { name: user?.name, email: user?.email ?? undefined, contact: user?.phone },
+          });
+          setRzpVisible(true);
+          setLoading(false);
+          return;
+        }
+
+        // Offline methods (cash / no gateway on this transaction) — nothing left to collect here.
+        haptic.success();
+        goToBookingSuccess(created);
+      } catch (e) {
+        haptic.error();
+        alert('Could not complete booking', errorMessage(e));
+      } finally {
+        setLoading(false);
+      }
+      return;
+    }
+
+    if (intent.invoicePayment) {
+      setLoading(true);
+      try {
+        const res = await billingApi.payRent({
+          invoice_id: String(intent.invoicePayment.invoiceId),
+          payment_method: (autopay ? 'UPI' : payMethod.toUpperCase()) as PaymentMethod,
+          payment_frequency: autopay ? 'AUTOPAY' : 'PAY_ONCE',
+        });
+
+        const tx = res.transaction;
+        const isOnlineGateway = payMethod !== 'cash' && !!tx?.key && !!tx?.gateway_transaction_id;
+        if (isOnlineGateway) {
+          setPendingInvoicePay(res);
+          setRzpStep('invoice');
+          setRzpOrder({
+            key: tx!.key!,
+            orderId: tx!.gateway_transaction_id!,
+            amountPaise: Math.round((tx!.total_amount ?? res.amount_due) * 100),
+            name: 'PGfy',
+            description: intent.title,
+            prefill: { name: user?.name, email: user?.email ?? undefined, contact: user?.phone },
+          });
+          setRzpVisible(true);
+          setLoading(false);
+          return;
+        }
+
+        // CASH — nothing to collect online; the owner verifies via collect-rent OTP.
+        haptic.success();
+        goToInvoicePaySuccess(res);
+      } catch (e) {
+        haptic.error();
+        alert('Could not process payment', errorMessage(e));
+      } finally {
+        setLoading(false);
+      }
+      return;
+    }
+
     setLoading(true); haptic.success();
     setTimeout(() => {
       setLoading(false);
@@ -75,6 +205,93 @@ export default function Checkout() {
         },
       });
     }, 1100);
+  };
+
+  const closeRazorpay = () => {
+    setRzpVisible(false);
+    setRzpOrder(null);
+  };
+
+  const onRazorpaySuccess = (_result: RazorpaySuccess) => {
+    if (rzpStep === 'booking') {
+      closeRazorpay();
+      setRzpStep(null);
+      if (!pendingCreated) return;
+      haptic.success();
+      goToBookingSuccess(pendingCreated);
+      return;
+    }
+
+    if (rzpStep === 'invoice' && pendingInvoicePay) {
+      const mandateAuth = pendingInvoicePay.autopay?.razorpay;
+      if (mandateAuth) {
+        // Invoice paid — now authorize the recurring mandate (a separate, tiny Razorpay
+        // order) before considering this checkout fully done.
+        setRzpStep('mandate');
+        setRzpOrder({
+          key: mandateAuth.key,
+          orderId: mandateAuth.order_id,
+          amountPaise: Math.round(mandateAuth.amount * 100),
+          name: 'PGfy Autopay',
+          description: 'Authorize Autopay for future rent',
+          prefill: { name: mandateAuth.name, contact: mandateAuth.contact },
+        });
+        return;
+      }
+      closeRazorpay();
+      setRzpStep(null);
+      haptic.success();
+      goToInvoicePaySuccess(pendingInvoicePay);
+      return;
+    }
+
+    if (rzpStep === 'mandate' && pendingInvoicePay) {
+      closeRazorpay();
+      setRzpStep(null);
+      haptic.success();
+      goToInvoicePaySuccess(pendingInvoicePay);
+    }
+  };
+
+  const onRazorpayExit = (message?: string) => {
+    closeRazorpay();
+    const step = rzpStep;
+    setRzpStep(null);
+    if (message) haptic.error();
+
+    if (step === 'booking') {
+      // The booking already exists (PENDING_PAYMENT) — route to its detail page rather than
+      // re-calling createBooking (which would open a second hold).
+      const bookingId = pendingCreated?.id;
+      setPendingCreated(null);
+      alert(
+        message ? 'Payment failed' : 'Payment not completed',
+        message ?? 'Your booking is on hold — you can complete payment from the booking details page.',
+      );
+      if (bookingId) router.replace(`/booking/${bookingId}`);
+      return;
+    }
+
+    if (step === 'invoice') {
+      setPendingInvoicePay(null);
+      alert(
+        message ? 'Payment failed' : 'Payment not completed',
+        message ?? 'You can try paying this invoice again from Billing & invoices.',
+      );
+      router.back();
+      return;
+    }
+
+    if (step === 'mandate') {
+      // The invoice itself was already paid — only the recurring mandate failed to authorize.
+      const paid = pendingInvoicePay;
+      setPendingInvoicePay(null);
+      alert(
+        'Autopay not set up',
+        'Your payment went through, but Autopay could not be authorized. You can set it up again next time you pay.',
+      );
+      if (paid) goToInvoicePaySuccess(paid);
+    }
   };
 
   return (
@@ -98,36 +315,6 @@ export default function Checkout() {
             <Text variant="bodyMd" weight="700">Total payable</Text>
             <Text variant="bodyMd" weight="700" mono color={palette.navy}>{inr(quote.total)}</Text>
           </View>
-        </Card>
-
-        {/* Coupon */}
-        <Card>
-          <Text variant="overline" color={palette.inkTertiary} style={{ marginBottom: spacing.sm }}>COUPON</Text>
-          <View style={{ flexDirection: 'row', gap: spacing.sm }}>
-            <Input containerStyle={{ flex: 1 }} placeholder="Enter coupon code" value={couponInput} onChangeText={(v) => { setCouponInput(v); setCouponError(false); }} autoCapitalize="characters" icon="pricetag-outline" />
-            <Button label="Apply" variant="subtle" onPress={applyCoupon} />
-          </View>
-          {couponError ? (
-            <Text variant="caption" color={palette.danger} style={{ marginTop: spacing.sm }}>That coupon code isn’t valid.</Text>
-          ) : appliedCode && quote.couponDiscount > 0 ? (
-            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: spacing.sm }}>
-              <Ionicons name="checkmark-circle" size={16} color={palette.success} />
-              <Text variant="caption" color={palette.success}>{appliedCode} applied — you saved {inr(quote.couponDiscount)}!</Text>
-            </View>
-          ) : null}
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: spacing.sm, marginTop: spacing.md }}>
-            {COUPONS.slice(0, 5).map((c) => {
-              const active = appliedCode === c.code;
-              return (
-                <PressableScale key={c.code} onPress={() => { setCouponInput(c.code); setAppliedCode(c.code); setCouponError(false); haptic.success(); }} haptics={false}
-                  style={{ width: 200, backgroundColor: active ? palette.coralTint : palette.surfaceRaised, borderRadius: radius.md, borderWidth: 1, borderColor: active ? palette.coral : palette.border, padding: spacing.md, gap: 4 }}>
-                  <Text variant="bodySm" weight="700">{c.title}</Text>
-                  <Text variant="caption" color={palette.inkSecondary} numberOfLines={2}>{c.description}</Text>
-                  <Text variant="caption" mono weight="700" color={palette.navy} style={{ marginTop: spacing.xs }}>{c.code}</Text>
-                </PressableScale>
-              );
-            })}
-          </ScrollView>
         </Card>
 
         {/* Autopay vs one-time (monthly bookings & invoices) */}
@@ -189,8 +376,17 @@ export default function Checkout() {
           <Text variant="caption" color={palette.inkTertiary}>{autopay ? 'First debit' : 'Paying now'}</Text>
           <Text variant="h3" mono color={palette.navy}>{inr(quote.total)}</Text>
         </View>
-        <Button label={payLabel} loadingLabel="Contacting Razorpay…" icon="lock-closed" loading={loading} onPress={pay} full size="lg" style={{ flex: 1 }} />
+        <Button label={payLabel} loadingLabel="Loading…" icon="lock-closed" loading={loading} onPress={pay} full size="lg" style={{ flex: 1 }} />
       </View>
+
+      <RazorpayCheckout
+        key={rzpOrder?.orderId}
+        visible={rzpVisible}
+        order={rzpOrder}
+        onSuccess={onRazorpaySuccess}
+        onDismiss={() => onRazorpayExit()}
+        onError={(message) => onRazorpayExit(message)}
+      />
     </View>
   );
 }

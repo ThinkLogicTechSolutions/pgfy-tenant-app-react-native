@@ -1,10 +1,11 @@
-import { formatDate, NOW } from '@/lib/format';
+import { formatDate } from '@/lib/format';
 
 export type DateOption = { iso: string; label: string };
 
-/** Upcoming calendar days from a start date (default today per mock NOW). */
+/** Upcoming calendar days from a start date (default: the real device date — booking dates
+ * are sent to a real API, so they must track actual today, not the app's mock `NOW`). */
 export function dateOptions(count: number, startFrom?: string): DateOption[] {
-  const base = startFrom ? new Date(`${startFrom}T00:00:00`) : new Date(NOW);
+  const base = startFrom ? new Date(`${startFrom}T00:00:00`) : new Date();
   base.setHours(0, 0, 0, 0);
   const out: DateOption[] = [];
   for (let i = 0; i < count; i++) {
@@ -16,8 +17,16 @@ export function dateOptions(count: number, startFrom?: string): DateOption[] {
   return out;
 }
 
+/** Late-night cutoff: past this local hour, "today" no longer makes sense as a move-in date. */
+const LATE_NIGHT_CUTOFF_HOUR = 22;
+
+/** Today's date, unless it's past 10pm — then tomorrow. Applies to monthly/daily/hourly alike
+ * since every booking-mode date field defaults through this function. */
 export function defaultCheckIn(): string {
-  return dateOptions(1)[0].iso;
+  const today = dateOptions(1)[0].iso;
+  const isLateNight = new Date().getHours() >= LATE_NIGHT_CUTOFF_HOUR;
+  if (!isLateNight) return today;
+  return dateOptions(2, today)[1].iso;
 }
 
 export function defaultCheckOut(checkIn: string): string {

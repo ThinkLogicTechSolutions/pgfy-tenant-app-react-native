@@ -6,17 +6,26 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { palette, spacing, radius } from '@/theme';
 import { Text, ScreenHeader, Card, Button, Input, Divider, Badge, Sheet, PressableScale } from '@/components/ui';
-import { StayDateRangeField } from '@/components/search';
-import { getListing, resolveCoupon, COUPONS } from '@/data';
-import { computeCheckout, type CheckoutIntent } from '@/lib/billing';
+import { StayBookingFields, type StayBookingValues } from '@/components/search';
+import { getListing } from '@/data';
+import { computeCheckout, platformFeeFromMasterConfig, isCouponUsable, couponDiscountAmount, type CheckoutIntent, type AppliedCoupon } from '@/lib/billing';
 import type { BookingMode } from '@/data/types';
 import { inr } from '@/lib/format';
 import { defaultCheckIn, defaultCheckOut } from '@/lib/dates';
 import { haptic } from '@/lib/haptics';
-import { useKyc } from '@/store/kyc';
+import { useAuth } from '@/context/AuthContext';
+import { useMasterData } from '@/context/MasterDataContext';
+import { requireLogin } from '@/lib/guestGuard';
+import { propertyApi, couponsApi, type ApiCoupon } from '@/lib/api';
+import { parseApiPropertyId, propertyDetailsToListing } from '@/lib/listingAdapter';
+import { getCachedPropertyDetails, cachePropertyDetails } from '@/store/propertyDetailsCache';
+import type { Listing } from '@/data/types';
 
 export default function BookConfig() {
-  const { id, room, bed, rent, sharing, appliedCode, checkIn, checkOut, bookingType } = useLocalSearchParams<{
+  const {
+    id, room, bed, rent, sharing, appliedCode, checkIn, checkOut, startTime, hours, bookingType,
+    propertyId, roomId, bedId, floorId, layout, isAc, withFood,
+  } = useLocalSearchParams<{
     id: string;
     room: string;
     bed: string;
@@ -25,30 +34,77 @@ export default function BookConfig() {
     appliedCode?: string;
     checkIn?: string;
     checkOut?: string;
+    startTime?: string;
+    hours?: string;
     bookingType?: string;
+    propertyId?: string;
+    roomId?: string;
+    bedId?: string;
+    floorId?: string;
+    layout?: string;
+    isAc?: string;
+    withFood?: string;
   }>();
   const router = useRouter();
   const insets = useSafeAreaInsets();
-  const listing = getListing(String(id));
+  const apiId = parseApiPropertyId(String(id));
+  const mockListing = apiId ? null : getListing(String(id));
+  const [apiListing, setApiListing] = useState<Listing | null>(() => (apiId ? getCachedPropertyDetails(apiId) ?? null : null));
+  useEffect(() => {
+    if (!apiId) return;
+    // Already fetched on the listing-detail screen — skip the redundant round trip.
+    const cached = getCachedPropertyDetails(apiId);
+    if (cached) { setApiListing(cached); return; }
+    let active = true;
+    propertyApi.getPropertyDetails(apiId).then((data) => {
+      if (!active) return;
+      const mapped = propertyDetailsToListing(data);
+      setApiListing(mapped);
+      cachePropertyDetails(apiId, mapped);
+    }).catch(() => {});
+    return () => { active = false; };
+  }, [apiId]);
+  const listing = apiId ? apiListing : mockListing;
   const monthlyRent = Number(rent ?? 13000);
   const dep = listing?.securityDeposit ?? 26000;
   const [promo, setPromo] = useState('');
-  const [discount, setDiscount] = useState(0);
-  const [appliedCoupon, setAppliedCoupon] = useState<string | null>(null);
+  const [promoError, setPromoError] = useState(false);
+  const [appliedCoupon, setAppliedCoupon] = useState<AppliedCoupon | null>(null);
+  const [coupons, setCoupons] = useState<ApiCoupon[]>([]);
   const [kycOpen, setKycOpen] = useState(false);
-  const [stayDates, setStayDates] = useState(() => {
+
+  // Real coupons (billing_api.md) are property-scoped — nothing to fetch for a mock listing.
+  useEffect(() => {
+    if (!apiId) { setCoupons([]); return; }
+    let active = true;
+    couponsApi.listCoupons({ propertyId: apiId })
+      .then((list) => { if (active) setCoupons(list.filter(isCouponUsable)); })
+      .catch(() => { if (active) setCoupons([]); });
+    return () => { active = false; };
+  }, [apiId]);
+  const billingMode: BookingMode = bookingType === 'hourly' ? 'hourly' : bookingType === 'daily' ? 'daily' : 'monthly';
+  const [stayDates, setStayDates] = useState<StayBookingValues>(() => {
     const nextCheckIn = checkIn || defaultCheckIn();
     return {
       checkIn: nextCheckIn,
       checkOut: checkOut || defaultCheckOut(nextCheckIn),
+      startTime: startTime || '10:00',
+      hours: hours ? Number(hours) : 4,
     };
   });
 
-  const kyc = useKyc();
-  const billingMode: BookingMode = bookingType === 'hourly' ? 'hourly' : bookingType === 'daily' ? 'daily' : 'monthly';
+  const { isGuest, user } = useAuth();
+  const { config: masterConfig } = useMasterData();
+  const kycVerified = user?.kyc_status === 'VERIFIED';
   const rentLabel = billingMode === 'hourly' ? 'Hourly rate' : billingMode === 'daily' ? 'Daily rate' : 'First month rent';
   const depositAmount = billingMode === 'monthly' ? dep : 0;
   const modeLabel = billingMode === 'monthly' ? 'Monthly' : billingMode === 'daily' ? 'Daily' : 'Hourly';
+  const apiBookingMode = billingMode === 'hourly' ? 'HOURLY' : billingMode === 'daily' ? 'DAILY' : 'MONTHLY';
+  const canCreateBooking = !!(apiId && propertyId && roomId && bedId && layout);
+  // Hourly bookings combine the date with the chosen start time; monthly/daily just use midnight.
+  const bookingCheckInDate = billingMode === 'hourly'
+    ? `${stayDates.checkIn}T${stayDates.startTime}:00.000Z`
+    : `${stayDates.checkIn}T00:00:00.000Z`;
   const intent: CheckoutIntent = {
     kind: billingMode === 'hourly' ? 'booking-hourly' : billingMode === 'daily' ? 'booking-daily' : 'booking-monthly',
     title: `${listing?.name ?? 'Booking'} — ${modeLabel} booking`,
@@ -59,34 +115,51 @@ export default function BookConfig() {
     deposit: depositAmount,
     allowAutopay: billingMode === 'monthly',
     listingId: String(id),
+    platformFeeOverride: platformFeeFromMasterConfig(monthlyRent, masterConfig),
+    ...(canCreateBooking ? {
+      booking: {
+        propertyId: Number(propertyId),
+        roomId: Number(roomId),
+        bedId: Number(bedId),
+        floorId: floorId ? Number(floorId) : undefined,
+        bookingMode: apiBookingMode,
+        isAc: isAc === 'true',
+        hasFood: withFood === 'true',
+        roomLayout: layout!,
+        checkInDate: bookingCheckInDate,
+        ...(billingMode === 'daily' ? { checkOutDate: `${stayDates.checkOut}T00:00:00.000Z` } : {}),
+        ...(billingMode === 'hourly' ? { durationHours: stayDates.hours } : {}),
+      },
+    } : {}),
   };
   const quote = computeCheckout(intent, appliedCoupon ?? undefined);
   const netPayable = quote.total;
-  const kycVerified = kyc.verified;
 
-  useEffect(() => {
-    if (!appliedCode) return;
-    const coupon = resolveCoupon(appliedCode);
-    if (coupon) {
-      setPromo(coupon.code);
-      setDiscount(coupon.discount);
-      setAppliedCoupon(coupon.code);
-    }
-  }, [appliedCode]);
+  const findCoupon = (code: string) => coupons.find((c) => c.code.toUpperCase() === code.trim().toUpperCase());
 
-  const applyPromo = () => {
-    const coupon = resolveCoupon(promo);
+  const applyCouponCode = (code: string) => {
+    const coupon = findCoupon(code);
     if (coupon) {
-      setDiscount(coupon.discount);
-      setAppliedCoupon(coupon.code);
+      setAppliedCoupon({ code: coupon.code, amount: couponDiscountAmount(coupon, monthlyRent) });
       setPromo(coupon.code);
+      setPromoError(false);
       haptic.success();
     } else {
-      setDiscount(0);
       setAppliedCoupon(null);
+      setPromoError(true);
       haptic.error();
     }
   };
+
+  // The offers screen (or a deep link) hands back a code via this param — re-resolve it
+  // against the real coupon list once that's loaded.
+  useEffect(() => {
+    if (!appliedCode || coupons.length === 0) return;
+    applyCouponCode(appliedCode);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [appliedCode, coupons]);
+
+  const applyPromo = () => applyCouponCode(promo);
 
   const openAllOffers = () => {
     router.push({
@@ -96,18 +169,20 @@ export default function BookConfig() {
         bed: bed ?? '',
         rent: rent ?? '',
         sharing: sharing ?? '',
-        appliedCode: appliedCoupon ?? '',
+        appliedCode: appliedCoupon?.code ?? '',
         checkIn: stayDates.checkIn,
         checkOut: stayDates.checkOut,
+        propertyId: propertyId ?? '',
       },
     });
   };
 
   const proceed = () => {
+    if (isGuest) { requireLogin(router, 'Please login to continue with your booking.'); return; }
     if (!kycVerified) { setKycOpen(true); return; }
     router.push({
       pathname: '/checkout',
-      params: { intent: JSON.stringify(intent), coupon: appliedCoupon ?? '' },
+      params: { intent: JSON.stringify(intent), coupon: appliedCoupon ? JSON.stringify(appliedCoupon) : '' },
     });
   };
 
@@ -133,64 +208,67 @@ export default function BookConfig() {
         {/* Dates */}
         <Card>
           <Text variant="overline" color={palette.inkTertiary} style={{ marginBottom: spacing.sm }}>STAY DATES</Text>
-          <StayDateRangeField
-            checkIn={stayDates.checkIn}
-            checkOut={stayDates.checkOut}
+          <StayBookingFields
+            mode={billingMode}
+            values={stayDates}
             onChange={setStayDates}
           />
         </Card>
 
-        {/* Promo */}
-        <Card>
-          <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: spacing.sm }}>
-            <Text variant="overline" color={palette.inkTertiary}>OFFERS</Text>
-            <PressableScale onPress={openAllOffers} haptics={false} scaleTo={0.98}>
-              <Text variant="bodySm" weight="600" color={palette.coralDark}>View all</Text>
-            </PressableScale>
-          </View>
-          <View style={{ flexDirection: 'row', gap: spacing.sm }}>
-            <Input containerStyle={{ flex: 1 }} placeholder="Promo code" value={promo} onChangeText={setPromo} autoCapitalize="characters" icon="pricetag-outline" />
-            <Button label="Apply" variant="subtle" onPress={applyPromo} />
-          </View>
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: spacing.sm, marginTop: spacing.md }}>
-            {COUPONS.slice(0, 5).map((coupon) => {
-              const isApplied = appliedCoupon === coupon.code;
-              return (
-                <PressableScale
-                  key={coupon.code}
-                  onPress={() => {
-                    setPromo(coupon.code);
-                    const resolved = resolveCoupon(coupon.code);
-                    if (!resolved) return;
-                    setDiscount(resolved.discount);
-                    setAppliedCoupon(resolved.code);
-                    haptic.success();
-                  }}
-                  haptics={false}
-                  style={{
-                    width: 200,
-                    backgroundColor: isApplied ? palette.coralTint : palette.surfaceRaised,
-                    borderRadius: radius.md,
-                    borderWidth: 1,
-                    borderColor: isApplied ? palette.coral : palette.border,
-                    padding: spacing.md,
-                    gap: 4,
-                  }}
-                >
-                  <Text variant="bodySm" weight="700">{coupon.title}</Text>
-                  <Text variant="caption" color={palette.inkSecondary} numberOfLines={2}>{coupon.description}</Text>
-                  <Text variant="caption" mono weight="700" color={palette.navy} style={{ marginTop: spacing.xs }}>{coupon.code}</Text>
-                </PressableScale>
-              );
-            })}
-          </ScrollView>
-          {discount > 0 && appliedCoupon ? (
-            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: spacing.sm }}>
-              <Ionicons name="checkmark-circle" size={16} color={palette.success} />
-              <Text variant="caption" color={palette.success}>{appliedCoupon} applied — you saved {inr(discount)}!</Text>
+        {/* Promo — real coupons (billing_api.md) are property-scoped, so there's nothing to
+            offer on a mock listing. */}
+        {apiId ? (
+          <Card>
+            <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: spacing.sm }}>
+              <Text variant="overline" color={palette.inkTertiary}>OFFERS</Text>
+              <PressableScale onPress={openAllOffers} haptics={false} scaleTo={0.98}>
+                <Text variant="bodySm" weight="600" color={palette.coralDark}>View all</Text>
+              </PressableScale>
             </View>
-          ) : null}
-        </Card>
+            <View style={{ flexDirection: 'row', gap: spacing.sm }}>
+              <Input containerStyle={{ flex: 1 }} placeholder="Promo code" value={promo} onChangeText={(v) => { setPromo(v); setPromoError(false); }} autoCapitalize="characters" icon="pricetag-outline" />
+              <Button label="Apply" variant="subtle" onPress={applyPromo} />
+            </View>
+            {promoError ? (
+              <Text variant="caption" color={palette.danger} style={{ marginTop: spacing.sm }}>That coupon code isn't valid.</Text>
+            ) : null}
+            {coupons.length > 0 ? (
+              <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: spacing.sm, marginTop: spacing.md }}>
+                {coupons.slice(0, 5).map((coupon) => {
+                  const isApplied = appliedCoupon?.code === coupon.code;
+                  return (
+                    <PressableScale
+                      key={coupon.id}
+                      onPress={() => applyCouponCode(coupon.code)}
+                      haptics={false}
+                      style={{
+                        width: 200,
+                        backgroundColor: isApplied ? palette.coralTint : palette.surfaceRaised,
+                        borderRadius: radius.md,
+                        borderWidth: 1,
+                        borderColor: isApplied ? palette.coral : palette.border,
+                        padding: spacing.md,
+                        gap: 4,
+                      }}
+                    >
+                      <Text variant="bodySm" weight="700">
+                        {coupon.discount_type === 'PERCENTAGE' ? `${coupon.discount_amount}% off` : `${inr(coupon.discount_amount)} off`}
+                      </Text>
+                      {coupon.description ? <Text variant="caption" color={palette.inkSecondary} numberOfLines={2}>{coupon.description}</Text> : null}
+                      <Text variant="caption" mono weight="700" color={palette.navy} style={{ marginTop: spacing.xs }}>{coupon.code}</Text>
+                    </PressableScale>
+                  );
+                })}
+              </ScrollView>
+            ) : null}
+            {appliedCoupon ? (
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: spacing.sm }}>
+                <Ionicons name="checkmark-circle" size={16} color={palette.success} />
+                <Text variant="caption" color={palette.success}>{appliedCoupon.code} applied — you saved {inr(appliedCoupon.amount)}!</Text>
+              </View>
+            ) : null}
+          </Card>
+        ) : null}
 
         {/* Bill */}
         <Card>

@@ -26,7 +26,7 @@ export function EmptyState({ illustration, title, message, actionLabel, onAction
         </Text>
       ) : null}
       {actionLabel && onAction ? (
-        <Button label={actionLabel} onPress={onAction} variant="subtle" style={{ marginTop: spacing.lg }} />
+        <Button label={actionLabel} onPress={onAction} variant="subtle" style={{ marginTop: spacing.lg, alignSelf: 'center' }} />
       ) : null}
     </View>
   );

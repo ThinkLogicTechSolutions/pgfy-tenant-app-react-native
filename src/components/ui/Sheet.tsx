@@ -1,7 +1,10 @@
 /** Bottom sheet with slide-up animation, backdrop tap + drag-to-dismiss. */
 import { useEffect, useState } from 'react';
-import { Modal, View, useWindowDimensions, ScrollView } from 'react-native';
-import { Gesture, GestureDetector } from 'react-native-gesture-handler';
+import { Modal, View, useWindowDimensions } from 'react-native';
+// gesture-handler's ScrollView (not RN's) — it shares the same gesture-responder system as
+// GestureDetector, so nested gestures (e.g. the calendar's horizontal month swipe) can win
+// the arena instead of being eaten by a plain RN ScrollView's separate PanResponder.
+import { Gesture, GestureDetector, ScrollView } from 'react-native-gesture-handler';
 import Animated, {
   useAnimatedStyle,
   useSharedValue,
@@ -44,7 +47,12 @@ export function Sheet({ visible, onClose, title, titleRight, children, scroll }:
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [visible]);
 
+  // Constrained so it only claims clear downward drags — otherwise it wins the gesture
+  // arena over any horizontal swipe in the sheet's content (e.g. the calendar's month swipe)
+  // on the very first frame of movement, before that gesture's own offset threshold fires.
   const pan = Gesture.Pan()
+    .activeOffsetY([10, 1000])
+    .failOffsetX([-15, 15])
     .onUpdate((e) => {
       if (e.translationY > 0) translateY.value = e.translationY;
     })

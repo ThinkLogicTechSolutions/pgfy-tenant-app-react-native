@@ -1,5 +1,3 @@
-import { NOW } from '@/lib/format';
-
 const MONTHS_FULL = [
   'January', 'February', 'March', 'April', 'May', 'June',
   'July', 'August', 'September', 'October', 'November', 'December',
@@ -20,8 +18,10 @@ export function toIso(d: Date): string {
   return `${y}-${m}-${day}`;
 }
 
+/** The real device date — booking dates go to a real API, so "today" must track actual
+ * today, not the app's mock `NOW` (otherwise dates already in the past look bookable). */
 export function startOfToday(): Date {
-  const d = new Date(NOW);
+  const d = new Date();
   d.setHours(0, 0, 0, 0);
   return d;
 }
@@ -52,13 +52,17 @@ export type CalendarCell =
   | { kind: 'empty'; key: string }
   | { kind: 'day'; key: string; iso: string; day: number; disabled: boolean };
 
-/** Build a 6-row month grid (Sun–Sat) with leading blanks. */
-export function buildMonthGrid(year: number, month: number, minDate?: Date): CalendarCell[] {
+/** Build a 6-row month grid (Sun–Sat) with leading blanks. `minDate` defaults to today (the
+ * booking-flow default — no past dates); pass an explicit `minDate`/`maxDate` for a picker
+ * that instead needs to bound a historical range (e.g. billing). */
+export function buildMonthGrid(year: number, month: number, minDate?: Date, maxDate?: Date): CalendarCell[] {
   const first = new Date(year, month, 1);
   const startPad = first.getDay();
   const daysInMonth = new Date(year, month + 1, 0).getDate();
-  const min = minDate ?? startOfToday();
+  const min = new Date(minDate ?? startOfToday());
   min.setHours(0, 0, 0, 0);
+  const max = maxDate ? new Date(maxDate) : null;
+  if (max) max.setHours(23, 59, 59, 999);
 
   const cells: CalendarCell[] = [];
   for (let i = 0; i < startPad; i++) {
@@ -73,7 +77,7 @@ export function buildMonthGrid(year: number, month: number, minDate?: Date): Cal
       key: iso,
       iso,
       day,
-      disabled: d.getTime() < min.getTime(),
+      disabled: d.getTime() < min.getTime() || (max ? d.getTime() > max.getTime() : false),
     });
   }
   while (cells.length % 7 !== 0) {

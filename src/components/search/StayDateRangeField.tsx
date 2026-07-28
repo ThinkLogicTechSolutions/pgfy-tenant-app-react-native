@@ -15,6 +15,9 @@ interface Props {
   checkOutLabel?: string;
   sheetTitle?: string;
   applyLabel?: string;
+  /** Earliest/latest selectable date — defaults match `MonthRangeCalendar` (today, unbounded). */
+  minDate?: Date;
+  maxDate?: Date;
 }
 
 export function StayDateRangeField({
@@ -25,6 +28,8 @@ export function StayDateRangeField({
   checkOutLabel = 'Check-out',
   sheetTitle = 'Select stay dates',
   applyLabel = 'Apply dates',
+  minDate,
+  maxDate,
 }: Props) {
   const [open, setOpen] = useState(false);
   const [draftIn, setDraftIn] = useState(checkIn);
@@ -71,6 +76,8 @@ export function StayDateRangeField({
               setDraftIn(ci);
               setDraftOut(co);
             }}
+            minDate={minDate}
+            maxDate={maxDate}
           />
 
           <Button label={applyLabel} full size="lg" disabled={!draftIn} onPress={apply} />

@@ -1,170 +1,179 @@
-/** Booking details — active or past stay summary. A confirmed booking can be cancelled
- *  before check-in; the cancellation reason + refund breakdown then show here. */
-import { useState } from 'react';
-import { View, ScrollView } from 'react-native';
+/** Booking details — real `/tenant/booking/:id`. A cancellable booking can be cancelled
+ *  here; the API's refund breakdown then carries through to the cancelled screen. */
+import { useEffect, useState } from 'react';
+import { View, ScrollView, ActivityIndicator } from 'react-native';
 import { Image } from 'expo-image';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { Ionicons } from '@expo/vector-icons';
 import { palette, spacing, radius } from '@/theme';
-import { Text, ScreenHeader, Card, Button, Divider, EmptyState, Sheet, Input } from '@/components/ui';
-import { StatusPill } from '@/components/domain';
-import { getBookingByRef, getListing, LEASE, computeCancellationCharge, REFUND_ETA } from '@/data';
-import { useBookingCancellations } from '@/store/bookingCancellations';
+import { Text, ScreenHeader, Card, Button, Divider, EmptyState, Sheet, Input, Badge } from '@/components/ui';
+import { bookingApi, errorMessage, type ApiBookingDetail } from '@/lib/api';
+import { bookingStatusLabel, bookingStatusTone, bookingModeLabel, bookingCoverImage, isCheckedIn } from '@/lib/bookingDisplay';
 import { inr, formatDate } from '@/lib/format';
 import { haptic } from '@/lib/haptics';
+
+/** Statuses where the hold hasn't converted into an active stay yet — cancellable. */
+const CANCELLABLE_STATUSES = ['PENDING_PAYMENT', 'CONFIRMED'];
+
+function minutesToTime(m: number | null): string | null {
+  if (m == null) return null;
+  const h = Math.floor(m / 60) % 24;
+  const min = m % 60;
+  const suffix = h >= 12 ? 'PM' : 'AM';
+  const hr = h % 12 || 12;
+  return `${hr}:${String(min).padStart(2, '0')} ${suffix}`;
+}
 
 export default function BookingDetails() {
   const { ref, amount } = useLocalSearchParams<{ ref: string; amount?: string }>();
   const router = useRouter();
   const insets = useSafeAreaInsets();
-  const cancelStore = useBookingCancellations();
+  const id = Number(ref);
+
+  const [booking, setBooking] = useState<ApiBookingDetail | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const [sheetOpen, setSheetOpen] = useState(false);
   const [reason, setReason] = useState('');
-  const record = getBookingByRef(String(ref ?? ''));
+  const [cancelling, setCancelling] = useState(false);
 
-  if (!record) {
+  const load = () => {
+    if (!Number.isFinite(id)) {
+      setLoading(false);
+      return;
+    }
+    setLoading(true);
+    setError(null);
+    bookingApi.getBooking(id)
+      .then(setBooking)
+      .catch((e) => setError(errorMessage(e)))
+      .finally(() => setLoading(false));
+  };
+
+  useEffect(load, [id]);
+
+  if (!Number.isFinite(id) || (!loading && !booking)) {
     return (
       <View style={{ flex: 1, paddingTop: insets.top + spacing.xs }}>
         <ScreenHeader title="Booking details" />
-        <EmptyState title="Booking not found" message="This booking reference could not be loaded." />
+        <EmptyState
+          title={error ? "Couldn't load booking" : 'Booking not found'}
+          message={error ?? 'This booking could not be loaded.'}
+          actionLabel={error ? 'Retry' : undefined}
+          onAction={error ? load : undefined}
+        />
       </View>
     );
   }
 
-  const listing = getListing(record.booking.listingId);
-  const isActive = record.kind === 'active';
-  const b = record.booking;
-  const cancellation = cancelStore.get(b.ref);
-  // A confirmed booking the tenant hasn't checked into yet can still be cancelled.
-  const isBeforeCheckIn = isActive && 'bookingMode' in b && (b.status === 'Confirmed' || b.status === 'Awaiting Approval');
-  const status = cancellation ? 'Cancelled' : 'bookingMode' in b ? (isBeforeCheckIn ? b.status : b.stayStatus) : b.status;
-  const paidAmount = amount ? Number(amount) : 'bookingMode' in b ? b.monthlyRent + b.deposit : b.totalPaid;
+  if (loading || !booking) {
+    return (
+      <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', paddingTop: insets.top }}>
+        <ActivityIndicator color={palette.coral} />
+      </View>
+    );
+  }
 
-  const charge = 'bookingMode' in b ? computeCancellationCharge(b.bookingMode, paidAmount) : null;
+  const b = booking;
+  const paidAmount = amount ? Number(amount) : b.total_paid ?? b.base_rent + b.security_deposit;
+  const cancellable = CANCELLABLE_STATUSES.includes(b.status);
+  const isHourly = b.booking_mode === 'HOURLY';
 
-  const confirmCancel = () => {
-    if (!charge || !reason.trim()) return;
-    cancelStore.cancel(b.ref, {
-      reason: reason.trim(),
-      cancelledOn: new Date().toISOString(),
-      chargeType: charge.chargeType,
-      chargeAmount: charge.chargeAmount,
-      amountPaid: paidAmount,
-      refundAmount: charge.refundAmount,
-      refundEta: REFUND_ETA,
-    });
-    haptic.success();
-    setSheetOpen(false);
-    setReason('');
-    router.replace({ pathname: '/booking/cancelled', params: { ref: b.ref } });
+  const confirmCancel = async () => {
+    if (!reason.trim() || cancelling) return;
+    setCancelling(true);
+    try {
+      const res = await bookingApi.cancelBooking({ booking_id: b.id, cancellation_reason: reason.trim() });
+      haptic.success();
+      setSheetOpen(false);
+      setReason('');
+      router.replace({
+        pathname: '/booking/cancelled',
+        params: {
+          ref: String(b.id),
+          propertyName: b.property.name,
+          amountPaid: String(res.refund.amount_paid),
+          chargeAmount: String(res.refund.cancellation_charge),
+          chargeLabel: res.refund.cancellation_charge_label,
+          refundAmount: String(res.refund.refund_to_tenant),
+          message: res.message,
+        },
+      });
+    } catch (e) {
+      haptic.error();
+      setError(errorMessage(e));
+      setSheetOpen(false);
+    } finally {
+      setCancelling(false);
+    }
   };
 
   return (
     <View style={{ flex: 1, paddingTop: insets.top + spacing.xs }}>
       <ScreenHeader
         title="Booking details"
-        subtitle={b.ref}
-        right={<StatusPill status={status} small />}
+        subtitle={b.code}
+        right={<Badge label={bookingStatusLabel(b.status)} tone={bookingStatusTone(b.status)} small />}
       />
       <ScrollView
         contentContainerStyle={{ paddingHorizontal: spacing.base, paddingBottom: insets.bottom + spacing['3xl'], gap: spacing.base }}
         showsVerticalScrollIndicator={false}
       >
         <Card style={{ flexDirection: 'row', gap: spacing.md, alignItems: 'center' }}>
-          <Image source={{ uri: b.propertyImage }} style={{ width: 80, height: 80, borderRadius: radius.md }} contentFit="cover" />
+          <Image source={{ uri: bookingCoverImage(b.property) }} style={{ width: 80, height: 80, borderRadius: radius.md }} contentFit="cover" />
           <View style={{ flex: 1 }}>
-            <Text variant="h3" numberOfLines={2}>{b.propertyName}</Text>
+            <Text variant="h3" numberOfLines={2}>{b.property.name}</Text>
             <Text variant="bodySm" color={palette.inkSecondary} style={{ marginTop: 4 }}>
-              {b.locality}{listing?.city ? `, ${listing.city}` : ''}
+              {b.property.locality}, {b.property.city}
             </Text>
-            {!isActive && 'type' in b ? (
-              <Text variant="caption" color={palette.inkTertiary} style={{ marginTop: 4 }}>{b.type}</Text>
-            ) : null}
+            <Text variant="caption" color={palette.inkTertiary} style={{ marginTop: 4 }}>{b.property.property_type}</Text>
           </View>
         </Card>
 
         <Card>
           <Text variant="h3" style={{ marginBottom: spacing.md }}>Stay details</Text>
-          <DetailRow label="Booking reference" value={b.ref} />
-          <DetailRow label="Room / Bed" value={`${b.roomNumber} · Bed ${b.bedLabel}`} />
-          <DetailRow label="Sharing" value={b.sharingType} />
-          <DetailRow label="Check-in" value={formatDate(b.checkInDate)} />
-          {isActive && 'bookingMode' in b && b.bookingMode === 'hourly' ? (
-            <DetailRow label="Stay window" value={`${b.startTime ? fmtTime(b.startTime) : ''}–${b.endTime ? fmtTime(b.endTime) : ''}`} last />
-          ) : 'checkOutDate' in b && b.checkOutDate ? (
-            <DetailRow label="Check-out" value={formatDate(b.checkOutDate)} last />
+          <DetailRow label="Booking reference" value={b.code} />
+          <DetailRow label="Room / Bed" value={`${b.room_number} · Bed ${b.bed_number}`} />
+          <DetailRow label="Room layout" value={b.room_layout} />
+          <DetailRow label="Check-in" value={formatDate(b.check_in_date)} />
+          {isHourly && (b.hourly_start_slot != null || b.hourly_end_slot != null) ? (
+            <DetailRow label="Stay window" value={`${minutesToTime(b.hourly_start_slot) ?? '—'}–${minutesToTime(b.hourly_end_slot) ?? '—'}`} last />
+          ) : b.check_out_date ? (
+            <DetailRow label="Check-out" value={formatDate(b.check_out_date)} last />
+          ) : b.actual_check_in ? (
+            <DetailRow label="Checked in on" value={formatDate(b.actual_check_in)} last />
           ) : (
-            <DetailRow label="Lease status" value={LEASE.status} last />
+            <DetailRow label="Booking mode" value={bookingModeLabel(b.booking_mode)} last />
           )}
         </Card>
 
         <Card>
           <Text variant="h3" style={{ marginBottom: spacing.md }}>Payment summary</Text>
-          {isActive && 'bookingMode' in b && b.bookingMode !== 'monthly' ? (
-            <DetailRow
-              label={b.bookingMode === 'hourly' ? 'Hourly rate' : 'Daily rate'}
-              value={`${inr(b.bookingMode === 'hourly' ? b.ratePerHour ?? 0 : b.ratePerDay ?? 0)}${b.bookingMode === 'hourly' ? '/hr' : '/day'}`}
-              last
-            />
-          ) : 'bookingMode' in b ? (
-            <>
-              <DetailRow label="Monthly rent" value={`${inr(b.monthlyRent)}/mo`} />
-              <DetailRow label="Security deposit" value={inr(b.deposit)} />
-              {amount ? <DetailRow label="Amount paid now" value={inr(paidAmount)} bold /> : null}
-              <DetailRow label="Next rent due" value={formatDate(b.nextRentDue)} last />
-            </>
-          ) : (
-            <>
-              <DetailRow label="Monthly rent" value={`${inr(b.monthlyRent)}/mo`} />
-              <DetailRow label="Total paid" value={inr(b.totalPaid)} />
-              {'refundedDeposit' in b && b.refundedDeposit > 0 ? (
-                <DetailRow label="Deposit refunded" value={inr(b.refundedDeposit)} last />
-              ) : (
-                <DetailRow label="Duration" value={`${b.durationMonths} months`} last />
-              )}
-            </>
-          )}
+          <DetailRow label={isHourly ? 'Hourly rate' : b.booking_mode === 'DAILY' ? 'Daily rate' : 'Monthly rent'} value={inr(b.base_rent)} />
+          <DetailRow label="Security deposit" value={inr(b.security_deposit)} />
+          {amount ? <DetailRow label="Amount paid now" value={inr(paidAmount)} bold /> : b.total_paid != null ? <DetailRow label="Total paid" value={inr(b.total_paid)} /> : null}
+          {b.next_rent_due ? <DetailRow label="Next rent due" value={formatDate(b.next_rent_due)} last /> : null}
         </Card>
 
-        {cancellation ? (
-          <Card style={{ borderWidth: 1, borderColor: palette.dangerTint }}>
-            <View style={{ flexDirection: 'row', alignItems: 'center', gap: spacing.sm, marginBottom: spacing.md }}>
-              <Ionicons name="close-circle" size={20} color={palette.danger} />
-              <Text variant="h3">Booking cancelled</Text>
-            </View>
-            <View style={{ backgroundColor: palette.surfaceRaised, borderRadius: radius.md, padding: spacing.md, marginBottom: spacing.md }}>
-              <Text variant="caption" color={palette.inkTertiary}>Reason</Text>
-              <Text variant="bodySm" weight="600" style={{ marginTop: 2 }}>{cancellation.reason}</Text>
-            </View>
-            <DetailRow label="Amount paid" value={inr(cancellation.amountPaid)} />
-            <DetailRow label="Cancellation charge" value={`− ${inr(cancellation.chargeAmount)}`} />
-            <DetailRow label="Refund amount" value={inr(cancellation.refundAmount)} bold last />
-            <View style={{ flexDirection: 'row', alignItems: 'center', gap: spacing.sm, marginTop: spacing.md, backgroundColor: palette.successTint, borderRadius: radius.md, padding: spacing.md }}>
-              <Ionicons name="cash-outline" size={18} color={palette.success} />
-              <Text variant="bodySm" color={palette.inkSecondary} style={{ flex: 1 }}>
-                {inr(cancellation.refundAmount)} will be refunded to your original payment method within {cancellation.refundEta}.
-              </Text>
-            </View>
-          </Card>
-        ) : isActive ? (
-          <View style={{ gap: spacing.sm }}>
-            {'bookingMode' in b && b.bookingMode !== 'monthly' ? (
-              <Button label="Extend stay" icon="time-outline" full onPress={() => router.push({ pathname: '/booking/extend', params: { ref: b.ref } })} />
-            ) : null}
-            <Button label="View check-in pass" icon="qr-code-outline" variant="outline" full onPress={() => router.push('/pass')} />
-            {isBeforeCheckIn ? (
-              <Button label="Cancel booking" icon="close-circle-outline" variant="danger" full onPress={() => setSheetOpen(true)} />
-            ) : null}
-          </View>
+        {b.has_check_in_pass ? (
+          <Button
+            label={isCheckedIn(b) ? 'View PG pass' : 'View check-in pass'}
+            icon="qr-code-outline"
+            variant="outline"
+            full
+            onPress={() => router.push({ pathname: '/pass', params: { id: String(b.id) } })}
+          />
+        ) : null}
+
+        {cancellable ? (
+          <Button label="Cancel booking" icon="close-circle-outline" variant="danger" full onPress={() => setSheetOpen(true)} />
         ) : null}
       </ScrollView>
 
       <Sheet visible={sheetOpen} onClose={() => setSheetOpen(false)} title="Cancel booking" scroll>
         <View style={{ gap: spacing.base }}>
           <Text variant="bodySm" color={palette.inkSecondary}>
-            Cancel before check-in and we'll refund your payment minus the cancellation charge. Refunds reach your
-            original payment method within {REFUND_ETA}.
+            Cancelling before check-in refunds your payment minus any applicable cancellation charge.
           </Text>
           <Input
             label="Reason for cancellation"
@@ -174,32 +183,19 @@ export default function BookingDetails() {
             multiline
             numberOfLines={3}
           />
-          {charge ? (
-            <View style={{ backgroundColor: palette.surfaceRaised, borderRadius: radius.md, padding: spacing.md }}>
-              <DetailRow label="Amount paid" value={inr(paidAmount)} />
-              <DetailRow label="Cancellation charge" value={`− ${inr(charge.chargeAmount)}`} />
-              <DetailRow label="You'll be refunded" value={inr(charge.refundAmount)} bold last />
-            </View>
-          ) : null}
           <Button
             label="Confirm cancellation"
             full
             size="lg"
             disabled={!reason.trim()}
+            loading={cancelling}
             onPress={confirmCancel}
           />
-          <Button label="Keep my booking" variant="ghost" full onPress={() => setSheetOpen(false)} />
+          <Button label="Keep my booking" variant="ghost" full onPress={() => setSheetOpen(false)} disabled={cancelling} />
         </View>
       </Sheet>
     </View>
   );
-}
-
-function fmtTime(hhmm: string) {
-  const [h, m] = hhmm.split(':').map(Number);
-  const suffix = h >= 12 ? 'PM' : 'AM';
-  const hr = h % 12 || 12;
-  return `${hr}:${String(m).padStart(2, '0')} ${suffix}`;
 }
 
 function DetailRow({ label, value, bold, last }: { label: string; value: string; bold?: boolean; last?: boolean }) {

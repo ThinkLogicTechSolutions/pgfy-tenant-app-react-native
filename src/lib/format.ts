@@ -78,6 +78,15 @@ export function daysFromNow(iso: string): number {
   return Math.round((d.getTime() - NOW.getTime()) / 86400000);
 }
 
+/** `IN_PROGRESS` → `In Progress`. */
+export function titleCaseFromSnake(value: string): string {
+  return value
+    .split('_')
+    .filter(Boolean)
+    .map((w) => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase())
+    .join(' ');
+}
+
 export function initials(name: string): string {
   return name
     .split(' ')

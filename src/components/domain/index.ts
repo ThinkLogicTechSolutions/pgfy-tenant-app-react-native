@@ -10,4 +10,12 @@ export { ReviewCard, InvoiceRow, VisitorCard, TicketRow, NotificationRow } from 
 export { HoldBanner } from './HoldBanner';
 export { PastBookingCard } from './PastBookingCard';
 export { CraftedFooter } from './CraftedFooter';
-export { WeeklyFoodMenuSheet, buildWeeklyMenu, WEEK_DAYS, weekDayFromDate, type WeekDay } from './WeeklyFoodMenuSheet';
+export {
+  WeeklyFoodMenuSheet,
+  buildWeeklyMenu,
+  buildWeeklyMenuFromApi,
+  WEEK_DAYS,
+  weekDayFromDate,
+  type WeekDay,
+  type ResolvedDayMenu,
+} from './WeeklyFoodMenuSheet';

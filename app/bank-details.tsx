@@ -6,23 +6,29 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { palette, spacing } from '@/theme';
 import { Text, IconButton } from '@/components/ui';
 import { BankDetailsForm } from '@/components/profile/BankDetailsForm';
-import { useBank } from '@/store/bank';
+import { useAuth } from '@/context/AuthContext';
+import { alert } from '@/lib/alertDialog';
+import { errorMessage, type BankDetails } from '@/lib/api';
 import { haptic } from '@/lib/haptics';
 
 export default function BankDetailsScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
-  const bank = useBank();
+  const { user, updateProfile } = useAuth();
   const [loading, setLoading] = useState(false);
 
-  const save = (details: Parameters<typeof bank.set>[0]) => {
+  const save = async (details: BankDetails) => {
     setLoading(true);
-    bank.set(details);
-    haptic.success();
-    setTimeout(() => {
-      setLoading(false);
+    try {
+      await updateProfile({ bank_details: details });
+      haptic.success();
       router.back();
-    }, 400);
+    } catch (e) {
+      haptic.error();
+      alert("Couldn't save bank details", errorMessage(e));
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (
@@ -40,7 +46,7 @@ export default function BankDetailsScreen() {
         <Text variant="bodySm" color={palette.inkSecondary} style={{ marginBottom: spacing.lg, lineHeight: 22 }}>
           Add the bank account where your security deposit refund should be credited after move-out.
         </Text>
-        <BankDetailsForm initial={bank.details} onSubmit={save} loading={loading} />
+        <BankDetailsForm initial={user?.bank_details ?? {}} onSubmit={save} loading={loading} />
       </ScrollView>
     </KeyboardAvoidingView>
   );

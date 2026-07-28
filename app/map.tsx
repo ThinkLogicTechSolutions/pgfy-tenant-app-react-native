@@ -6,10 +6,10 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Image } from 'expo-image';
 import { Ionicons } from '@expo/vector-icons';
 import { palette, spacing, radius, shadows } from '@/theme';
-import { Text, IconButton, PressableScale } from '@/components/ui';
+import { Text, IconButton, PressableScale, EmptyState } from '@/components/ui';
 import { RatingPill } from '@/components/domain';
-import { MapBackdrop } from '@/components/illustrations';
-import { LISTINGS } from '@/data';
+import { MapBackdrop, EmptySearch } from '@/components/illustrations';
+import { useMapResults } from '@/store/mapResults';
 import type { Listing } from '@/data/types';
 import { inr } from '@/lib/format';
 
@@ -26,22 +26,34 @@ export default function MapView() {
   const { width } = useWindowDimensions();
   const scrollRef = useRef<ScrollView>(null);
   const [selected, setSelected] = useState(0);
+  const listings = useMapResults();
 
   const cardWidth = Math.min(300, width * 0.82);
   const cardGap = spacing.md;
   const cardStep = cardWidth + cardGap;
 
   const selectListing = (index: number) => {
-    const i = Math.max(0, Math.min(index, LISTINGS.length - 1));
+    const i = Math.max(0, Math.min(index, listings.length - 1));
     setSelected(i);
     scrollRef.current?.scrollTo({ x: i * cardStep, animated: true });
   };
+
+  if (listings.length === 0) {
+    return (
+      <View style={{ flex: 1, paddingTop: insets.top + spacing.sm }}>
+        <View style={{ paddingHorizontal: spacing.base, paddingBottom: spacing.sm }}>
+          <IconButton icon="chevron-back" onPress={() => (router.canGoBack() ? router.back() : router.replace('/(tabs)'))} style={{ borderRadius: 21 }} />
+        </View>
+        <EmptyState illustration={<EmptySearch />} title="No properties to show" message="Go back and search or browse properties first." />
+      </View>
+    );
+  }
 
   return (
     <View style={{ flex: 1, backgroundColor: palette.navyTint }}>
       <View style={{ position: 'absolute', inset: 0 }}>
         <MapBackdrop />
-        {LISTINGS.map((l, i) => {
+        {listings.map((l, i) => {
           const active = i === selected;
           return (
             <PressableScale
@@ -79,7 +91,7 @@ export default function MapView() {
       </View>
 
       <PressableScale
-        onPress={() => router.replace('/results')}
+        onPress={() => (router.canGoBack() ? router.back() : router.replace('/(tabs)'))}
         style={{
           position: 'absolute',
           top: insets.top + 70,
@@ -116,10 +128,10 @@ export default function MapView() {
         style={{ position: 'absolute', left: 0, right: 0, bottom: 0 }}
         onMomentumScrollEnd={(e) => {
           const idx = Math.round(e.nativeEvent.contentOffset.x / cardStep);
-          setSelected(Math.max(0, Math.min(idx, LISTINGS.length - 1)));
+          setSelected(Math.max(0, Math.min(idx, listings.length - 1)));
         }}
       >
-        {LISTINGS.map((listing, i) => (
+        {listings.map((listing, i) => (
           <MapPreviewCard
             key={listing.id}
             listing={listing}

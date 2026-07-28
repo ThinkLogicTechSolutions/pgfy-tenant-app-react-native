@@ -1,5 +1,5 @@
-/** Booking-cancelled confirmation — red animated burst + the booking chime, then a
- *  refund breakdown. Reached from the booking detail screen after a tenant cancels. */
+/** Booking-cancelled confirmation — red animated burst, then the API's refund breakdown.
+ *  Reached from the booking detail screen right after a successful cancel-booking call. */
 import { View, ScrollView } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -7,21 +7,24 @@ import { Ionicons } from '@expo/vector-icons';
 import { palette, spacing, radius } from '@/theme';
 import { Text, Card, Button, Divider } from '@/components/ui';
 import { AnimatedSuccessTick, useBookingSuccessSound } from '@/components/booking';
-import { useBookingCancellations } from '@/store/bookingCancellations';
-import { getBookingByRef } from '@/data';
 import { inr } from '@/lib/format';
 
 export default function BookingCancelled() {
-  const { ref } = useLocalSearchParams<{ ref: string }>();
+  const { ref, propertyName, amountPaid, chargeAmount, chargeLabel, refundAmount, message } = useLocalSearchParams<{
+    ref: string;
+    propertyName?: string;
+    amountPaid?: string;
+    chargeAmount?: string;
+    chargeLabel?: string;
+    refundAmount?: string;
+    message?: string;
+  }>();
   const router = useRouter();
   const insets = useSafeAreaInsets();
-  const cancelStore = useBookingCancellations();
 
   useBookingSuccessSound();
 
-  const c = cancelStore.get(String(ref ?? ''));
-  const record = getBookingByRef(String(ref ?? ''));
-  const propertyName = record?.booking.propertyName ?? record?.booking.ref;
+  const hasRefund = amountPaid != null && chargeAmount != null && refundAmount != null;
 
   return (
     <View style={{ flex: 1, backgroundColor: palette.bg }}>
@@ -42,20 +45,20 @@ export default function BookingCancelled() {
           Booking cancelled
         </Text>
         <Text variant="bodyLg" color={palette.inkSecondary} align="center" style={{ marginTop: spacing.sm, maxWidth: 320 }}>
-          {propertyName
+          {message || (propertyName
             ? `Your booking at ${propertyName} has been cancelled.`
-            : 'Your booking has been cancelled.'}
+            : 'Your booking has been cancelled.')}
         </Text>
 
-        {c ? (
+        {hasRefund ? (
           <Card style={{ alignSelf: 'stretch', marginTop: spacing.xl }}>
-            <Row k="Amount paid" v={inr(c.amountPaid)} />
-            <Row k="Cancellation charge" v={`− ${inr(c.chargeAmount)}`} />
-            <Row k="Refund amount" v={inr(c.refundAmount)} bold last />
+            <Row k="Amount paid" v={inr(Number(amountPaid))} />
+            <Row k={chargeLabel || 'Cancellation charge'} v={`− ${inr(Number(chargeAmount))}`} />
+            <Row k="Refund amount" v={inr(Number(refundAmount))} bold last />
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: spacing.sm, marginTop: spacing.md, backgroundColor: palette.successTint, borderRadius: radius.md, padding: spacing.md }}>
               <Ionicons name="cash-outline" size={18} color={palette.success} />
               <Text variant="bodySm" color={palette.success} style={{ flex: 1 }}>
-                {inr(c.refundAmount)} will be refunded to your original payment method within {c.refundEta}.
+                {inr(Number(refundAmount))} will be refunded to your original payment method.
               </Text>
             </View>
           </Card>

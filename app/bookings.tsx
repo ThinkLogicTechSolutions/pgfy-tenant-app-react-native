@@ -1,84 +1,137 @@
-/** Booking history — all stays with date & status filters in a sheet. */
-import { useMemo, useState } from 'react';
-import { View, FlatList } from 'react-native';
+/** Booking history — real `/tenant/booking` list with date & status filters in a sheet. */
+import { useEffect, useMemo, useState } from 'react';
+import { View, FlatList, ActivityIndicator } from 'react-native';
 import { Image } from 'expo-image';
 import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { palette, spacing, radius } from '@/theme';
 import {
-  Text, ScreenHeader, PressableScale, EmptyState, Sheet, Chip, AnimatedListItem, DateRangePicker,
+  Text, ScreenHeader, PressableScale, EmptyState, Sheet, Chip, Button, Divider, AnimatedListItem, Badge, Skeleton,
 } from '@/components/ui';
-import { PastBookingCard, StatusPill } from '@/components/domain';
 import { EmptyBookings } from '@/components/illustrations';
-import {
-  getAllTenantBookings,
-  bookingListStatus,
-  bookingCheckInDate,
-  type TenantBookingItem,
-} from '@/data';
-import { useBookingCancellations } from '@/store/bookingCancellations';
+import { bookingApi, errorMessage, type ApiBooking } from '@/lib/api';
+import { bookingStatusLabel, bookingStatusTone, bookingModeLabel, bookingCoverImage, isActiveBookingStatus } from '@/lib/bookingDisplay';
 import { inr, formatDate } from '@/lib/format';
 import { haptic } from '@/lib/haptics';
-import { defaultDateRange, type DateRangeValue } from '@/lib/dateRange';
 
-type StatusFilter = 'all' | 'Active' | 'Completed' | 'Moved Out' | 'Cancelled';
+type DateFilter = 'all' | '3m' | '6m' | '12m' | '2026' | '2025' | '2024';
 
-const STATUS_FILTERS: { key: StatusFilter; label: string }[] = [
-  { key: 'all', label: 'All statuses' },
-  { key: 'Active', label: 'Active' },
-  { key: 'Completed', label: 'Completed' },
-  { key: 'Moved Out', label: 'Moved out' },
-  { key: 'Cancelled', label: 'Cancelled' },
+const PAGE_SIZE = 10;
+
+const DATE_FILTERS: { key: DateFilter; label: string }[] = [
+  { key: 'all', label: 'All time' },
+  { key: '3m', label: 'Last 3 months' },
+  { key: '6m', label: 'Last 6 months' },
+  { key: '12m', label: 'Last 12 months' },
+  { key: '2026', label: '2026' },
+  { key: '2025', label: '2025' },
+  { key: '2024', label: '2024' },
 ];
 
-function matchesStatusFilter(status: string, filter: StatusFilter): boolean {
+function monthsAgoIso(months: number): string {
+  const d = new Date();
+  d.setMonth(d.getMonth() - months);
+  return d.toISOString().slice(0, 10);
+}
+
+function matchesDateFilter(checkIn: string, filter: DateFilter): boolean {
   if (filter === 'all') return true;
-  return status === filter;
+  const iso = checkIn.slice(0, 10);
+  if (filter === '3m') return iso >= monthsAgoIso(3);
+  if (filter === '6m') return iso >= monthsAgoIso(6);
+  if (filter === '12m') return iso >= monthsAgoIso(12);
+  return iso.startsWith(filter);
 }
 
 export default function Bookings() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
-  const cancelStore = useBookingCancellations();
-  const allBookings = useMemo(() => getAllTenantBookings(), []);
 
-  const [range, setRange] = useState<DateRangeValue>(defaultDateRange);
-  const [statusFilterOpen, setStatusFilterOpen] = useState(false);
-  const [statusFilter, setStatusFilter] = useState<StatusFilter>('all');
+  const [bookings, setBookings] = useState<ApiBooking[]>([]);
+  const [total, setTotal] = useState(0);
+  const [loading, setLoading] = useState(true);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
-  const statusFilterActive = statusFilter !== 'all';
+  const loadPage = (skip: number) => {
+    const setBusy = skip === 0 ? setLoading : setLoadingMore;
+    setBusy(true);
+    setError(null);
+    bookingApi.listBookings({ limit: PAGE_SIZE, skip })
+      .then((page) => {
+        setBookings((prev) => (skip === 0 ? page.data : [...prev, ...page.data]));
+        setTotal(page.total);
+      })
+      .catch((e) => setError(errorMessage(e)))
+      .finally(() => setBusy(false));
+  };
 
-  // A booking cancelled this session reads as "Cancelled" everywhere, overriding its stored status.
-  const effectiveStatus = (item: TenantBookingItem) =>
-    item.kind === 'active' && cancelStore.isCancelled(item.booking.ref) ? 'Cancelled' : bookingListStatus(item);
+  useEffect(() => {
+    loadPage(0);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
-  const filtered = allBookings.filter((item) => {
-    const checkIn = bookingCheckInDate(item);
-    return checkIn >= range.from && checkIn <= range.to && matchesStatusFilter(effectiveStatus(item), statusFilter);
-  });
+  const [filtersOpen, setFiltersOpen] = useState(false);
+  const [dateFilter, setDateFilter] = useState<DateFilter>('all');
+  const [statusFilter, setStatusFilter] = useState<string>('all');
+  const [draftDate, setDraftDate] = useState<DateFilter>('all');
+  const [draftStatus, setDraftStatus] = useState<string>('all');
+
+  const statusOptions = useMemo(() => {
+    const seen = new Map<string, string>();
+    for (const b of bookings) seen.set(b.status, bookingStatusLabel(b.status));
+    return [{ key: 'all', label: 'All statuses' }, ...Array.from(seen, ([key, label]) => ({ key, label }))];
+  }, [bookings]);
+
+  const filtersActive = dateFilter !== 'all' || statusFilter !== 'all';
+
+  const filtered = bookings.filter((b) => (
+    matchesDateFilter(b.check_in_date, dateFilter) && (statusFilter === 'all' || b.status === statusFilter)
+  ));
+
+  const openFilters = () => {
+    setDraftDate(dateFilter);
+    setDraftStatus(statusFilter);
+    setFiltersOpen(true);
+  };
+
+  const applyFilters = () => {
+    haptic.select();
+    setDateFilter(draftDate);
+    setStatusFilter(draftStatus);
+    setFiltersOpen(false);
+  };
+
+  const clearFilters = () => {
+    setDraftDate('all');
+    setDraftStatus('all');
+    setDateFilter('all');
+    setStatusFilter('all');
+    setFiltersOpen(false);
+  };
 
   return (
     <View style={{ flex: 1, paddingTop: insets.top + spacing.xs }}>
       <ScreenHeader
         title="Booking history"
-        subtitle={`${filtered.length} of ${allBookings.length} bookings`}
+        subtitle={loading ? undefined : `${filtered.length} of ${bookings.length} bookings`}
         right={
-          <PressableScale onPress={() => setStatusFilterOpen(true)} scaleTo={0.92}>
+          <PressableScale onPress={openFilters} scaleTo={0.92}>
             <View
               style={{
                 width: 40,
                 height: 40,
                 borderRadius: 20,
-                backgroundColor: statusFilterActive ? palette.navyTint : palette.surface,
+                backgroundColor: filtersActive ? palette.navyTint : palette.surface,
                 borderWidth: 1,
-                borderColor: statusFilterActive ? palette.navy : palette.border,
+                borderColor: filtersActive ? palette.navy : palette.border,
                 alignItems: 'center',
                 justifyContent: 'center',
               }}
             >
-              <Ionicons name="options-outline" size={20} color={statusFilterActive ? palette.navy : palette.ink} />
-              {statusFilterActive ? (
+              <Ionicons name="options-outline" size={20} color={filtersActive ? palette.navy : palette.ink} />
+              {filtersActive ? (
                 <View
                   style={{
                     position: 'absolute',
@@ -96,102 +149,180 @@ export default function Bookings() {
         }
       />
 
-      <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm, paddingHorizontal: spacing.base, marginBottom: spacing.sm }}>
-        <DateRangePicker value={range} onChange={setRange} />
-        {statusFilter !== 'all' ? (
-          <Chip
-            label={STATUS_FILTERS.find((f) => f.key === statusFilter)?.label ?? statusFilter}
-            active
-            onPress={() => setStatusFilterOpen(true)}
-          />
-        ) : null}
-      </View>
+      {filtersActive ? (
+        <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm, paddingHorizontal: spacing.base, marginBottom: spacing.sm }}>
+          {dateFilter !== 'all' ? (
+            <Chip
+              label={DATE_FILTERS.find((f) => f.key === dateFilter)?.label ?? dateFilter}
+              active
+              onPress={openFilters}
+            />
+          ) : null}
+          {statusFilter !== 'all' ? (
+            <Chip
+              label={statusOptions.find((f) => f.key === statusFilter)?.label ?? statusFilter}
+              active
+              onPress={openFilters}
+            />
+          ) : null}
+        </View>
+      ) : null}
 
-      <FlatList
-        data={filtered}
-        keyExtractor={(item) => item.booking.ref}
-        contentContainerStyle={{
-          paddingHorizontal: spacing.base,
-          paddingBottom: spacing['3xl'],
-          gap: spacing.md,
-          paddingTop: spacing.sm,
-          flexGrow: 1,
-        }}
-        showsVerticalScrollIndicator={false}
-        renderItem={({ item, index }) => (
-          <AnimatedListItem index={index}>
-            {item.kind === 'active'
-              ? <ActiveBookingCard item={item} status={effectiveStatus(item)} onPress={() => router.push(`/booking/${item.booking.ref}`)} />
-              : <PastBookingCard booking={item.booking} onPress={() => router.push(`/booking/${item.booking.ref}`)} />}
-          </AnimatedListItem>
-        )}
-        ListEmptyComponent={
-          <EmptyState
-            illustration={<EmptyBookings />}
-            title="No bookings found"
-            message="Try adjusting your date or status filters."
-          />
-        }
-      />
+      {loading ? (
+        <View style={{ paddingHorizontal: spacing.base, paddingTop: spacing.sm, gap: spacing.md }}>
+          {[0, 1, 2].map((i) => (
+            <View key={i} style={{ backgroundColor: palette.surface, borderRadius: radius.lg, borderWidth: 1, borderColor: palette.border, padding: spacing.md, flexDirection: 'row', gap: spacing.md }}>
+              <Skeleton width={72} height={72} rounded={radius.md} />
+              <View style={{ flex: 1, gap: 8 }}>
+                <Skeleton width="65%" height={16} />
+                <Skeleton width="45%" height={12} />
+                <Skeleton width="55%" height={12} />
+              </View>
+            </View>
+          ))}
+        </View>
+      ) : (
+        <FlatList
+          data={filtered}
+          keyExtractor={(item) => String(item.id)}
+          contentContainerStyle={{
+            paddingHorizontal: spacing.base,
+            paddingBottom: spacing['3xl'],
+            gap: spacing.md,
+            paddingTop: spacing.sm,
+            flexGrow: 1,
+          }}
+          showsVerticalScrollIndicator={false}
+          renderItem={({ item, index }) => (
+            <AnimatedListItem index={index}>
+              {isActiveBookingStatus(item.status)
+                ? <BookingCard booking={item} onPress={() => router.push(`/booking/${item.id}`)} />
+                : <PastBookingCardApi booking={item} onPress={() => router.push(`/booking/${item.id}`)} />}
+            </AnimatedListItem>
+          )}
+          ListEmptyComponent={
+            <EmptyState
+              illustration={<EmptyBookings />}
+              title={error ? "Couldn't load bookings" : 'No bookings found'}
+              message={error ?? 'Try adjusting your date or status filters.'}
+            />
+          }
+          onEndReachedThreshold={0.4}
+          onEndReached={() => {
+            if (!loadingMore && !error && bookings.length < total) loadPage(bookings.length);
+          }}
+          ListFooterComponent={
+            loadingMore ? (
+              <View style={{ paddingVertical: spacing.md, alignItems: 'center' }}>
+                <ActivityIndicator color={palette.coral} />
+              </View>
+            ) : null
+          }
+        />
+      )}
 
-      <Sheet visible={statusFilterOpen} onClose={() => setStatusFilterOpen(false)} title="Filter by status">
-        <View style={{ gap: spacing.xs }}>
-          {STATUS_FILTERS.map((f) => {
-            const active = statusFilter === f.key;
-            return (
-              <PressableScale
-                key={f.key}
-                onPress={() => { setStatusFilter(f.key); setStatusFilterOpen(false); haptic.select(); }}
-                scaleTo={0.98}
-                style={{
-                  flexDirection: 'row',
-                  alignItems: 'center',
-                  justifyContent: 'space-between',
-                  padding: spacing.base,
-                  backgroundColor: active ? palette.navyTint : palette.surfaceRaised,
-                  borderRadius: radius.md,
-                  borderWidth: 1,
-                  borderColor: active ? palette.navy : 'transparent',
-                }}
-              >
-                <Text variant="bodyMd" weight={active ? '700' : '500'} color={active ? palette.navy : palette.ink}>
-                  {f.label}
-                </Text>
-                {active ? <Ionicons name="checkmark-circle" size={20} color={palette.navy} /> : null}
-              </PressableScale>
-            );
-          })}
+      <Sheet visible={filtersOpen} onClose={() => setFiltersOpen(false)} title="Filters" scroll>
+        <View style={{ gap: spacing.lg }}>
+          <View>
+            <Text variant="overline" color={palette.inkTertiary} style={{ marginBottom: spacing.sm }}>
+              DATE
+            </Text>
+            <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm }}>
+              {DATE_FILTERS.map((f) => (
+                <Chip
+                  key={f.key}
+                  label={f.label}
+                  active={draftDate === f.key}
+                  onPress={() => setDraftDate(f.key)}
+                />
+              ))}
+            </View>
+          </View>
+
+          <Divider />
+
+          <View>
+            <Text variant="overline" color={palette.inkTertiary} style={{ marginBottom: spacing.sm }}>
+              BOOKING STATUS
+            </Text>
+            <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm }}>
+              {statusOptions.map((f) => (
+                <Chip
+                  key={f.key}
+                  label={f.label}
+                  active={draftStatus === f.key}
+                  onPress={() => setDraftStatus(f.key)}
+                />
+              ))}
+            </View>
+          </View>
+
+          <View style={{ gap: spacing.sm, marginTop: spacing.sm }}>
+            <Button label="Apply filters" full size="lg" onPress={applyFilters} />
+            <Button label="Clear all" variant="ghost" full onPress={clearFilters} />
+          </View>
         </View>
       </Sheet>
     </View>
   );
 }
 
-function ActiveBookingCard({ item, status, onPress }: { item: TenantBookingItem & { kind: 'active' }; status?: string; onPress?: () => void }) {
-  const b = item.booking;
+function BookingCard({ booking: b, onPress }: { booking: ApiBooking; onPress?: () => void }) {
+  const rateSuffix = b.booking_mode === 'HOURLY' ? '/hr' : b.booking_mode === 'DAILY' ? '/day' : '/mo';
   return (
     <PressableScale onPress={onPress} scaleTo={0.99} style={{ backgroundColor: palette.navy, borderRadius: radius.lg, overflow: 'hidden' }}>
       <View style={{ flexDirection: 'row', padding: spacing.md, gap: spacing.md, alignItems: 'center' }}>
-        <Image source={{ uri: b.propertyImage }} style={{ width: 72, height: 72, borderRadius: radius.md }} contentFit="cover" />
+        <Image source={{ uri: bookingCoverImage(b.property) }} style={{ width: 72, height: 72, borderRadius: radius.md }} contentFit="cover" />
         <View style={{ flex: 1 }}>
           <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: spacing.sm }}>
             <Text variant="bodyMd" weight="700" color={palette.white} numberOfLines={1} style={{ flex: 1 }}>
-              {b.propertyName}
+              {b.property.name}
             </Text>
-            <StatusPill status={status ?? b.status} small />
+            <Badge label={bookingStatusLabel(b.status)} tone={bookingStatusTone(b.status)} small />
           </View>
           <Text variant="caption" color="rgba(255,255,255,0.8)" style={{ marginTop: 2 }}>
-            {b.locality} · {b.roomNumber}/{b.bedLabel}
+            {b.property.locality} · {b.room_number}/{b.bed_number}
           </Text>
           <Text variant="caption" color="rgba(255,255,255,0.8)" style={{ marginTop: 4 }}>
-            Since {formatDate(b.checkInDate)} · {b.bookingMode === 'hourly'
-              ? `${inr(b.ratePerHour ?? 0)}/hr`
-              : b.bookingMode === 'daily'
-                ? `${inr(b.ratePerDay ?? 0)}/day`
-                : `${inr(b.monthlyRent)}/mo`}
+            {bookingModeLabel(b.booking_mode)} · {inr(b.base_rent)}{rateSuffix} · Since {formatDate(b.check_in_date)}
           </Text>
         </View>
         <Ionicons name="chevron-forward" size={18} color={palette.white} />
+      </View>
+    </PressableScale>
+  );
+}
+
+/** Closed-out bookings (rejected/expired/cancelled/completed/checked-out) — a plain
+ * history-card treatment, distinct from the highlighted active-stay card above. */
+function PastBookingCardApi({ booking: b, onPress }: { booking: ApiBooking; onPress?: () => void }) {
+  const rateSuffix = b.booking_mode === 'HOURLY' ? '/hr' : b.booking_mode === 'DAILY' ? '/day' : '/mo';
+  const dimmed = b.status === 'CANCELLED' || b.status === 'REJECTED' || b.status === 'EXPIRED';
+  return (
+    <PressableScale
+      onPress={onPress}
+      scaleTo={0.99}
+      style={{ backgroundColor: palette.surface, borderRadius: radius.lg, borderWidth: 1, borderColor: palette.border, overflow: 'hidden' }}
+    >
+      <View style={{ flexDirection: 'row', padding: spacing.md, gap: spacing.md, alignItems: 'center' }}>
+        <Image
+          source={{ uri: bookingCoverImage(b.property) }}
+          style={{ width: 72, height: 72, borderRadius: radius.md, opacity: dimmed ? 0.55 : 1 }}
+          contentFit="cover"
+        />
+        <View style={{ flex: 1 }}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: spacing.sm }}>
+            <Text variant="bodyMd" weight="700" numberOfLines={1} style={{ flex: 1 }}>{b.property.name}</Text>
+            <Badge label={bookingStatusLabel(b.status)} tone={bookingStatusTone(b.status)} small />
+          </View>
+          <Text variant="caption" color={palette.inkTertiary} numberOfLines={1} style={{ marginTop: 2 }}>
+            {b.property.locality} · {b.room_number}/{b.bed_number}
+          </Text>
+          <Text variant="caption" color={palette.inkSecondary} style={{ marginTop: 4 }}>
+            {bookingModeLabel(b.booking_mode)} · {inr(b.base_rent)}{rateSuffix} · {formatDate(b.check_in_date)}
+          </Text>
+        </View>
+        <Ionicons name="chevron-forward" size={18} color={palette.inkTertiary} />
       </View>
     </PressableScale>
   );

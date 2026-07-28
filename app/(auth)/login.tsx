@@ -1,36 +1,71 @@
 /** T-S4 — Mobile number entry. */
 import { useState } from 'react';
-import { View, KeyboardAvoidingView, Platform, ScrollView } from 'react-native';
-import { useRouter } from 'expo-router';
+import { View, KeyboardAvoidingView, Platform, ScrollView, Alert } from 'react-native';
+import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { palette, spacing } from '@/theme';
+import { Ionicons } from '@expo/vector-icons';
+import { palette, spacing, radius } from '@/theme';
 import { Text, Input, Button, PressableScale, IconButton } from '@/components/ui';
 import { PgfyMark } from '@/components/illustrations';
+import { useAuth } from '@/context/AuthContext';
+import { errorMessage } from '@/lib/api';
 
 export default function Login() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
-  const [phone, setPhone] = useState('98765 43210');
+  const { guestBlocked } = useLocalSearchParams<{ guestBlocked?: string }>();
+  const skipDisabled = guestBlocked === '1';
+  const { sendOtp, continueAsGuest } = useAuth();
+  const [phone, setPhone] = useState('');
   const digits = phone.replace(/\D/g, '');
   const valid = digits.length === 10;
   const [loading, setLoading] = useState(false);
+  const [guestLoading, setGuestLoading] = useState(false);
 
-  const getOtp = () => {
+  const getOtp = async () => {
     setLoading(true);
-    setTimeout(() => { setLoading(false); router.push({ pathname: '/(auth)/verify-otp', params: { phone: digits } }); }, 600);
+    try {
+      await sendOtp(digits);
+      router.push({ pathname: '/(auth)/verify-otp', params: { phone: digits } });
+    } catch (e) {
+      Alert.alert('Could not send OTP', errorMessage(e));
+    } finally {
+      setLoading(false);
+    }
   };
 
-  const skip = () => router.replace('/(tabs)');
+  const skip = async () => {
+    setGuestLoading(true);
+    try {
+      await continueAsGuest();
+      router.replace('/(tabs)');
+    } catch (e) {
+      Alert.alert('Could not continue as guest', errorMessage(e));
+    } finally {
+      setGuestLoading(false);
+    }
+  };
 
   return (
     <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
       <ScrollView contentContainerStyle={{ flexGrow: 1, paddingTop: insets.top + spacing.base, paddingHorizontal: spacing.xl, paddingBottom: insets.bottom + spacing.xl }} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
         <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
           <IconButton icon="chevron-back" onPress={() => (router.canGoBack() ? router.back() : router.replace('/landing'))} style={{ borderRadius: 21 }} />
-          <PressableScale onPress={skip} haptics={false}>
-            <Text variant="bodySm" weight="600" color={palette.coralDark}>Skip</Text>
-          </PressableScale>
+          {!skipDisabled ? (
+            <PressableScale onPress={skip} disabled={guestLoading} haptics={false}>
+              <Text variant="bodySm" weight="600" color={palette.coralDark}>{guestLoading ? 'Please wait…' : 'Skip'}</Text>
+            </PressableScale>
+          ) : null}
         </View>
+
+        {skipDisabled ? (
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: spacing.sm, backgroundColor: palette.coralTint, borderRadius: radius.md, padding: spacing.md, marginTop: spacing.lg }}>
+            <Ionicons name="lock-closed" size={18} color={palette.coralDark} />
+            <Text variant="bodySm" weight="600" color={palette.coralDark} style={{ flex: 1 }}>
+              Please login to continue.
+            </Text>
+          </View>
+        ) : null}
 
         <View style={{ alignItems: 'center', marginTop: spacing['2xl'], marginBottom: spacing['2xl'] }}>
           <PgfyMark size={72} variant="tile" />

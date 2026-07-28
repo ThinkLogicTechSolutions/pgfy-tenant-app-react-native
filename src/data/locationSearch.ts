@@ -1,7 +1,7 @@
 import { LOCATIONS, RECENT_SEARCHES } from './discovery';
 import { LISTINGS } from './listings';
 
-export const LOCATION_SEARCH_PLACEHOLDER = 'Search any location or PGID';
+export const LOCATION_SEARCH_PLACEHOLDER = 'Search any location';
 
 /** All searchable location strings for home autocomplete. */
 export const LOCATION_SUGGESTIONS: string[] = [
