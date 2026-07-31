@@ -1,87 +1,28 @@
 /** Invite a PG — tenant refers a PG/hostel that isn't on PGfy yet.
- *  Submits to the (mock) property-invite store; in production this POSTs to the API
- *  and surfaces in the admin panel under Properties → Property Leads. */
+ *  Real `POST /property-management/property-lead`; surfaces in the admin panel under
+ *  Properties → Property Leads. Hostel-only (PG/Hostel/Co-living) — Flat/Home stay leads
+ *  aren't part of this flow. */
 import { useMemo, useState } from 'react';
-import { View, ScrollView, Alert, useWindowDimensions } from 'react-native';
-import { Image } from 'expo-image';
+import { View, ScrollView, useWindowDimensions } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { Ionicons } from '@expo/vector-icons';
 import Animated, { FadeInDown } from 'react-native-reanimated';
-import { palette, spacing, radius } from '@/theme';
-import { Text, ScreenHeader, Card, Button, Input, Dropdown, PressableScale, Confetti } from '@/components/ui';
+import { alert } from '@/lib/alertDialog';
+import { palette, spacing } from '@/theme';
+import { Text, ScreenHeader, Card, Button, Input, Dropdown, Confetti } from '@/components/ui';
 import { AnimatedSuccessTick, useBookingSuccessSound } from '@/components/booking';
-import { interiorImages } from '@/data';
+import { OptionalImagePicker } from '@/components/support';
 import { haptic } from '@/lib/haptics';
-import {
-  PG_TYPES, INVITE_STATES, citiesForState, localitiesForCity, type PgType,
-} from '@/data/propertyInvite';
-import { usePropertyInvites } from '@/store/propertyInvites';
+import { useMasterData } from '@/context/MasterDataContext';
+import { propertyLeadApi, uploadApi, errorMessage, type PropertyLeadType } from '@/lib/api';
 
 const onlyDigits = (s: string) => s.replace(/\D/g, '');
-const MAX_IMAGES = 3;
 
-/** Up-to-3 PG photo picker. Native image picking isn't bundled in this build, so
- *  tapping a slot attaches a sample PG photo (stands in for an uploaded image). */
-function PgImagePicker({ images, onChange }: { images: string[]; onChange: (next: string[]) => void }) {
-  const addImage = () => {
-    if (images.length >= MAX_IMAGES) return;
-    haptic.select();
-    // Cycle through the sample interiors so each added slot shows a distinct photo.
-    const next = interiorImages[images.length % interiorImages.length];
-    onChange([...images, next]);
-  };
-  const removeImage = (index: number) => {
-    haptic.select();
-    onChange(images.filter((_, i) => i !== index));
-  };
-
-  return (
-    <View>
-      <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: spacing.sm }}>
-        <Text variant="overline" color={palette.inkTertiary}>PG PHOTOS</Text>
-        <Text variant="caption" color={palette.inkTertiary}>{images.length}/{MAX_IMAGES}</Text>
-      </View>
-      <View style={{ flexDirection: 'row', gap: spacing.md, flexWrap: 'wrap' }}>
-        {images.map((uri, i) => (
-          <View key={uri + i} style={{ width: 84, height: 84 }}>
-            <Image source={{ uri }} style={{ width: 84, height: 84, borderRadius: radius.md }} contentFit="cover" transition={150} />
-            <PressableScale
-              onPress={() => removeImage(i)}
-              haptics={false}
-              hitSlop={8}
-              style={{ position: 'absolute', top: -6, right: -6, width: 24, height: 24, borderRadius: 12, backgroundColor: palette.ink, alignItems: 'center', justifyContent: 'center' }}
-            >
-              <Ionicons name="close" size={15} color={palette.white} />
-            </PressableScale>
-          </View>
-        ))}
-        {images.length < MAX_IMAGES ? (
-          <PressableScale
-            onPress={addImage}
-            scaleTo={0.95}
-            haptics={false}
-            style={{
-              width: 84,
-              height: 84,
-              borderRadius: radius.md,
-              borderWidth: 1.5,
-              borderStyle: 'dashed',
-              borderColor: palette.border,
-              alignItems: 'center',
-              justifyContent: 'center',
-              backgroundColor: palette.surface,
-              gap: 2,
-            }}
-          >
-            <Ionicons name="camera-outline" size={22} color={palette.inkTertiary} />
-            <Text variant="caption" color={palette.inkTertiary}>Add</Text>
-          </PressableScale>
-        ) : null}
-      </View>
-    </View>
-  );
-}
+const PG_TYPES: { value: PropertyLeadType; label: string }[] = [
+  { value: 'PG', label: 'PG' },
+  { value: 'HOSTEL', label: 'Hostel' },
+  { value: 'CO_LIVING', label: 'Co-living' },
+];
 
 /** Animated confirmation — mirrors the booking-success screen: a spring tick burst,
  *  a confetti shower and the success chime, with staggered text/button entrances. */
@@ -113,53 +54,64 @@ function InviteSuccess({ pgName, onDone }: { pgName: string; onDone: () => void 
 export default function InvitePg() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
-  const invites = usePropertyInvites();
+  const { activeStates, citiesForState, localitiesForCity } = useMasterData();
   const [done, setDone] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
 
-  const [propertyType, setPropertyType] = useState<PgType | null>(null);
+  const [propertyType, setPropertyType] = useState<PropertyLeadType | null>(null);
   const [pgName, setPgName] = useState('');
-  const [state, setState] = useState<string | null>(null);
-  const [city, setCity] = useState<string | null>(null);
-  const [locality, setLocality] = useState<string | null>(null);
+  const [stateId, setStateId] = useState<string | null>(null);
+  const [cityId, setCityId] = useState<string | null>(null);
+  const [localityId, setLocalityId] = useState<string | null>(null);
   const [address, setAddress] = useState('');
   const [ownerName, setOwnerName] = useState('');
   const [contactNumber, setContactNumber] = useState('');
   const [images, setImages] = useState<string[]>([]);
 
-  const cityOptions = useMemo(() => citiesForState(state).map((c) => ({ label: c, value: c })), [state]);
-  const localityOptions = useMemo(() => localitiesForCity(state, city).map((l) => ({ label: l, value: l })), [state, city]);
+  const stateOptions = useMemo(() => activeStates.map((s) => ({ label: s.name, value: String(s.id) })), [activeStates]);
+  const cityOptions = useMemo(
+    () => citiesForState(stateId ? Number(stateId) : null).map((c) => ({ label: c.name, value: String(c.id) })),
+    [citiesForState, stateId],
+  );
+  const localityOptions = useMemo(
+    () => localitiesForCity(cityId ? Number(cityId) : null).map((l) => ({ label: l.name, value: String(l.id) })),
+    [localitiesForCity, cityId],
+  );
 
   const valid = useMemo(
     () =>
       !!propertyType
       && pgName.trim().length > 1
-      && !!state
-      && !!city
-      && !!locality
+      && !!cityId
       && address.trim().length > 2
       && ownerName.trim().length > 1
       && contactNumber.length === 10,
-    [propertyType, pgName, state, city, locality, address, ownerName, contactNumber],
+    [propertyType, pgName, cityId, address, ownerName, contactNumber],
   );
 
   const submit = () => {
-    if (!valid || !propertyType || !state || !city || !locality) {
-      Alert.alert('Missing details', 'Please fill the PG type, name, full location, address, owner name and a 10-digit contact number.');
+    if (!valid || !propertyType || !cityId) {
+      alert('Missing details', 'Please fill the PG type, name, city, address, owner name and a 10-digit contact number.');
       return;
     }
-    invites.add({
-      pgName: pgName.trim(),
-      propertyType,
-      state,
-      city,
-      locality,
-      address: address.trim(),
-      ownerName: ownerName.trim(),
-      contactNumber,
-      images,
-    });
-    haptic.success();
-    setDone(true);
+    setSubmitting(true);
+    propertyLeadApi.createPropertyLead({
+      property_name: pgName.trim(),
+      property_type: propertyType,
+      address_line_1: address.trim(),
+      images: images.map((link) => ({ link, type: uploadApi.UploadFileType.IMAGE })),
+      state_id: stateId ? Number(stateId) : undefined,
+      city_id: Number(cityId),
+      locality_id: localityId ? Number(localityId) : undefined,
+      owner_name: ownerName.trim(),
+      owner_phone: contactNumber,
+    })
+      .then(() => {
+        haptic.success();
+        setDone(true);
+      })
+      .catch((e) => alert('Could not submit invite', errorMessage(e)))
+      .finally(() => setSubmitting(false));
   };
 
   if (done) {
@@ -186,8 +138,8 @@ export default function InvitePg() {
             placeholder="Select type"
             pickerTitle="Select PG type"
             value={propertyType}
-            options={PG_TYPES.map((t) => ({ label: t, value: t }))}
-            onChange={(v) => setPropertyType(v as PgType)}
+            options={PG_TYPES.map((t) => ({ label: t.label, value: t.value }))}
+            onChange={(v) => setPropertyType(v as PropertyLeadType)}
           />
           <Input label="PG name" placeholder="e.g. Sai Krishna Gents PG" value={pgName} onChangeText={setPgName} />
         </Card>
@@ -199,27 +151,27 @@ export default function InvitePg() {
             label="State"
             placeholder="Select state"
             pickerTitle="Select state"
-            value={state}
-            options={INVITE_STATES.map((s) => ({ label: s, value: s }))}
-            onChange={(v) => { setState(v); setCity(null); setLocality(null); }}
+            value={stateId}
+            options={stateOptions}
+            onChange={(v) => { setStateId(v); setCityId(null); setLocalityId(null); }}
           />
           <Dropdown
             label="City"
-            placeholder={state ? 'Select city' : 'Select a state first'}
+            placeholder={stateId ? 'Select city' : 'Select a state first'}
             pickerTitle="Select city"
-            value={city}
+            value={cityId}
             options={cityOptions}
-            disabled={!state}
-            onChange={(v) => { setCity(v); setLocality(null); }}
+            disabled={!stateId}
+            onChange={(v) => { setCityId(v); setLocalityId(null); }}
           />
           <Dropdown
             label="Location / locality"
-            placeholder={city ? 'Select location' : 'Select a city first'}
+            placeholder={cityId ? 'Select location' : 'Select a city first'}
             pickerTitle="Select location"
-            value={locality}
+            value={localityId}
             options={localityOptions}
-            disabled={!city}
-            onChange={setLocality}
+            disabled={!cityId}
+            onChange={setLocalityId}
           />
           <Input
             label="Address line 1"
@@ -245,12 +197,13 @@ export default function InvitePg() {
 
         {/* Photos */}
         <Card style={{ gap: spacing.md }}>
-          <PgImagePicker images={images} onChange={setImages} />
+          <Text variant="overline" color={palette.inkTertiary}>PG PHOTOS</Text>
+          <OptionalImagePicker onChange={setImages} uploader={uploadApi.uploadPropertyLeadImage} max={3} />
         </Card>
       </ScrollView>
 
       <View style={{ position: 'absolute', bottom: 0, left: 0, right: 0, paddingHorizontal: spacing.base, paddingTop: spacing.md, paddingBottom: insets.bottom + spacing.md, backgroundColor: palette.surface, borderTopWidth: 1, borderTopColor: palette.border }}>
-        <Button label="Submit invite" icon="business-outline" onPress={submit} disabled={!valid} full size="lg" />
+        <Button label="Submit invite" icon="business-outline" onPress={submit} disabled={!valid || submitting} loading={submitting} full size="lg" />
       </View>
     </View>
   );

@@ -15,7 +15,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { palette, spacing, radius, shadows, fontFamily } from '@/theme';
 import { Text, IconButton, PressableScale, Avatar, Button, EmptyState } from '@/components/ui';
 import { CityTile, SectionHeader, CraftedFooter, PromotedBadge } from '@/components/domain';
-import { BrowseFiltersSheet, DEFAULT_BROWSE_FILTERS, browseFiltersToParams, type BrowseFilters } from '@/components/search';
+import { BrowseFiltersSheet, getDefaultBrowseFilters, browseFiltersToParams, type BrowseFilters } from '@/components/search';
 import { locationPicker } from '@/store/locationPicker';
 import { useTenantLocation } from '@/store/location';
 import { recordView } from '@/store/recentlyViewed';
@@ -352,18 +352,21 @@ export default function Home() {
   const activeCity = geo?.label ?? FALLBACK_CITY;
   const searchCity = activeCity;
 
-  const stayDates = useMemo(() => {
+  // Deliberately not memoized — "today" must never freeze for the lifetime of this screen
+  // (the Home tab can stay mounted for days), or a listing tapped straight off Home without
+  // ever opening the filter sheet would carry a stale, possibly past-dated check-in.
+  const stayDates = (() => {
     const checkIn = defaultCheckIn();
     return { checkIn, checkOut: defaultCheckOut(checkIn), startTime: '10:00', hours: 4 };
-  }, []);
+  })();
 
   // Filter sheet opens directly on Home — it's a standalone picker, not tied to navigating
   // into /browse first. Applying it is what triggers the navigation, with the picks in tow.
   const [filtersOpen, setFiltersOpen] = useState(false);
-  const [draftFilters, setDraftFilters] = useState<BrowseFilters>(() => ({ ...DEFAULT_BROWSE_FILTERS, bookingType: stayType, stay: stayDates }));
+  const [draftFilters, setDraftFilters] = useState<BrowseFilters>(() => ({ ...getDefaultBrowseFilters(), bookingType: stayType, stay: stayDates }));
 
   const openFilters = () => {
-    setDraftFilters({ ...DEFAULT_BROWSE_FILTERS, bookingType: stayType, stay: stayDates });
+    setDraftFilters({ ...getDefaultBrowseFilters(), bookingType: stayType, stay: stayDates });
     setFiltersOpen(true);
   };
 
@@ -767,7 +770,7 @@ export default function Home() {
           setFiltersOpen(false);
           goToResults(browseFiltersToParams(draftFilters));
         }}
-        onClear={() => setDraftFilters({ ...DEFAULT_BROWSE_FILTERS, bookingType: stayType, stay: stayDates })}
+        onClear={() => setDraftFilters({ ...getDefaultBrowseFilters(), bookingType: stayType, stay: stayDates })}
       />
     </View>
   );

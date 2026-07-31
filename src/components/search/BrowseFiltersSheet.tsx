@@ -4,7 +4,7 @@ import { palette, spacing } from '@/theme';
 import { Text, Sheet, Chip, Button, Divider, SegmentedControl, RangeSlider } from '@/components/ui';
 import { inrCompact } from '@/lib/format';
 import { FILTER_OPTIONS } from '@/data';
-import { defaultCheckIn, defaultCheckOut } from '@/lib/dates';
+import { defaultCheckIn, defaultCheckOut, clampCheckInToFuture } from '@/lib/dates';
 import { PRICE_BOUNDS, listingPriceFrom } from '@/lib/listingDisplay';
 import { StayBookingFields, type StayBookingValues } from './StayBookingFields';
 import type { BookingMode, Listing } from '@/data/types';
@@ -48,24 +48,29 @@ const PRICE_LABELS: Record<BookingMode, string> = {
   hourly: 'Hourly rate',
 };
 
-export const DEFAULT_BROWSE_FILTERS: BrowseFilters = {
-  bookingType: 'monthly',
-  stay: defaultStayValues(),
-  gender: 'Any',
-  food: [],
-  acType: 'Any',
-  amenities: [],
-  minRating: null,
-  priceMin: PRICE_BOUNDS.monthly.min,
-  priceMax: PRICE_BOUNDS.monthly.max,
-  distanceMax: DISTANCE_MAX,
-  propertyTypes: [],
-  roommateType: 'Any',
-  smoking: 'Any',
-  alcohol: 'Any',
-  sleep: 'Any',
-  diet: 'Any',
-};
+/** A fresh default filter set, computed on every call — `stay` must never freeze "today"
+ * into a long-lived constant (the home tab and browse/results screens can stay mounted for
+ * days, and a frozen default would silently drift into the past). */
+export function getDefaultBrowseFilters(): BrowseFilters {
+  return {
+    bookingType: 'monthly',
+    stay: defaultStayValues(),
+    gender: 'Any',
+    food: [],
+    acType: 'Any',
+    amenities: [],
+    minRating: null,
+    priceMin: PRICE_BOUNDS.monthly.min,
+    priceMax: PRICE_BOUNDS.monthly.max,
+    distanceMax: DISTANCE_MAX,
+    propertyTypes: [],
+    roommateType: 'Any',
+    smoking: 'Any',
+    alcohol: 'Any',
+    sleep: 'Any',
+    diet: 'Any',
+  };
+}
 
 export interface BrowseFiltersParams {
   bookingType?: string;
@@ -90,28 +95,32 @@ export interface BrowseFiltersParams {
 }
 
 export function browseFiltersFromParams(params: BrowseFiltersParams): BrowseFilters {
-  const checkIn = params.checkIn || defaultCheckIn();
+  // Never trust a carried-over checkIn param at face value — a shared link, a stale
+  // navigation param, or a long-idle screen can all hand back a date that's since slipped
+  // into the past.
+  const checkIn = clampCheckInToFuture(params.checkIn);
   const bookingType = (['hourly', 'daily', 'monthly'].includes(params.bookingType ?? '')
     ? params.bookingType
     : 'monthly') as BookingMode;
   const bounds = PRICE_BOUNDS[bookingType];
+  const defaults = getDefaultBrowseFilters();
   return {
-    ...DEFAULT_BROWSE_FILTERS,
+    ...defaults,
     bookingType,
-    gender: params.gender || DEFAULT_BROWSE_FILTERS.gender,
-    food: params.food ? params.food.split(',').filter(Boolean) : DEFAULT_BROWSE_FILTERS.food,
-    acType: params.acType || DEFAULT_BROWSE_FILTERS.acType,
-    amenities: params.amenities ? params.amenities.split(',').filter(Boolean) : DEFAULT_BROWSE_FILTERS.amenities,
-    minRating: params.minRating ? Number(params.minRating) : DEFAULT_BROWSE_FILTERS.minRating,
+    gender: params.gender || defaults.gender,
+    food: params.food ? params.food.split(',').filter(Boolean) : defaults.food,
+    acType: params.acType || defaults.acType,
+    amenities: params.amenities ? params.amenities.split(',').filter(Boolean) : defaults.amenities,
+    minRating: params.minRating ? Number(params.minRating) : defaults.minRating,
     priceMin: params.priceMin ? Number(params.priceMin) : bounds.min,
     priceMax: params.priceMax ? Number(params.priceMax) : bounds.max,
-    distanceMax: params.distanceMax ? Number(params.distanceMax) : DEFAULT_BROWSE_FILTERS.distanceMax,
-    propertyTypes: params.propertyTypes ? params.propertyTypes.split(',').filter(Boolean) : DEFAULT_BROWSE_FILTERS.propertyTypes,
-    roommateType: params.roommateType || DEFAULT_BROWSE_FILTERS.roommateType,
-    smoking: params.smoking || DEFAULT_BROWSE_FILTERS.smoking,
-    alcohol: params.alcohol || DEFAULT_BROWSE_FILTERS.alcohol,
-    sleep: params.sleep || DEFAULT_BROWSE_FILTERS.sleep,
-    diet: params.diet || DEFAULT_BROWSE_FILTERS.diet,
+    distanceMax: params.distanceMax ? Number(params.distanceMax) : defaults.distanceMax,
+    propertyTypes: params.propertyTypes ? params.propertyTypes.split(',').filter(Boolean) : defaults.propertyTypes,
+    roommateType: params.roommateType || defaults.roommateType,
+    smoking: params.smoking || defaults.smoking,
+    alcohol: params.alcohol || defaults.alcohol,
+    sleep: params.sleep || defaults.sleep,
+    diet: params.diet || defaults.diet,
     stay: {
       checkIn,
       checkOut: params.checkOut || defaultCheckOut(checkIn),
@@ -160,7 +169,7 @@ const RATING_OPTIONS = [
   { key: 4, label: '4★ & above' },
   { key: 5, label: '5★ only' },
 ] as const;
-const PROPERTY_TYPES = ['PG', 'Co-living', 'Hostel'] as const;
+const PROPERTY_TYPES = ['PG', 'Co-living', 'Hostel', 'Flat', 'Home stay'] as const;
 const FOOD_OPTIONS = ['Veg', 'Non-Veg', 'With meals', 'No meals'] as const;
 const ROOMMATE_TYPE_OPTIONS = ['Any', 'Working professional', 'Student'] as const;
 const SMOKING_OPTIONS = ['Any', 'Non-smoking'] as const;

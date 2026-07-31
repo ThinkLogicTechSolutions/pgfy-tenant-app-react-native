@@ -1,9 +1,11 @@
 /** T-S18 — Booking QR / digital pass. Shows a pre-arrival "check-in pass" until the tenant
- *  actually checks in, then switches to an ongoing "PG pass" — real, fetched either from
+ *  actually checks in, then an ongoing "PG pass" — real, fetched either from
  *  `GET /tenant/booking/:id` (via `id` param) or `GET /tenant/my-stay?bed_id=` (via `bedId`
- *  param, used by the My Stay screen). When the my-stay response includes a pre-rendered
- *  `check_in_qr` image, that's shown instead of a client-generated QR; otherwise the QR
- *  encodes `PGFY|<booking code>|<6-digit OTP>`. */
+ *  param, used by the My Stay screen). Once the tenant's move-out is approved, the backend
+ *  starts returning `check_out_otp`/`check_out_qr` alongside the check-in ones — at that
+ *  point the pass switches to a "check-out pass" instead. When a pre-rendered QR image is
+ *  present, that's shown instead of a client-generated QR; otherwise the QR encodes
+ *  `PGFY|<booking code>|<6-digit OTP>`. */
 import { useEffect, useRef, useState } from 'react';
 import { View, ActivityIndicator, Platform, Share } from 'react-native';
 import { Image } from 'expo-image';
@@ -33,6 +35,9 @@ interface PassView {
   checkInOtp: string | null;
   /** A real, pre-rendered QR image from the backend — preferred over a client-built QR. */
   checkInQrUri: string | null;
+  /** Present once the tenant's move-out has been approved — the pass switches to check-out. */
+  checkOutOtp: string | null;
+  checkOutQrUri: string | null;
 }
 
 function passViewFromMyStay(data: ApiMyStayResponse): PassView {
@@ -48,6 +53,8 @@ function passViewFromMyStay(data: ApiMyStayResponse): PassView {
     bedNumber: b.bed.bed_number,
     checkInOtp: b.check_in_otp,
     checkInQrUri: b.check_in_qr?.link ?? null,
+    checkOutOtp: b.check_out_otp ?? null,
+    checkOutQrUri: b.check_out_qr?.link ?? null,
   };
 }
 
@@ -105,7 +112,9 @@ export default function Pass() {
           roomNumber: b.room_number,
           bedNumber: b.bed_number,
           checkInOtp: b.check_in_otp,
-          checkInQrUri: b.check_in_qr,
+          checkInQrUri: b.check_in_qr?.link ?? null,
+          checkOutOtp: b.check_out_otp ?? null,
+          checkOutQrUri: b.check_out_qr?.link ?? null,
         });
       })
       .catch((e) => setError(errorMessage(e)))
@@ -145,9 +154,13 @@ export default function Pass() {
 
   const b = pass;
   const checkedIn = b.checkedIn;
-  const qrPayload = b.checkInOtp ? buildCheckInPassPayload(b.code, b.checkInOtp) : null;
+  const readyForCheckout = !!(b.checkOutOtp || b.checkOutQrUri);
+  const qrUri = readyForCheckout ? b.checkOutQrUri : b.checkInQrUri;
+  const otp = readyForCheckout ? b.checkOutOtp : b.checkInOtp;
+  const qrPayload = otp ? buildCheckInPassPayload(b.code, otp) : null;
+  const passTitle = readyForCheckout ? 'Check-out pass' : checkedIn ? 'PG pass' : 'Check-in pass';
 
-  const shareCaption = `My ${checkedIn ? 'PG pass' : 'check-in pass'} for ${b.propertyName} (${b.propertyLocality}) — booking ${b.code}. PGfy.`;
+  const shareCaption = `My ${passTitle.toLowerCase()} for ${b.propertyName} (${b.propertyLocality}) — booking ${b.code}. PGfy.`;
 
   const onShare = async () => {
     if (sharing) return;
@@ -175,7 +188,7 @@ export default function Pass() {
     <View style={{ flex: 1, backgroundColor: palette.navy }}>
       <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingTop: insets.top + spacing.sm, paddingHorizontal: spacing.base }}>
         <IconButton icon="close" color={palette.white} bg="rgba(255,255,255,0.14)" style={{ borderColor: 'transparent' }} onPress={() => router.back()} />
-        <Text variant="h3" color={palette.white}>{checkedIn ? 'PG pass' : 'Check-in pass'}</Text>
+        <Text variant="h3" color={palette.white}>{passTitle}</Text>
         <IconButton
           icon="share-social-outline"
           color={palette.white}
@@ -190,7 +203,9 @@ export default function Pass() {
             Android) collapsable={false} or view-shot can't find a native view to snapshot. */}
         <View ref={ticketRef} collapsable={false} style={{ backgroundColor: palette.surface, borderRadius: radius.xl, overflow: 'hidden' }}>
           <LinearGradient colors={[palette.navy, palette.navyDark]} style={{ padding: spacing.lg, alignItems: 'center' }}>
-            <Text variant="overline" color="rgba(255,255,255,0.7)">{checkedIn ? 'PGFY PG PASS' : 'PGFY CHECK-IN PASS'}</Text>
+            <Text variant="overline" color="rgba(255,255,255,0.7)">
+              {readyForCheckout ? 'PGFY CHECK-OUT PASS' : checkedIn ? 'PGFY PG PASS' : 'PGFY CHECK-IN PASS'}
+            </Text>
             <Text variant="h2" color={palette.white} style={{ marginTop: 4 }}>{b.propertyName}</Text>
             <Text variant="bodySm" color="rgba(255,255,255,0.8)">{b.propertyLocality}</Text>
           </LinearGradient>
@@ -204,8 +219,8 @@ export default function Pass() {
 
           <View style={{ padding: spacing.lg, alignItems: 'center' }}>
             <View style={{ width: 180, height: 180, borderRadius: radius.lg, backgroundColor: palette.white, alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: palette.border, overflow: 'hidden' }}>
-              {b.checkInQrUri ? (
-                <Image source={{ uri: b.checkInQrUri }} style={{ width: 180, height: 180 }} contentFit="contain" />
+              {qrUri ? (
+                <Image source={{ uri: qrUri }} style={{ width: 180, height: 180 }} contentFit="contain" />
               ) : qrPayload ? (
                 <QRCode value={qrPayload} size={156} color={palette.navy} backgroundColor={palette.white} />
               ) : (
@@ -216,7 +231,7 @@ export default function Pass() {
               )}
             </View>
             <Text variant="caption" color={palette.inkTertiary} style={{ marginTop: spacing.sm }}>
-              {checkedIn ? 'Scan at the property for entry' : 'Scan at the property to check in'}
+              {readyForCheckout ? 'Scan at the property to check out' : checkedIn ? 'Scan at the property for entry' : 'Scan at the property to check in'}
             </Text>
 
             <View style={{ flexDirection: 'row', width: '100%', marginTop: spacing.lg }}>
@@ -229,10 +244,10 @@ export default function Pass() {
               <Detail label="Status" value={bookingStatusLabel(b.status)} />
             </View>
 
-            {b.checkInOtp ? (
+            {otp ? (
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: spacing.lg, backgroundColor: palette.surfaceRaised, paddingHorizontal: 14, paddingVertical: 8, borderRadius: radius.pill }}>
                 <Ionicons name="key-outline" size={14} color={palette.inkSecondary} />
-                <Text variant="caption" color={palette.inkSecondary}>Fallback code: {b.checkInOtp}</Text>
+                <Text variant="caption" color={palette.inkSecondary}>Fallback code: {otp}</Text>
               </View>
             ) : null}
           </View>

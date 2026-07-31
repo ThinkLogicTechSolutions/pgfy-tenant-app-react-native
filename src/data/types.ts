@@ -5,7 +5,7 @@
  */
 import type { BedStatusKey } from '@/theme/colors';
 
-export type PropertyType = 'PG' | 'Hostel' | 'Co-living';
+export type PropertyType = 'PG' | 'Hostel' | 'Co-living' | 'Flat' | 'Home stay';
 export type Gender = 'Male' | 'Female' | 'Co-ed';
 export type SharingType = 'Single' | 'Double' | 'Triple' | '4-sharing' | 'Dormitory';
 export type KycStatus = 'Verified' | 'Pending' | 'Not Submitted';
@@ -65,10 +65,12 @@ export interface PricingVariant {
   /** Raw API layout code (e.g. `SINGLE`, `DUO`) — required to query room/bed availability. */
   layout: string;
   available: number;
-  acWithFood: number;
-  acNoFood: number;
-  nonAcWithFood: number;
-  nonAcNoFood: number;
+  acWithFood?: number;
+  acNoFood?: number;
+  nonAcWithFood?: number;
+  nonAcNoFood?: number;
+  /** Flat/Home stay only — the single monthly/daily rent (no AC/food split). */
+  rent?: number;
 }
 
 export interface FoodMenuSlot {
@@ -153,6 +155,13 @@ export interface Listing {
   id: string;
   name: string;
   type: PropertyType;
+  /** Finer subcategory label for `type: 'Flat'` (e.g. "2 BHK") — absent for Hostel/Home stay. */
+  subType?: string;
+  /** `type === 'Flat' | 'Home stay'` only — books the whole property (see `maxOccupancy`, no
+   *  room/bed selection). */
+  isUnitProperty?: boolean;
+  /** `Flat`/`Home stay` only — max named guests per booking. */
+  maxOccupancy?: number;
   gender: Gender;
   locality: string;
   city: string;

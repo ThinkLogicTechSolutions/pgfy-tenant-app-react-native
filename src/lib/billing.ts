@@ -83,15 +83,26 @@ export type CheckoutKind =
 /** Present only when this checkout should create a real booking via the booking API
  * (booking_api.md) on payment — everything `createBooking` needs besides the payment
  * method/frequency (chosen at checkout) and coupon code (already on the intent below). */
+export interface CheckoutBookingGuest {
+  name: string;
+  gender: string;
+  age: number;
+}
+
+/** Hostel: room/bed/layout required. Flat/Home stay: omit them and set `guests`/`guestCount`
+ *  instead — the whole (single default) unit is booked. */
 export interface CheckoutBookingPayload {
   propertyId: number;
-  roomId: number;
-  bedId: number;
+  roomId?: number;
+  bedId?: number;
   floorId?: number;
   bookingMode: 'MONTHLY' | 'DAILY' | 'HOURLY';
-  isAc: boolean;
-  hasFood: boolean;
-  roomLayout: string;
+  isAc?: boolean;
+  hasFood?: boolean;
+  roomLayout?: string;
+  /** Flat/Home stay only — named occupants (min 1, max the property's `max_occupancy`). */
+  guests?: CheckoutBookingGuest[];
+  guestCount?: number;
   checkInDate: string;
   /** Daily bookings only. */
   checkOutDate?: string;
@@ -103,6 +114,13 @@ export interface CheckoutBookingPayload {
  * (billing_api.md) on payment. */
 export interface CheckoutInvoicePayload {
   invoiceId: number;
+}
+
+/** Present only when this checkout should create a real stay extension via
+ * `POST /tenant/extend-stay` (Daily/Hourly checked-in bookings only) on payment. */
+export interface CheckoutExtensionPayload {
+  bookingId: number;
+  quantity: number;
 }
 
 /** Everything the unified checkout needs to render & price a single transaction. */
@@ -128,6 +146,9 @@ export interface CheckoutIntent {
   booking?: CheckoutBookingPayload;
   /** Set for a genuine invoice-payment checkout — triggers `billingApi.payRent` on payment. */
   invoicePayment?: CheckoutInvoicePayload;
+  /** Set for a genuine stay-extension checkout — triggers `extendStayApi.createExtension` on
+   * payment. */
+  extension?: CheckoutExtensionPayload;
   /** Optional owner GST override carried from the property's price config. */
   gstConfig?: GstConfig;
   /** Charge the platform fee (defaults: true for new bookings, false otherwise). */

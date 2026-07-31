@@ -37,3 +37,13 @@ export function defaultCheckOut(checkIn: string): string {
 export function isBefore(isoA: string, isoB: string): boolean {
   return new Date(`${isoA}T00:00:00`).getTime() < new Date(`${isoB}T00:00:00`).getTime();
 }
+
+/** A check-in date can arrive stale from anywhere — a route param carried over from an
+ * earlier day, a frozen default computed once and reused across a long-lived session, a
+ * shared deep link. No matter the source, it must never resolve to before today: bump it
+ * forward to `defaultCheckIn()` whenever that happens. */
+export function clampCheckInToFuture(checkIn: string | undefined | null): string {
+  if (!checkIn) return defaultCheckIn();
+  const today = dateOptions(1)[0].iso;
+  return isBefore(checkIn, today) ? defaultCheckIn() : checkIn;
+}

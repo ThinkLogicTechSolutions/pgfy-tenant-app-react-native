@@ -10,9 +10,12 @@ import type {
   ApiPropertyDetails,
   ApiRoomBedAvailability,
   ContinueBrowsingProperty,
+  PropertyCategory,
+  PropertySubCategory,
   SearchProperty,
   VerificationDocStatus,
 } from '@/lib/api';
+import { propertySubCategoryLabel } from '@/lib/propertyCategory';
 import type {
   Bed,
   Certificate,
@@ -46,6 +49,36 @@ function toPropertyType(t: string): PropertyType {
   return 'PG';
 }
 
+/** My Stay's `/tenant/beds` and `/tenant/my-stay` hand back `property_category` (`FLAT`/
+ * `HOMESTAY`) directly — a whole-unit booking has no room/bed/floor or AC/food room-tier to
+ * show. Falls back to the plain `property_type` string on older responses that lack it. */
+export function isUnitPropertyType(property: { property_category?: string | null; property_type?: string | null }): boolean {
+  if (property.property_category) {
+    const category = property.property_category.toUpperCase();
+    return category === 'FLAT' || category === 'HOMESTAY';
+  }
+  if (!property.property_type) return false;
+  const s = property.property_type.toUpperCase();
+  return s.includes('FLAT') || s.includes('HOME');
+}
+
+/** Resolves a property's `type`/`subType`/`isUnitProperty` from the new category fields,
+ *  falling back to the legacy Hostel `type_id` lookup for pre-existing (Hostel) properties. */
+function resolvePropertyType(p: {
+  type_id?: number | null;
+  property_category?: PropertyCategory;
+  property_sub_category?: PropertySubCategory | null;
+}): { type: PropertyType; subType?: string; isUnitProperty: boolean } {
+  if (p.property_category === 'FLAT') {
+    const label = propertySubCategoryLabel(p.property_sub_category);
+    return { type: 'Flat', subType: label || undefined, isUnitProperty: true };
+  }
+  if (p.property_category === 'HOMESTAY') {
+    return { type: 'Home stay', isUnitProperty: true };
+  }
+  return { type: (p.type_id != null ? TYPE_BY_ID[p.type_id] : undefined) ?? 'PG', isUnitProperty: false };
+}
+
 function minutesToTime(m: number | null | undefined): string | undefined {
   if (m == null) return undefined;
   const h = Math.floor(m / 60) % 24;
@@ -58,11 +91,15 @@ export function apiPropertyToListing(p: ApiProperty, ctx: { cityName: string; lo
   const images = attachments.filter((a) => a.type === 1).map((a) => a.link);
   const coverImage = images[0] ?? '';
   const [lng, lat] = p.coordinates ?? [0, 0];
+  const { type, subType, isUnitProperty } = resolvePropertyType(p);
 
   return {
     id: `api-${p.id}`,
     name: p.name,
-    type: TYPE_BY_ID[p.type_id] ?? 'PG',
+    type,
+    subType,
+    isUnitProperty,
+    maxOccupancy: p.max_occupancy ?? undefined,
     gender: toGender(p.gender),
     locality: ctx.localityName,
     city: ctx.cityName,
@@ -124,11 +161,15 @@ export function searchPropertyToListing(p: SearchProperty): Listing {
   const images = attachments.filter((a) => a.type === 1).map((a) => a.link);
   const coverImage = images[0] ?? '';
   const [lng, lat] = p.coordinates ?? [0, 0];
+  const { type, subType, isUnitProperty } = resolvePropertyType(p);
 
   return {
     id: `search-${p.id}`,
     name: p.name,
-    type: TYPE_BY_ID[p.type_id] ?? 'PG',
+    type,
+    subType,
+    isUnitProperty,
+    maxOccupancy: p.max_occupancy ?? undefined,
     gender: toGender(p.gender),
     locality: p.locality.name,
     city: p.city.name,
@@ -190,11 +231,18 @@ export function continueBrowsingToListing(p: ContinueBrowsingProperty): Listing 
   const attachments = p.media.flatMap((section) => section.attachments);
   const images = attachments.filter((a) => a.type === 1).map((a) => a.link);
   const coverImage = images[0] ?? '';
+  const { type, subType, isUnitProperty } =
+    p.property_category === 'FLAT' || p.property_category === 'HOMESTAY'
+      ? resolvePropertyType(p)
+      : { type: toPropertyType(p.property_type), subType: undefined, isUnitProperty: false };
 
   return {
     id: `cb-${p.id}`,
     name: p.name,
-    type: toPropertyType(p.property_type),
+    type,
+    subType,
+    isUnitProperty,
+    maxOccupancy: p.max_occupancy ?? undefined,
     gender: toGender(p.gender),
     locality: p.locality,
     city: p.city,
@@ -340,17 +388,28 @@ export function propertyDetailsToListing(p: ApiPropertyDetails): Listing {
     sharingType: layoutToSharing(tier.layout),
     layout: tier.layout,
     available: tier.available_beds,
-    acWithFood: tier.ac_with_food,
-    acNoFood: tier.ac_no_food,
-    nonAcWithFood: tier.non_ac_with_food,
-    nonAcNoFood: tier.non_ac_no_food,
+    acWithFood: tier.ac_with_food ?? undefined,
+    acNoFood: tier.ac_no_food ?? undefined,
+    nonAcWithFood: tier.non_ac_with_food ?? undefined,
+    nonAcNoFood: tier.non_ac_no_food ?? undefined,
+    rent: tier.rent ?? undefined,
   }));
 
-  const pricing = pricingVariants.map((v) => ({
-    sharingType: v.sharingType,
-    rent: Math.min(v.acWithFood, v.acNoFood, v.nonAcWithFood, v.nonAcNoFood),
-    available: v.available,
-  }));
+  const pricing = pricingVariants.map((v) => {
+    const rates = [v.acWithFood, v.acNoFood, v.nonAcWithFood, v.nonAcNoFood].filter((n): n is number => n != null);
+    return {
+      sharingType: v.sharingType,
+      rent: v.rent ?? (rates.length ? Math.min(...rates) : 0),
+      available: v.available,
+    };
+  });
+
+  // `ApiPropertyDetails` has no `type_id` (only the Hostel-only `property_type` name string),
+  // so only defer to `resolvePropertyType`'s category branch for Flat/Homestay.
+  const { type, subType, isUnitProperty } =
+    p.property_category === 'FLAT' || p.property_category === 'HOMESTAY'
+      ? resolvePropertyType(p)
+      : { type: toPropertyType(p.property_type), subType: undefined, isUnitProperty: false };
 
   const vacantBeds = pricingVariants.reduce((sum, v) => sum + v.available, 0);
 
@@ -362,7 +421,10 @@ export function propertyDetailsToListing(p: ApiPropertyDetails): Listing {
   return {
     id: `api-${p.id}`,
     name: p.name,
-    type: toPropertyType(p.property_type),
+    type,
+    subType,
+    isUnitProperty,
+    maxOccupancy: p.max_occupancy ?? undefined,
     gender: p.gender === 'MALE' ? 'Male' : p.gender === 'FEMALE' ? 'Female' : 'Co-ed',
     locality: p.locality,
     city: p.city,

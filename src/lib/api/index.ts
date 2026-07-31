@@ -20,6 +20,10 @@ export * as couponsApi from './coupons';
 export * as stayApi from './stay';
 export * as maintenanceApi from './maintenance';
 export * as visitorLogApi from './visitorLog';
+export * as moveOutApi from './moveOut';
+export * as groupBookingApi from './groupBooking';
+export * as propertyLeadApi from './propertyLead';
+export * as extendStayApi from './extendStay';
 export * as continueBrowsingApi from './continueBrowsing';
 export * as dashboardApi from './dashboard';
 export * as searchApi from './search';
@@ -60,6 +64,7 @@ export type { ListBillingRentQuery } from './billing';
 export type { ListCouponsQuery } from './coupons';
 export type { ListMaintenanceQuery } from './maintenance';
 export type { ListVisitorLogsQuery } from './visitorLog';
+export type { MoveOutEstimateQuery, ListMoveOutsQuery } from './moveOut';
 
 export type {
   ApiProfile,
@@ -90,6 +95,10 @@ export type {
   PopularDestinationMaster,
   MasterConfig,
   PropertyGender,
+  PropertyCategory,
+  PropertySubCategory,
+  Furnishing,
+  AllowedTenantType,
   MediaAttachment,
   PropertyMediaSection,
   PropertyGstMode,
@@ -167,4 +176,37 @@ export type {
   VisitorLogStatus,
   ApiVisitorLog,
   CreateVisitorLogInput,
+  MoveOutStatus,
+  MoveOutRefundStatus,
+  MoveOutEstimateNotice,
+  MoveOutEstimateSettlement,
+  MoveOutEstimateBankDetails,
+  ApiMoveOutEstimate,
+  MoveOutCharge,
+  ApiMoveOutRequest,
+  CreateMoveOutInput,
+  GroupBookingArrangement,
+  GroupBookingMeals,
+  GroupBookingFoodType,
+  GroupBookingStatus,
+  CreateGroupBookingEnquiryInput,
+  ApiGroupBookingEnquiry,
+  BookingGuestItem,
+  PropertyLeadType,
+  PropertyLeadStatus,
+  CreatePropertyLeadInput,
+  ApiPropertyLead,
+  ExtensionMode,
+  ApiExtendStayProperty,
+  ApiExtendStayBooking,
+  ApiExtendStayPreview,
+  ExtendStayBillSummary,
+  CheckExtensionAvailabilityInput,
+  ApiExtendStayAvailability,
+  CreateExtensionInput,
+  ExtensionStatusApi,
+  ApiStayExtension,
+  ApiExtendStayInvoiceSummary,
+  ApiExtendStayPaymentHint,
+  ApiCreateExtensionResponse,
 } from './types';

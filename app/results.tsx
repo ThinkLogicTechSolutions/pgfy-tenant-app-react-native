@@ -9,7 +9,7 @@ import { Text, ScreenHeader, EmptyState, PressableScale, IconButton } from '@/co
 import { ListingCard } from '@/components/domain';
 import {
   BrowseFiltersSheet,
-  DEFAULT_BROWSE_FILTERS,
+  getDefaultBrowseFilters,
   browseFiltersFromParams,
   matchesBrowseFilters,
   browseFiltersActiveCount,
@@ -147,8 +147,8 @@ export default function Results() {
         onDraftChange={setDraftFilters}
         onApply={() => { setFilters(draftFilters); setFiltersOpen(false); }}
         onClear={() => {
-          setDraftFilters(DEFAULT_BROWSE_FILTERS);
-          setFilters(DEFAULT_BROWSE_FILTERS);
+          setDraftFilters(getDefaultBrowseFilters());
+          setFilters(getDefaultBrowseFilters());
           setFiltersOpen(false);
         }}
       />

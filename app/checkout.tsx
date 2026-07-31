@@ -12,7 +12,7 @@ import { Text, ScreenHeader, Card, Button, Divider, PressableScale, EmptyState }
 import { computeCheckout, type CheckoutIntent, type AppliedCoupon } from '@/lib/billing';
 import { inr } from '@/lib/format';
 import { haptic } from '@/lib/haptics';
-import { bookingApi, billingApi, errorMessage, type PaymentMethod, type ApiBookingCreateResponse, type ApiPayRentResponse } from '@/lib/api';
+import { bookingApi, billingApi, extendStayApi, errorMessage, type PaymentMethod, type ApiBookingCreateResponse, type ApiPayRentResponse, type ApiCreateExtensionResponse } from '@/lib/api';
 import { alert } from '@/lib/alertDialog';
 import { useAuth } from '@/context/AuthContext';
 import { RazorpayCheckout, type RazorpayOrder, type RazorpaySuccess } from '@/components/booking';
@@ -49,9 +49,10 @@ export default function Checkout() {
   const [rzpOrder, setRzpOrder] = useState<RazorpayOrder | null>(null);
   // 'mandate' only follows 'invoice' — an AUTOPAY pay-rent needs a second, separate Razorpay
   // order to authorize the recurring mandate after the invoice's own payment succeeds.
-  const [rzpStep, setRzpStep] = useState<'booking' | 'invoice' | 'mandate' | null>(null);
+  const [rzpStep, setRzpStep] = useState<'booking' | 'invoice' | 'mandate' | 'extension' | null>(null);
   const [pendingCreated, setPendingCreated] = useState<ApiBookingCreateResponse | null>(null);
   const [pendingInvoicePay, setPendingInvoicePay] = useState<ApiPayRentResponse | null>(null);
+  const [pendingExtension, setPendingExtension] = useState<ApiCreateExtensionResponse | null>(null);
 
   const quote = useMemo(() => (intent ? computeCheckout(intent, appliedCoupon) : null), [intent, appliedCoupon]);
 
@@ -97,27 +98,89 @@ export default function Checkout() {
     });
   };
 
+  const goToExtensionSuccess = (res: ApiCreateExtensionResponse) => {
+    router.replace({
+      pathname: '/payment-success',
+      params: {
+        amount: String(res.extension.total_payable),
+        method: payMethod.toUpperCase(),
+        title: intent.title,
+        kind: intent.kind,
+        bookingId: intent.extension ? String(intent.extension.bookingId) : undefined,
+        bookingCode: res.extension.code,
+        note: res.payment_hint?.note,
+      },
+    });
+  };
+
   const pay = async () => {
-    // Both branches below hit a real endpoint (booking_api.md / billing_api.md); anything
-    // else (extend, a mock-listing booking) has nothing real to create, so stays simulated.
+    // The branches below hit a real endpoint (booking_api.md / billing_api.md / stay
+    // extension); anything else (a mock-listing booking) has nothing real to create, so
+    // stays simulated.
+    if (intent.extension) {
+      setLoading(true);
+      try {
+        const res = await extendStayApi.createExtension({
+          booking_id: String(intent.extension.bookingId),
+          quantity: intent.extension.quantity,
+          payment_method: payMethod.toUpperCase() as PaymentMethod,
+          coupon_code: appliedCoupon?.code ?? null,
+        });
+
+        const tx = res.transaction;
+        const isOnlineGateway = payMethod !== 'cash' && !!tx?.key && !!tx?.gateway_transaction_id;
+        if (isOnlineGateway) {
+          setPendingExtension(res);
+          setRzpStep('extension');
+          setRzpOrder({
+            key: tx!.key!,
+            orderId: tx!.gateway_transaction_id!,
+            amountPaise: Math.round((tx!.total_amount ?? res.extension.total_payable) * 100),
+            name: 'PGfy',
+            description: intent.title,
+            prefill: { name: user?.name, email: user?.email ?? undefined, contact: user?.phone },
+          });
+          setRzpVisible(true);
+          setLoading(false);
+          return;
+        }
+
+        // Offline methods (cash / no gateway) — nothing left to collect here; the extension
+        // confirms once the owner marks the STAY_EXTENSION invoice paid.
+        haptic.success();
+        goToExtensionSuccess(res);
+      } catch (e) {
+        haptic.error();
+        alert('Could not extend stay', errorMessage(e));
+      } finally {
+        setLoading(false);
+      }
+      return;
+    }
+
     if (intent.booking) {
       setLoading(true);
       try {
         const created = await bookingApi.createBooking({
           property_id: intent.booking.propertyId,
-          room_id: intent.booking.roomId,
-          bed_id: intent.booking.bedId,
-          floor_id: intent.booking.floorId,
           booking_mode: intent.booking.bookingMode,
-          is_ac: intent.booking.isAc,
-          has_food: intent.booking.hasFood,
-          room_layout: intent.booking.roomLayout,
           check_in_date: intent.booking.checkInDate,
           check_out_date: intent.booking.checkOutDate ?? null,
           duration_hours: intent.booking.durationHours ?? null,
           payment_method: (autopay ? 'UPI' : payMethod.toUpperCase()) as PaymentMethod,
           payment_frequency: autopay ? 'AUTOPAY' : 'PAY_ONCE',
           coupon_code: appliedCoupon?.code ?? null,
+          // Flat/Home stay: whole-unit booking with named guests, no room/bed/layout.
+          ...(intent.booking.guests
+            ? { guests: intent.booking.guests, guest_count: intent.booking.guestCount }
+            : {
+                room_id: intent.booking.roomId,
+                bed_id: intent.booking.bedId,
+                floor_id: intent.booking.floorId,
+                is_ac: intent.booking.isAc,
+                has_food: intent.booking.hasFood,
+                room_layout: intent.booking.roomLayout,
+              }),
         });
 
         const tx = created.transaction;
@@ -222,6 +285,15 @@ export default function Checkout() {
       return;
     }
 
+    if (rzpStep === 'extension') {
+      closeRazorpay();
+      setRzpStep(null);
+      if (!pendingExtension) return;
+      haptic.success();
+      goToExtensionSuccess(pendingExtension);
+      return;
+    }
+
     if (rzpStep === 'invoice' && pendingInvoicePay) {
       const mandateAuth = pendingInvoicePay.autopay?.razorpay;
       if (mandateAuth) {
@@ -279,6 +351,19 @@ export default function Checkout() {
         message ?? 'You can try paying this invoice again from Billing & invoices.',
       );
       router.back();
+      return;
+    }
+
+    if (step === 'extension') {
+      // The extension request already exists (PENDING_PAYMENT) with its own invoice — route
+      // to the booking rather than re-calling createExtension (which would open a second one).
+      const bookingId = intent.extension?.bookingId;
+      setPendingExtension(null);
+      alert(
+        message ? 'Payment failed' : 'Payment not completed',
+        message ?? 'Your extension request is on hold — you can complete payment from the booking details page.',
+      );
+      if (bookingId) router.replace(`/booking/${bookingId}`);
       return;
     }
 

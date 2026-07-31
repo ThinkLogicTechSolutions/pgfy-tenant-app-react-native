@@ -1,6 +1,6 @@
 /** Recently viewed properties (auth_api.md — View all continue browsing API). */
 import { request } from './client';
-import type { MediaAttachment, PropertyGender } from './types';
+import type { MediaAttachment, PropertyCategory, PropertyGender, PropertySubCategory } from './types';
 
 export interface ContinueBrowsingMediaSection {
   section_name: string;
@@ -15,8 +15,14 @@ export interface ContinueBrowsingProperty {
   is_favorite: boolean;
   favorite_id: number | null;
   distance: number | null;
-  gender: PropertyGender;
+  gender: PropertyGender | null;
   property_type: string;
+  /** Defaults to `HOSTEL` server-side (pre-existing properties). */
+  property_category?: PropertyCategory;
+  /** Flat only. */
+  property_sub_category?: PropertySubCategory | null;
+  /** Flat/Homestay only — max occupants per booking. */
+  max_occupancy?: number | null;
   locality: string;
   city: string;
   amenities: string[];

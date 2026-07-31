@@ -134,7 +134,17 @@ interface ImageSlot {
 /** Picks up to `max` photos from the gallery, uploads each immediately, and reports the
  * uploaded links (only the successfully-uploaded ones) back to the parent — a ticket is
  * submitted with whatever finished uploading, not the raw local URIs. */
-export function OptionalImagePicker({ onChange, max = 3 }: { onChange: (links: string[]) => void; max?: number }) {
+export function OptionalImagePicker({
+  onChange,
+  max = 3,
+  uploader = uploadApi.uploadMaintenanceImage,
+}: {
+  onChange: (links: string[]) => void;
+  max?: number;
+  /** Defaults to the maintenance-ticket uploader; pass a different `uploadApi.*` wrapper for
+   *  other photo-attachment contexts (e.g. `uploadPropertyLeadImage`). */
+  uploader?: (uri: string) => Promise<{ link: string }>;
+}) {
   const [slots, setSlots] = useState<ImageSlot[]>([]);
 
   const emit = (next: ImageSlot[]) => {
@@ -168,7 +178,7 @@ export function OptionalImagePicker({ onChange, max = 3 }: { onChange: (links: s
 
     for (const slot of newSlots) {
       try {
-        const uploaded = await uploadApi.uploadMaintenanceImage(slot.localUri);
+        const uploaded = await uploader(slot.localUri);
         setSlots((prev) => {
           const next = prev.map((s) => (s.id === slot.id ? { ...s, status: 'done' as const, link: uploaded.link } : s));
           emit(next);

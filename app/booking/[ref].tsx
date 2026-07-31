@@ -1,16 +1,19 @@
 /** Booking details — real `/tenant/booking/:id`. A cancellable booking can be cancelled
  *  here; the API's refund breakdown then carries through to the cancelled screen. */
 import { useEffect, useState } from 'react';
-import { View, ScrollView, ActivityIndicator } from 'react-native';
+import { View, ScrollView, ActivityIndicator, Linking } from 'react-native';
 import { Image } from 'expo-image';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { palette, spacing, radius } from '@/theme';
 import { Text, ScreenHeader, Card, Button, Divider, EmptyState, Sheet, Input, Badge } from '@/components/ui';
-import { bookingApi, errorMessage, type ApiBookingDetail } from '@/lib/api';
-import { bookingStatusLabel, bookingStatusTone, bookingModeLabel, bookingCoverImage, isCheckedIn } from '@/lib/bookingDisplay';
+import { Ionicons } from '@expo/vector-icons';
+import { bookingApi, errorMessage, type ApiBookingDetail, type ApiStayExtension, type BookingStatusApi } from '@/lib/api';
+import { bookingStatusLabel, bookingStatusTone, bookingModeLabel, bookingCoverImage, isCheckedIn, isUnitBooking, latestConfirmedExtension, extensionBannerMessage } from '@/lib/bookingDisplay';
+import { isUnitPropertyType } from '@/lib/listingAdapter';
 import { inr, formatDate } from '@/lib/format';
 import { haptic } from '@/lib/haptics';
+import { alert } from '@/lib/alertDialog';
 
 /** Statuses where the hold hasn't converted into an active stay yet — cancellable. */
 const CANCELLABLE_STATUSES = ['PENDING_PAYMENT', 'CONFIRMED'];
@@ -36,6 +39,7 @@ export default function BookingDetails() {
   const [sheetOpen, setSheetOpen] = useState(false);
   const [reason, setReason] = useState('');
   const [cancelling, setCancelling] = useState(false);
+  const [retrying, setRetrying] = useState(false);
 
   const load = () => {
     if (!Number.isFinite(id)) {
@@ -78,6 +82,33 @@ export default function BookingDetails() {
   const paidAmount = amount ? Number(amount) : b.total_paid ?? b.base_rent + b.security_deposit;
   const cancellable = CANCELLABLE_STATUSES.includes(b.status);
   const isHourly = b.booking_mode === 'HOURLY';
+  const isUnit = isUnitBooking(b) || isUnitPropertyType(b.property);
+  const extension = latestConfirmedExtension(b.extensions);
+  const sortedExtensions = [...(b.extensions ?? [])].sort(
+    (x, y) => new Date(y.created_at).getTime() - new Date(x.created_at).getTime(),
+  );
+  const pendingPayment = b.status === 'PENDING_PAYMENT';
+
+  const retryPayment = async () => {
+    if (retrying) return;
+    setRetrying(true);
+    try {
+      // Re-fetch first — the payment link can be minted after the hold, and may have
+      // rotated since this screen last loaded.
+      const fresh = await bookingApi.getBooking(b.id);
+      setBooking(fresh);
+      const link = fresh.transaction?.payment_link;
+      if (!link) {
+        alert('Payment link unavailable', 'We couldn’t find an active payment link for this booking. Please contact support to complete your payment.');
+        return;
+      }
+      await Linking.openURL(link);
+    } catch (e) {
+      alert('Unable to open payment', errorMessage(e));
+    } finally {
+      setRetrying(false);
+    }
+  };
 
   const confirmCancel = async () => {
     if (!reason.trim() || cancelling) return;
@@ -130,11 +161,26 @@ export default function BookingDetails() {
           </View>
         </Card>
 
+        {extension ? (
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: spacing.sm, backgroundColor: palette.infoTint, borderRadius: radius.md, padding: spacing.md }}>
+            <Ionicons name="information-circle" size={20} color={palette.info} />
+            <Text variant="bodySm" weight="600" color={palette.info} style={{ flex: 1 }}>
+              {extensionBannerMessage(extension)}
+            </Text>
+          </View>
+        ) : null}
+
         <Card>
           <Text variant="h3" style={{ marginBottom: spacing.md }}>Stay details</Text>
           <DetailRow label="Booking reference" value={b.code} />
-          <DetailRow label="Room / Bed" value={`${b.room_number} · Bed ${b.bed_number}`} />
-          <DetailRow label="Room layout" value={b.room_layout} />
+          {isUnit ? (
+            <DetailRow label="Booking" value={`Whole property${b.guest_count ? ` · ${b.guest_count} guest${b.guest_count > 1 ? 's' : ''}` : ''}`} />
+          ) : (
+            <>
+              <DetailRow label="Room / Bed" value={`${b.room_number} · Bed ${b.bed_number}`} />
+              <DetailRow label="Room layout" value={b.room_layout} />
+            </>
+          )}
           <DetailRow label="Check-in" value={formatDate(b.check_in_date)} />
           {isHourly && (b.hourly_start_slot != null || b.hourly_end_slot != null) ? (
             <DetailRow label="Stay window" value={`${minutesToTime(b.hourly_start_slot) ?? '—'}–${minutesToTime(b.hourly_end_slot) ?? '—'}`} last />
@@ -155,6 +201,16 @@ export default function BookingDetails() {
           {b.next_rent_due ? <DetailRow label="Next rent due" value={formatDate(b.next_rent_due)} last /> : null}
         </Card>
 
+        {pendingPayment ? (
+          <Button
+            label="Retry Payment"
+            icon="card-outline"
+            full
+            loading={retrying}
+            onPress={retryPayment}
+          />
+        ) : null}
+
         {b.has_check_in_pass ? (
           <Button
             label={isCheckedIn(b) ? 'View PG pass' : 'View check-in pass'}
@@ -168,6 +224,11 @@ export default function BookingDetails() {
         {cancellable ? (
           <Button label="Cancel booking" icon="close-circle-outline" variant="danger" full onPress={() => setSheetOpen(true)} />
         ) : null}
+
+        {/* Extension history — a booking can be extended more than once, most recent first */}
+        {sortedExtensions.map((ext) => (
+          <ExtensionCard key={ext.id} extension={ext} />
+        ))}
       </ScrollView>
 
       <Sheet visible={sheetOpen} onClose={() => setSheetOpen(false)} title="Cancel booking" scroll>
@@ -207,5 +268,32 @@ function DetailRow({ label, value, bold, last }: { label: string; value: string;
       </View>
       {!last ? <Divider /> : null}
     </View>
+  );
+}
+
+function ExtensionCard({ extension: ext }: { extension: ApiStayExtension }) {
+  const isHourly = ext.extension_mode === 'HOURLY';
+  const extendedBy = isHourly
+    ? `${ext.quantity} hour${ext.quantity === 1 ? '' : 's'}`
+    : `${ext.quantity} day${ext.quantity === 1 ? '' : 's'}`;
+  const newCheckOutLabel = isHourly ? 'New check-out time' : 'New check-out date';
+  const newCheckOutValue = isHourly
+    ? minutesToTime(ext.new_hourly_end_slot) ?? '—'
+    : ext.new_check_out_date ? formatDate(ext.new_check_out_date) : '—';
+
+  return (
+    <Card>
+      <View style={{ flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: spacing.xs }}>
+        <Text variant="h3">Extension details</Text>
+        <Badge label={bookingStatusLabel(ext.status as BookingStatusApi)} tone={bookingStatusTone(ext.status as BookingStatusApi)} small />
+      </View>
+      <Text variant="bodySm" weight="700" color={palette.ink}>{ext.code}</Text>
+      <Text variant="caption" color={palette.inkTertiary} style={{ marginBottom: spacing.sm }}>{formatDate(ext.created_at)}</Text>
+      <DetailRow label="Extended by" value={extendedBy} />
+      <DetailRow label={newCheckOutLabel} value={newCheckOutValue} />
+      <DetailRow label="Base amount" value={inr(ext.base_amount)} />
+      <DetailRow label={`GST (${ext.gst_rate}%)`} value={inr(ext.gst_amount)} />
+      <DetailRow label="Total payable" value={inr(ext.total_payable)} bold last />
+    </Card>
   );
 }

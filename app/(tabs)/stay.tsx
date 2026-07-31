@@ -4,7 +4,7 @@
  *  power food menu / directions / share. The last-viewed bed is remembered in `session` across
  *  app restarts (cleared on logout) so re-opening the tab lands back on the same stay. */
 import { useEffect, useState } from 'react';
-import { View, ScrollView, useWindowDimensions, Linking, Alert, Platform, Share } from 'react-native';
+import { View, ScrollView, RefreshControl, useWindowDimensions, Linking, Alert, Platform, Share } from 'react-native';
 import { Image } from 'expo-image';
 import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -15,8 +15,8 @@ import { Text, Card, Button, IconButton, PressableScale, Sheet, EmptyState, Badg
 import { WeeklyFoodMenuSheet } from '@/components/domain';
 import { EmptyAuth, EmptyBookings } from '@/components/illustrations';
 import { stayApi, propertyApi, errorMessage, type ApiBedStay, type ApiMyStayResponse } from '@/lib/api';
-import { bookingCoverImage, bookingModeLabel, bookingStatusLabel, bookingStatusTone } from '@/lib/bookingDisplay';
-import { propertyDetailsToListing, formatLayoutFallback } from '@/lib/listingAdapter';
+import { bookingCoverImage, bookingModeLabel, bookingStatusLabel, bookingStatusTone, latestConfirmedExtension, extensionBannerMessage } from '@/lib/bookingDisplay';
+import { propertyDetailsToListing, formatLayoutFallback, isUnitPropertyType } from '@/lib/listingAdapter';
 import { getCachedPropertyDetails, cachePropertyDetails } from '@/store/propertyDetailsCache';
 import { inr, formatDate } from '@/lib/format';
 import { useProfile } from '@/store/profile';
@@ -34,6 +34,8 @@ const QUICK = [
   { icon: 'exit-outline', label: 'Move Out', route: '/move-out', tint: palette.danger },
 ];
 
+const EXTEND_ACTION = { icon: 'time-outline', label: 'Extend Booking', route: 'extend-stay', tint: palette.coral };
+
 export default function Stay() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
@@ -42,6 +44,7 @@ export default function Stay() {
   const [beds, setBeds] = useState<ApiBedStay[] | null>(null);
   const [selectedBedId, setSelectedBedId] = useState<number | null>(null);
   const [listLoading, setListLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
   const [listError, setListError] = useState<string | null>(null);
   const [stayDetail, setStayDetail] = useState<ApiMyStayResponse | null>(null);
   const [switcherOpen, setSwitcherOpen] = useState(false);
@@ -52,8 +55,8 @@ export default function Stay() {
   // Floor the tile width so 3 columns + 2 gaps never overflow & wrap unevenly.
   const tileW = Math.floor((width - spacing.base * 2 - spacing.md * 2) / 3);
 
-  const loadBeds = () => {
-    setListLoading(true);
+  const loadBeds = (isRefresh = false) => {
+    (isRefresh ? setRefreshing : setListLoading)(true);
     setListError(null);
     stayApi.listBeds()
       .then(async (list) => {
@@ -63,9 +66,14 @@ export default function Stay() {
           ? preferred
           : list[0]?.bed.id ?? null;
         setSelectedBedId(match);
+        // The bed-selection effect below only re-fetches stay detail when the id itself
+        // changes — on a pull-to-refresh it usually doesn't, so refetch it here too.
+        if (match != null) {
+          stayApi.getMyStay(match).then(setStayDetail).catch(() => {});
+        }
       })
       .catch((e) => setListError(errorMessage(e)))
-      .finally(() => setListLoading(false));
+      .finally(() => (isRefresh ? setRefreshing : setListLoading)(false));
   };
 
   useEffect(() => {
@@ -163,6 +171,17 @@ export default function Stay() {
   // fetch behind while switching stays.
   const detailForSelected = stayDetail?.booking.bed.id === b.bed.id ? stayDetail : null;
   const dueDate = detailForSelected?.billing.next_due_date ?? b.billing.next_rent_due;
+  // Move-out approved — the backend starts returning a check-out OTP/QR alongside the
+  // check-in ones once the tenant is cleared to check out.
+  const readyForCheckout = !!(detailForSelected?.booking.check_out_otp || detailForSelected?.booking.check_out_qr);
+  const extension = latestConfirmedExtension(detailForSelected?.booking.extensions);
+  // Room swap only makes sense for a Hostel's room/bed allocation — Flat/Homestay books
+  // the whole unit, so there's nothing to swap.
+  const baseActions = isUnitPropertyType(b.property) ? QUICK.filter((q) => q.route !== '/room-swap') : QUICK;
+  // Daily/Hourly stays extend instead of moving out.
+  const quickActions = b.booking.booking_mode !== 'MONTHLY'
+    ? baseActions.map((q) => (q.route === '/move-out' ? EXTEND_ACTION : q))
+    : baseActions;
 
   const shareProperty = async () => {
     const link = `https://pgfy.in/p/api-${b.property.id}`;
@@ -193,7 +212,11 @@ export default function Stay() {
 
   return (
     <View style={{ flex: 1 }}>
-      <ScrollView contentContainerStyle={{ paddingBottom: spacing['3xl'] }} showsVerticalScrollIndicator={false}>
+      <ScrollView
+        contentContainerStyle={{ paddingBottom: spacing['3xl'] }}
+        showsVerticalScrollIndicator={false}
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => loadBeds(true)} tintColor={palette.coral} colors={[palette.coral]} />}
+      >
         {/* Hero */}
         <View>
           <Image source={{ uri: bookingCoverImage(b.property) }} style={{ width: '100%', height: 200 + insets.top }} contentFit="cover" />
@@ -227,40 +250,52 @@ export default function Stay() {
         </View>
 
         <View style={{ paddingHorizontal: spacing.base, paddingTop: spacing.base, gap: spacing.base }}>
-          {/* Rent / rate card — adapts to the booking mode */}
-          <Card style={{ flexDirection: 'row', alignItems: 'center' }}>
-            <View style={{ flex: 1 }}>
-              <Text variant="caption" color={palette.inkTertiary}>
-                {b.booking.booking_mode === 'MONTHLY' ? 'MONTHLY RENT' : b.booking.booking_mode === 'HOURLY' ? 'HOURLY RATE' : 'DAILY RATE'}
-              </Text>
-              <Text variant="numLg" mono color={palette.ink} style={{ marginTop: 2 }}>{inr(b.billing.base_rent)}{rateSuffix}</Text>
-              <Text variant="caption" color={palette.inkSecondary}>
-                {b.booking.booking_mode === 'MONTHLY' && dueDate
-                  ? `Next due ${formatDate(dueDate)}`
-                  : 'Active stay'}
+          {/* Extension confirmation — info banner once a paid stay-extension is confirmed */}
+          {extension ? (
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: spacing.sm, backgroundColor: palette.infoTint, borderRadius: radius.lg, padding: spacing.base }}>
+              <Ionicons name="information-circle" size={20} color={palette.info} />
+              <Text variant="bodySm" weight="600" color={palette.info} style={{ flex: 1 }}>
+                {extensionBannerMessage(extension)}
               </Text>
             </View>
-            {b.booking.booking_mode === 'MONTHLY' ? <Button label="Pay now" icon="flash" onPress={() => router.push('/billing')} /> : null}
-          </Card>
+          ) : null}
 
-          <Card>
-            <View style={{ flexDirection: 'row', alignItems: 'center', gap: spacing.sm, marginBottom: spacing.md }}>
-              <View style={{ width: 40, height: 40, borderRadius: radius.md, backgroundColor: palette.navyTint, alignItems: 'center', justifyContent: 'center' }}>
-                <Ionicons name="bed-outline" size={20} color={palette.navy} />
-              </View>
+          {/* Rent card — Daily/Hourly stays don't show their per-unit rate here */}
+          {b.booking.booking_mode === 'MONTHLY' ? (
+            <Card style={{ flexDirection: 'row', alignItems: 'center' }}>
               <View style={{ flex: 1 }}>
-                <Text variant="h3">Room, bed information</Text>
-                <Text variant="caption" color={palette.inkTertiary}>Your current hostel allocation</Text>
+                <Text variant="caption" color={palette.inkTertiary}>MONTHLY RENT</Text>
+                <Text variant="numLg" mono color={palette.ink} style={{ marginTop: 2 }}>{inr(b.billing.base_rent)}{rateSuffix}</Text>
+                <Text variant="caption" color={palette.inkSecondary}>
+                  {dueDate ? `Next due ${formatDate(dueDate)}` : 'Active stay'}
+                </Text>
               </View>
-            </View>
-            <View style={{ flexDirection: 'row' }}>
-              <InfoTile label="Room" value={b.room.room_number} />
-              <DividerVertical />
-              <InfoTile label="Bed" value={b.bed.bed_number} />
-              <DividerVertical />
-              <InfoTile label="Layout" value={formatLayoutFallback(b.room.layout)} />
-            </View>
-          </Card>
+              <Button label="Pay now" icon="flash" onPress={() => router.push('/billing')} />
+            </Card>
+          ) : null}
+
+          {/* Room/bed allocation — Flat/Homestay bookings have no room/bed/floor tier, just
+              the whole unit, so this card doesn't apply to them. */}
+          {!isUnitPropertyType(b.property) ? (
+            <Card>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: spacing.sm, marginBottom: spacing.md }}>
+                <View style={{ width: 40, height: 40, borderRadius: radius.md, backgroundColor: palette.navyTint, alignItems: 'center', justifyContent: 'center' }}>
+                  <Ionicons name="bed-outline" size={20} color={palette.navy} />
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text variant="h3">Room, bed information</Text>
+                  <Text variant="caption" color={palette.inkTertiary}>Your current hostel allocation</Text>
+                </View>
+              </View>
+              <View style={{ flexDirection: 'row' }}>
+                <InfoTile label="Room" value={b.room.room_number} />
+                <DividerVertical />
+                <InfoTile label="Bed" value={b.bed.bed_number} />
+                <DividerVertical />
+                <InfoTile label="Layout" value={formatLayoutFallback(b.room.layout)} />
+              </View>
+            </Card>
+          ) : null}
 
           {/* Roommate preferences — prompt to complete if skipped after booking */}
           {!profile.preferencesFilled ? (
@@ -286,14 +321,18 @@ export default function Stay() {
               },
             })}
             scaleTo={0.99}
-            style={{ flexDirection: 'row', alignItems: 'center', gap: spacing.md, backgroundColor: palette.navy, borderRadius: radius.lg, padding: spacing.base }}
+            style={{ flexDirection: 'row', alignItems: 'center', gap: spacing.md, backgroundColor: readyForCheckout ? palette.warning : palette.navy, borderRadius: radius.lg, padding: spacing.base }}
           >
             <View style={{ width: 44, height: 44, borderRadius: radius.md, backgroundColor: 'rgba(255,255,255,0.15)', alignItems: 'center', justifyContent: 'center' }}>
-              <Ionicons name="qr-code" size={24} color={palette.white} />
+              <Ionicons name={readyForCheckout ? 'exit-outline' : 'qr-code'} size={24} color={palette.white} />
             </View>
             <View style={{ flex: 1 }}>
-              <Text variant="bodyMd" weight="700" color={palette.white}>{checkedIn ? 'Your PG pass' : 'Your check-in pass'}</Text>
-              <Text variant="caption" color="rgba(255,255,255,0.8)">{checkedIn ? 'Tap to show your pass' : 'Tap to show your QR to check in'}</Text>
+              <Text variant="bodyMd" weight="700" color={palette.white}>
+                {readyForCheckout ? 'Ready to check out' : checkedIn ? 'Your PG pass' : 'Your check-in pass'}
+              </Text>
+              <Text variant="caption" color="rgba(255,255,255,0.8)">
+                {readyForCheckout ? 'Tap to show your check-out QR' : checkedIn ? 'Tap to show your pass' : 'Tap to show your QR to check in'}
+              </Text>
             </View>
             <Ionicons name="chevron-forward" size={18} color={palette.white} />
           </PressableScale>
@@ -301,8 +340,8 @@ export default function Stay() {
           {/* Quick actions grid — space-between guarantees even 3-col alignment */}
           <View>
             <Text variant="h3" style={{ marginBottom: spacing.md }}>Quick actions</Text>
-            <View style={{ flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'space-between', rowGap: spacing.md }}>
-              {QUICK.map((q) => (
+            <View style={{ flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'flex-start', columnGap: spacing.md, rowGap: spacing.md }}>
+              {quickActions.map((q) => (
                 <PressableScale
                   key={q.label}
                   onPress={() => {
@@ -312,6 +351,10 @@ export default function Stay() {
                     }
                     if (q.route === 'property-support') {
                       router.push({ pathname: '/support', params: { kind: 'property' } });
+                      return;
+                    }
+                    if (q.route === 'extend-stay') {
+                      router.push({ pathname: '/booking/extend', params: { bookingId: String(b.booking.id) } });
                       return;
                     }
                     router.push(q.route as any);
@@ -374,7 +417,9 @@ export default function Stay() {
                 <View style={{ flex: 1 }}>
                   <Text variant="bodyMd" weight="700" numberOfLines={1}>{stay.property.name}</Text>
                   <Text variant="caption" color={palette.inkSecondary} numberOfLines={1}>
-                    {stay.booking.code} · Room {stay.room.room_number} · Bed {stay.bed.bed_number}
+                    {isUnitPropertyType(stay.property)
+                      ? stay.booking.code
+                      : `${stay.booking.code} · Room ${stay.room.room_number} · Bed ${stay.bed.bed_number}`}
                   </Text>
                   <View style={{ flexDirection: 'row', alignItems: 'center', gap: spacing.sm, marginTop: 6 }}>
                     <Badge label={bookingStatusLabel(stay.booking.status)} tone={bookingStatusTone(stay.booking.status)} small />

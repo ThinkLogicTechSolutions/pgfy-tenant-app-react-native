@@ -98,3 +98,8 @@ export async function uploadProfileDocument(uri: string, name?: string, mimeType
 export async function uploadMaintenanceImage(uri: string): Promise<UploadResult> {
   return uploadFile({ uri, fileType: UploadFileType.IMAGE, purpose: 'USER' });
 }
+
+/** A photo of an unlisted property attached to a property lead submission. */
+export async function uploadPropertyLeadImage(uri: string): Promise<UploadResult> {
+  return uploadFile({ uri, fileType: UploadFileType.IMAGE, purpose: 'USER' });
+}

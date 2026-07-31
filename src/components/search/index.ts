@@ -4,7 +4,7 @@ export { StayBookingFields, type StayBookingValues } from './StayBookingFields';
 export { HomeSearchCard } from './HomeSearchCard';
 export {
   BrowseFiltersSheet,
-  DEFAULT_BROWSE_FILTERS,
+  getDefaultBrowseFilters,
   browseFiltersFromParams,
   browseFiltersToParams,
   defaultStayValues,

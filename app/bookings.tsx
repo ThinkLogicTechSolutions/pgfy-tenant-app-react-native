@@ -11,7 +11,8 @@ import {
 } from '@/components/ui';
 import { EmptyBookings } from '@/components/illustrations';
 import { bookingApi, errorMessage, type ApiBooking } from '@/lib/api';
-import { bookingStatusLabel, bookingStatusTone, bookingModeLabel, bookingCoverImage, isActiveBookingStatus } from '@/lib/bookingDisplay';
+import { bookingStatusLabel, bookingStatusTone, bookingModeLabel, bookingCoverImage, isActiveBookingStatus, isUnitBooking } from '@/lib/bookingDisplay';
+import { isUnitPropertyType } from '@/lib/listingAdapter';
 import { inr, formatDate } from '@/lib/format';
 import { haptic } from '@/lib/haptics';
 
@@ -281,7 +282,7 @@ function BookingCard({ booking: b, onPress }: { booking: ApiBooking; onPress?: (
             <Badge label={bookingStatusLabel(b.status)} tone={bookingStatusTone(b.status)} small />
           </View>
           <Text variant="caption" color="rgba(255,255,255,0.8)" style={{ marginTop: 2 }}>
-            {b.property.locality} · {b.room_number}/{b.bed_number}
+            {isUnitBooking(b) || isUnitPropertyType(b.property) ? b.property.locality : `${b.property.locality} · ${b.room_number}/${b.bed_number}`}
           </Text>
           <Text variant="caption" color="rgba(255,255,255,0.8)" style={{ marginTop: 4 }}>
             {bookingModeLabel(b.booking_mode)} · {inr(b.base_rent)}{rateSuffix} · Since {formatDate(b.check_in_date)}
@@ -316,7 +317,7 @@ function PastBookingCardApi({ booking: b, onPress }: { booking: ApiBooking; onPr
             <Badge label={bookingStatusLabel(b.status)} tone={bookingStatusTone(b.status)} small />
           </View>
           <Text variant="caption" color={palette.inkTertiary} numberOfLines={1} style={{ marginTop: 2 }}>
-            {b.property.locality} · {b.room_number}/{b.bed_number}
+            {isUnitBooking(b) || isUnitPropertyType(b.property) ? b.property.locality : `${b.property.locality} · ${b.room_number}/${b.bed_number}`}
           </Text>
           <Text variant="caption" color={palette.inkSecondary} style={{ marginTop: 4 }}>
             {bookingModeLabel(b.booking_mode)} · {inr(b.base_rent)}{rateSuffix} · {formatDate(b.check_in_date)}

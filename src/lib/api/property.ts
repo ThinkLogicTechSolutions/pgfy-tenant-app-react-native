@@ -7,13 +7,17 @@ import type {
   ApiPropertyDetails,
   ApiRoomBedAvailability,
   ListResponse,
+  PropertyCategory,
   PropertyGender,
+  PropertySubCategory,
 } from './types';
 
 export interface SearchPropertiesQuery {
   cityId?: number;
   localityId?: number;
   gender?: PropertyGender;
+  category?: PropertyCategory;
+  subCategory?: PropertySubCategory;
 }
 
 export interface PropertyPage {
@@ -23,10 +27,10 @@ export interface PropertyPage {
   limit: number;
 }
 
-/** Properties operational in a given city/locality (optionally scoped by gender). */
-export async function searchProperties({ cityId, localityId, gender }: SearchPropertiesQuery = {}): Promise<PropertyPage> {
+/** Properties operational in a given city/locality (optionally scoped by gender/category). */
+export async function searchProperties({ cityId, localityId, gender, category, subCategory }: SearchPropertiesQuery = {}): Promise<PropertyPage> {
   const res = await request<ListResponse<ApiProperty>>('/property-management/property', {
-    query: { city_id: cityId, locality_id: localityId, gender },
+    query: { city_id: cityId, locality_id: localityId, gender, property_category: category, property_sub_category: subCategory },
   });
   if (Array.isArray(res)) {
     return { data: res, total: res.length, skip: 0, limit: res.length };

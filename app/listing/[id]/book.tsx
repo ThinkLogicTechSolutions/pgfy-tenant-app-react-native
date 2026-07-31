@@ -11,7 +11,7 @@ import { getListing } from '@/data';
 import { computeCheckout, platformFeeFromMasterConfig, isCouponUsable, couponDiscountAmount, type CheckoutIntent, type AppliedCoupon } from '@/lib/billing';
 import type { BookingMode } from '@/data/types';
 import { inr } from '@/lib/format';
-import { defaultCheckIn, defaultCheckOut } from '@/lib/dates';
+import { defaultCheckOut, clampCheckInToFuture } from '@/lib/dates';
 import { haptic } from '@/lib/haptics';
 import { useAuth } from '@/context/AuthContext';
 import { useMasterData } from '@/context/MasterDataContext';
@@ -21,10 +21,13 @@ import { parseApiPropertyId, propertyDetailsToListing } from '@/lib/listingAdapt
 import { getCachedPropertyDetails, cachePropertyDetails } from '@/store/propertyDetailsCache';
 import type { Listing } from '@/data/types';
 
+/** Matches the gender values written by the guest-details step (`app/listing/[id]/guests.tsx`). */
+const GUEST_GENDER_LABEL: Record<string, string> = { MALE: 'Male', FEMALE: 'Female', UNISEX: 'Other' };
+
 export default function BookConfig() {
   const {
     id, room, bed, rent, sharing, appliedCode, checkIn, checkOut, startTime, hours, bookingType,
-    propertyId, roomId, bedId, floorId, layout, isAc, withFood,
+    propertyId, roomId, bedId, floorId, layout, isAc, withFood, guests,
   } = useLocalSearchParams<{
     id: string;
     room: string;
@@ -44,7 +47,12 @@ export default function BookConfig() {
     layout?: string;
     isAc?: string;
     withFood?: string;
+    /** Flat/Home stay only — JSON-encoded `{name,gender,age}[]`, set by the guest-details step. */
+    guests?: string;
   }>();
+  /** Flat/Home stay: whole-property booking with named guests instead of a room/bed pick. */
+  const guestList: { name: string; gender: string; age: number }[] = guests ? JSON.parse(guests) : [];
+  const isUnitBooking = guestList.length > 0;
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const apiId = parseApiPropertyId(String(id));
@@ -72,6 +80,7 @@ export default function BookConfig() {
   const [appliedCoupon, setAppliedCoupon] = useState<AppliedCoupon | null>(null);
   const [coupons, setCoupons] = useState<ApiCoupon[]>([]);
   const [kycOpen, setKycOpen] = useState(false);
+  const [guestsSheetOpen, setGuestsSheetOpen] = useState(false);
 
   // Real coupons (billing_api.md) are property-scoped — nothing to fetch for a mock listing.
   useEffect(() => {
@@ -84,7 +93,7 @@ export default function BookConfig() {
   }, [apiId]);
   const billingMode: BookingMode = bookingType === 'hourly' ? 'hourly' : bookingType === 'daily' ? 'daily' : 'monthly';
   const [stayDates, setStayDates] = useState<StayBookingValues>(() => {
-    const nextCheckIn = checkIn || defaultCheckIn();
+    const nextCheckIn = clampCheckInToFuture(checkIn);
     return {
       checkIn: nextCheckIn,
       checkOut: checkOut || defaultCheckOut(nextCheckIn),
@@ -100,7 +109,7 @@ export default function BookConfig() {
   const depositAmount = billingMode === 'monthly' ? dep : 0;
   const modeLabel = billingMode === 'monthly' ? 'Monthly' : billingMode === 'daily' ? 'Daily' : 'Hourly';
   const apiBookingMode = billingMode === 'hourly' ? 'HOURLY' : billingMode === 'daily' ? 'DAILY' : 'MONTHLY';
-  const canCreateBooking = !!(apiId && propertyId && roomId && bedId && layout);
+  const canCreateBooking = !!(apiId && propertyId && (isUnitBooking || (roomId && bedId && layout)));
   // Hourly bookings combine the date with the chosen start time; monthly/daily just use midnight.
   const bookingCheckInDate = billingMode === 'hourly'
     ? `${stayDates.checkIn}T${stayDates.startTime}:00.000Z`
@@ -108,7 +117,7 @@ export default function BookConfig() {
   const intent: CheckoutIntent = {
     kind: billingMode === 'hourly' ? 'booking-hourly' : billingMode === 'daily' ? 'booking-daily' : 'booking-monthly',
     title: `${listing?.name ?? 'Booking'} — ${modeLabel} booking`,
-    subtitle: `${room} · Bed ${bed} · ${sharing}`,
+    subtitle: isUnitBooking ? `Whole property · ${guestList.length} guest${guestList.length > 1 ? 's' : ''}` : `${room} · Bed ${bed} · ${sharing}`,
     billingMode,
     baseAmount: monthlyRent,
     unitRate: monthlyRent,
@@ -119,16 +128,20 @@ export default function BookConfig() {
     ...(canCreateBooking ? {
       booking: {
         propertyId: Number(propertyId),
-        roomId: Number(roomId),
-        bedId: Number(bedId),
-        floorId: floorId ? Number(floorId) : undefined,
         bookingMode: apiBookingMode,
-        isAc: isAc === 'true',
-        hasFood: withFood === 'true',
-        roomLayout: layout!,
         checkInDate: bookingCheckInDate,
         ...(billingMode === 'daily' ? { checkOutDate: `${stayDates.checkOut}T00:00:00.000Z` } : {}),
         ...(billingMode === 'hourly' ? { durationHours: stayDates.hours } : {}),
+        ...(isUnitBooking
+          ? { guests: guestList, guestCount: guestList.length }
+          : {
+              roomId: Number(roomId),
+              bedId: Number(bedId),
+              floorId: floorId ? Number(floorId) : undefined,
+              isAc: isAc === 'true',
+              hasFood: withFood === 'true',
+              roomLayout: layout!,
+            }),
       },
     } : {}),
   };
@@ -160,6 +173,12 @@ export default function BookConfig() {
   }, [appliedCode, coupons]);
 
   const applyPromo = () => applyCouponCode(promo);
+
+  const removeCoupon = () => {
+    setAppliedCoupon(null);
+    setPromo('');
+    setPromoError(false);
+  };
 
   const openAllOffers = () => {
     router.push({
@@ -196,12 +215,30 @@ export default function BookConfig() {
           <Badge label="Secure payment" tone="info" icon="lock-closed" />
         </View>
 
-        {/* Selected bed */}
+        {/* Selected bed / guests */}
         <Card>
           <Text variant="overline" color={palette.inkTertiary} style={{ marginBottom: spacing.sm }}>YOUR SELECTION</Text>
           <Row k="Property" v={listing?.name ?? '—'} />
-          <Row k="Room / Bed" v={`${room} · Bed ${bed}`} />
-          <Row k="Sharing" v={String(sharing)} />
+          {isUnitBooking ? (
+            <>
+              <Row k="Booking" v="Whole property" />
+              <View>
+                <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingVertical: spacing.sm }}>
+                  <Text variant="bodySm" color={palette.inkSecondary}>Guests</Text>
+                  <PressableScale onPress={() => setGuestsSheetOpen(true)} haptics={false} style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                    <Text variant="bodySm" weight="600">{guestList.length} guest{guestList.length === 1 ? '' : 's'}</Text>
+                    <Text variant="bodySm" weight="600" color={palette.coralDark}>View all</Text>
+                  </PressableScale>
+                </View>
+                <Divider />
+              </View>
+            </>
+          ) : (
+            <>
+              <Row k="Room / Bed" v={`${room} · Bed ${bed}`} />
+              <Row k="Sharing" v={String(sharing)} />
+            </>
+          )}
           <Row k="Address" v={`${listing?.locality}, ${listing?.city}`} last />
         </Card>
 
@@ -262,9 +299,14 @@ export default function BookConfig() {
               </ScrollView>
             ) : null}
             {appliedCoupon ? (
-              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: spacing.sm }}>
-                <Ionicons name="checkmark-circle" size={16} color={palette.success} />
-                <Text variant="caption" color={palette.success}>{appliedCoupon.code} applied — you saved {inr(appliedCoupon.amount)}!</Text>
+              <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: spacing.sm, marginTop: spacing.sm }}>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, flex: 1 }}>
+                  <Ionicons name="checkmark-circle" size={16} color={palette.success} />
+                  <Text variant="caption" color={palette.success} style={{ flex: 1 }}>{appliedCoupon.code} applied — you saved {inr(appliedCoupon.amount)}!</Text>
+                </View>
+                <PressableScale onPress={removeCoupon} haptics={false}>
+                  <Text variant="caption" weight="600" color={palette.danger}>Remove</Text>
+                </PressableScale>
               </View>
             ) : null}
           </Card>
@@ -308,6 +350,18 @@ export default function BookConfig() {
         <View style={{ gap: spacing.base }}>
           <Text variant="bodySm" color={palette.inkSecondary}>Booking needs a SnapKYC-verified profile. It only takes a couple of minutes.</Text>
           <Button label="Complete KYC now" icon="shield-checkmark-outline" full size="lg" onPress={() => { setKycOpen(false); router.push('/(auth)/kyc-intro'); }} />
+        </View>
+      </Sheet>
+
+      <Sheet visible={guestsSheetOpen} onClose={() => setGuestsSheetOpen(false)} title="Guest details" scroll>
+        <View style={{ gap: spacing.sm }}>
+          {guestList.map((g, i) => (
+            <View key={i} style={{ backgroundColor: palette.surfaceRaised, borderRadius: radius.md, padding: spacing.base }}>
+              <Text variant="overline" color={palette.inkTertiary} style={{ marginBottom: 4 }}>GUEST {i + 1}</Text>
+              <Text variant="bodyMd" weight="700">{g.name}</Text>
+              <Text variant="caption" color={palette.inkTertiary}>{g.age} years · {GUEST_GENDER_LABEL[g.gender] ?? g.gender}</Text>
+            </View>
+          ))}
         </View>
       </Sheet>
     </View>

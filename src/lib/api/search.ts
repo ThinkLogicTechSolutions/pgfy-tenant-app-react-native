@@ -1,6 +1,16 @@
 /** Keyword search — property name / PGID (auth_api.md — Tenant search API). */
 import { request } from './client';
-import type { MasterMediaAsset, MediaAttachment, MasterStatus, PropertyGender, PropertyGstMode } from './types';
+import type {
+  AllowedTenantType,
+  Furnishing,
+  MasterMediaAsset,
+  MediaAttachment,
+  MasterStatus,
+  PropertyCategory,
+  PropertyGender,
+  PropertyGstMode,
+  PropertySubCategory,
+} from './types';
 
 export interface SearchPropertyMediaSection {
   section_name: string;
@@ -38,7 +48,17 @@ export interface SearchPropertyType {
 export interface SearchProperty {
   id: number;
   code: string;
-  type_id: number;
+  type_id: number | null;
+  /** Defaults to `HOSTEL` server-side (pre-existing properties). */
+  property_category?: PropertyCategory;
+  /** Flat only. */
+  property_sub_category?: PropertySubCategory | null;
+  /** Flat/Homestay only. */
+  furnishing?: Furnishing | null;
+  /** Flat/Homestay only — replaces `gender` for these categories. */
+  allowed_tenant_type?: AllowedTenantType | null;
+  /** Flat/Homestay only — max occupants per booking. */
+  max_occupancy?: number | null;
   name: string;
   description: string | null;
   address_line_1: string;
@@ -47,7 +67,8 @@ export interface SearchProperty {
   locality_id: number;
   /** [longitude, latitude]. */
   coordinates: [number, number] | null;
-  gender: PropertyGender;
+  /** Hostel only — null on Flat/Homestay properties. */
+  gender: PropertyGender | null;
   media: SearchPropertyMediaSection[];
   amenities: string[];
   house_rules: string[];

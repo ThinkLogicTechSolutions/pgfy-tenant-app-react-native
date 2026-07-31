@@ -236,6 +236,16 @@ export interface MasterConfig {
 
 export type PropertyGender = 'MALE' | 'FEMALE' | 'UNISEX' | (string & {});
 
+/** Top-level property taxonomy. Hostel keeps `type_id`/`property_type` (PG/Hostel/Co-living);
+ *  Flat uses `property_sub_category` (BHK_1..5); Homestay has no subcategory. */
+export type PropertyCategory = 'HOSTEL' | 'FLAT' | 'HOMESTAY' | (string & {});
+/** Flat-only subcategory. */
+export type PropertySubCategory = 'BHK_1' | 'BHK_2' | 'BHK_3' | 'BHK_4' | 'BHK_5' | (string & {});
+/** Flat/Homestay only. */
+export type Furnishing = 'UNFURNISHED' | 'SEMI_FURNISHED' | 'FULLY_FURNISHED' | (string & {});
+/** Flat/Homestay only — replaces `gender` for these categories. */
+export type AllowedTenantType = 'FAMILY_ONLY' | 'BACHELOR_ONLY' | 'MALE' | 'FEMALE' | 'FAMILY_AND_BACHELOR' | (string & {});
+
 /** A single uploaded file reference. `type` is the attachment kind (1 = image). */
 export interface MediaAttachment {
   link: string;
@@ -258,7 +268,17 @@ export type PropertyGstMode = 'AUTO' | 'MANUAL' | (string & {});
 export interface ApiProperty {
   id: number;
   code: string;
-  type_id: number;
+  type_id: number | null;
+  /** Defaults to `HOSTEL` server-side (pre-existing properties). */
+  property_category?: PropertyCategory;
+  /** Flat only. */
+  property_sub_category?: PropertySubCategory | null;
+  /** Flat/Homestay only. */
+  furnishing?: Furnishing | null;
+  /** Flat/Homestay only — replaces `gender` for these categories. */
+  allowed_tenant_type?: AllowedTenantType | null;
+  /** Flat/Homestay only — max occupants per booking. */
+  max_occupancy?: number | null;
   name: string;
   description: string | null;
   address_line_1: string;
@@ -267,7 +287,8 @@ export interface ApiProperty {
   locality_id: number;
   /** [longitude, latitude]. */
   coordinates: [number, number] | null;
-  gender: PropertyGender;
+  /** Hostel only — null on Flat/Homestay properties (see `allowed_tenant_type`). */
+  gender: PropertyGender | null;
   media: PropertyMediaSection[];
   amenities: string[];
   house_rules: string[];
@@ -305,16 +326,19 @@ export interface ApiProperty {
 
 export type ApiBookingMode = 'MONTHLY' | 'DAILY' | 'HOURLY';
 
-/** One room layout's pricing, scoped to the `booking_mode` requested. */
+/** One room layout's pricing, scoped to the `booking_mode` requested. Hostel: the 4 AC/food
+ *  rates. Flat/Homestay: a single `rent` (layout is always `SINGLE`, AC/food don't apply). */
 export interface ApiPropertyPricingTier {
   id: number;
   booking_mode: ApiBookingMode;
   /** Room layout code, e.g. `SINGLE`, `DUO`, `TRIPLE`. */
   layout: string;
-  ac_with_food: number;
-  ac_no_food: number;
-  non_ac_with_food: number;
-  non_ac_no_food: number;
+  ac_with_food?: number | null;
+  ac_no_food?: number | null;
+  non_ac_with_food?: number | null;
+  non_ac_no_food?: number | null;
+  /** Flat/Homestay only. */
+  rent?: number | null;
   available_beds: number;
 }
 
@@ -371,8 +395,19 @@ export interface ApiPropertyDetails {
   name: string;
   code: string;
   description: string | null;
-  gender: PropertyGender;
+  /** Hostel only — null on Flat/Homestay properties (see `allowed_tenant_type`). */
+  gender: PropertyGender | null;
   property_type: string;
+  /** Defaults to `HOSTEL` server-side (pre-existing properties). */
+  property_category?: PropertyCategory;
+  /** Flat only. */
+  property_sub_category?: PropertySubCategory | null;
+  /** Flat/Homestay only. */
+  furnishing?: Furnishing | null;
+  /** Flat/Homestay only — replaces `gender` for these categories. */
+  allowed_tenant_type?: AllowedTenantType | null;
+  /** Flat/Homestay only — max occupants per booking (drives the guest-details step). */
+  max_occupancy?: number | null;
   locality: string;
   city: string;
   media: PropertyMediaSection[];
@@ -481,6 +516,13 @@ export type BookingStatusApi =
 export type PaymentMethod = 'UPI' | 'CARD' | 'NETBANKING' | 'CASH' | 'BANK_TRANSFER';
 export type PaymentFrequency = 'PAY_ONCE' | 'AUTOPAY';
 
+/** One named occupant on a Flat/Homestay booking (`Booking.guests`, Flat/Homestay only). */
+export interface BookingGuestItem {
+  name: string;
+  gender: PropertyGender;
+  age: number;
+}
+
 export interface ApiBookingProperty {
   id: number;
   name: string;
@@ -488,6 +530,8 @@ export interface ApiBookingProperty {
   locality: string;
   city: string;
   property_type: string;
+  /** `FLAT`/`HOMESTAY` book the whole unit — no room/bed/floor tier applies. */
+  property_category?: PropertyCategory | null;
 }
 
 /** Shared shape of `GET /tenant/booking` list items and the base of `GET /tenant/booking/:id`. */
@@ -500,6 +544,9 @@ export interface ApiBooking {
   room_number: string;
   bed_number: string;
   room_layout: string;
+  /** Flat/Homestay only — the named occupants for a whole-property booking. */
+  guests?: BookingGuestItem[] | null;
+  guest_count?: number | null;
   check_in_date: string;
   check_out_date: string | null;
   actual_check_in: string | null;
@@ -511,26 +558,41 @@ export interface ApiBooking {
   total_paid: number | null;
   next_rent_due: string | null;
   check_in_otp: string | null;
-  check_in_qr: string | null;
+  check_in_qr: ProfileAsset | null;
   has_check_in_pass: boolean;
+  /** Post move-out-approval check-out pass — same shape as the check-in pass. */
+  check_out_otp?: string | null;
+  check_out_qr?: ProfileAsset | null;
   /** Undocumented shape — always `null` in observed responses. */
   lease: Record<string, unknown> | null;
+  /** Extend-stay history for this booking, most recent first — empty when never extended. */
+  extensions?: ApiStayExtension[];
 }
 
-/** `GET /tenant/booking/:id` — the list item shape plus the full check-in pass. */
+/** `GET /tenant/booking/:id` — the list item shape plus the full check-in pass. Carries the
+ * original payment transaction (same shape `POST /tenant/booking` returns) while the booking
+ * is still `PENDING_PAYMENT`, so a stalled/abandoned payment can be resumed. */
 export interface ApiBookingDetail extends ApiBooking {
   check_in_pass: Record<string, unknown> | null;
+  transaction?: ApiBookingTransaction | null;
 }
 
+/** Hostel: room/bed/layout are required. Flat/Homestay: omit them and send `guests`/`guest_count`
+ *  instead — the whole (single default) unit is booked. */
 export interface CreateBookingInput {
   property_id: number;
-  room_id: number;
-  bed_id: number;
+  /** Hostel only. */
+  room_id?: number;
+  bed_id?: number;
   floor_id?: number;
   booking_mode: ApiBookingMode;
   is_ac?: boolean;
   has_food?: boolean;
-  room_layout: string;
+  /** Hostel only. */
+  room_layout?: string;
+  /** Flat/Homestay only — named occupants (min 1, max the property's `max_occupancy`). */
+  guests?: BookingGuestItem[];
+  guest_count?: number;
   check_in_date: string;
   /** Daily bookings only — the response already echoes this back per `ApiBookingCreateResponse`. */
   check_out_date?: string | null;
@@ -897,6 +959,8 @@ export interface ApiStayProperty {
   city: string;
   code: string;
   property_type: string;
+  /** `FLAT`/`HOMESTAY` book the whole unit — no room/bed/floor tier applies. */
+  property_category?: PropertyCategory | null;
 }
 
 export interface ApiStayBookingSummary {
@@ -966,10 +1030,21 @@ export interface ApiMyStayBooking {
   status: BookingStatusApi;
   booking_mode: ApiBookingMode;
   check_in_date: string;
+  /** Daily/Monthly bookings — the current (possibly extended) move-out date. */
+  check_out_date: string | null;
+  /** Hourly bookings only — the current (possibly extended) end-of-slot/duration. */
+  hourly_end_slot: number | null;
+  duration_hours: number | null;
   check_in_otp: string | null;
   /** A real, pre-rendered QR image when the backend has generated one — prefer this over
    * building one client-side (see `buildCheckInPassPayload`) whenever it's present. */
   check_in_qr: ProfileAsset | null;
+  /** Present once the tenant's move-out has been approved and they're cleared to check
+   * out — the pass should switch from the check-in/PG pass to a check-out pass. */
+  check_out_otp?: string | null;
+  check_out_qr?: ProfileAsset | null;
+  /** Extend-stay history for this booking, most recent first — empty when never extended. */
+  extensions: ApiStayExtension[];
   property: ApiMyStayProperty;
   floor: ApiStayFloor;
   room: ApiMyStayRoom;
@@ -1122,4 +1197,353 @@ export interface CreateVisitorLogInput {
   floor_id: number;
   room_id: number;
   bed_id: number;
+}
+
+// ---------------------------------------------------------------------------
+// Move-out (`GET/POST /tenant/move-out`)
+// ---------------------------------------------------------------------------
+
+export type MoveOutStatus =
+  | 'REQUESTED'
+  | 'REJECTED'
+  | 'INSPECTING'
+  | 'AWAITING_PAYMENT'
+  | 'APPROVED'
+  | 'CHECKED_OUT'
+  | (string & {});
+
+export type MoveOutRefundStatus = 'NOT_APPLICABLE' | 'PENDING' | 'PAID' | (string & {});
+
+export interface MoveOutEstimateNotice {
+  required_notice_days: number;
+  notice_given_days: number;
+  notice_met: boolean;
+  within_lock_in: boolean;
+  lock_in_end: string;
+}
+
+export interface MoveOutEstimateSettlement {
+  security_deposit: number;
+  pending_rent: number;
+  damage_estimate: number;
+  short_notice_penalty: number;
+  estimated_refund: number;
+}
+
+/** Same shape as the profile's `BankDetails`, but always present (never `null` fields) when
+ * `has_bank_details` is true. */
+export interface MoveOutEstimateBankDetails {
+  bank_name: string;
+  ifsc_code: string;
+  account_number: string;
+  account_holder_name: string;
+}
+
+/** `GET /tenant/move-out?estimate=true&booking_id=&expected_move_out=` — a preview, not a
+ * saved request. Prompt for bank details when `has_bank_details` is false. */
+export interface ApiMoveOutEstimate {
+  booking_id: number;
+  expected_move_out: string;
+  earliest_move_out: string;
+  notice: MoveOutEstimateNotice;
+  settlement: MoveOutEstimateSettlement;
+  bank_details: MoveOutEstimateBankDetails | null;
+  has_bank_details: boolean;
+}
+
+export interface MoveOutCharge {
+  id: string;
+  title: string;
+  amount: number;
+  added_at: string;
+  added_by_id: number;
+  added_by_name: string;
+}
+
+/** One submitted move-out/exit request — list rows and the `:id` detail response share this
+ * shape; the create response additionally echoes a `message`. */
+export interface ApiMoveOutRequest {
+  id: number;
+  booking_id: number;
+  tenant_id: number;
+  property_id: number;
+  room_id: number;
+  bed_id: number;
+  tenant_name: string;
+  property_name: string;
+  room_number: string;
+  bed_number: string;
+  expected_move_out: string;
+  required_notice_days: number;
+  notice_given_days: number;
+  security_deposit: number;
+  pending_rent_dues: number;
+  notice_shortfall_penalty: number;
+  damage_deductions: number;
+  settlement_amount: number;
+  charges: MoveOutCharge[];
+  reason: string | null;
+  rejection_reason: string | null;
+  inspection_notes: string | null;
+  status: MoveOutStatus;
+  refund_status: MoveOutRefundStatus;
+  settlement_payment_method: string | null;
+  settlement_payment_note: string | null;
+  settlement_transaction_id: number | null;
+  settlement_transaction_code: string | null;
+  payout_transaction_id: number | null;
+  payout_transaction_code: string | null;
+  requested_by_id: number | null;
+  approved_by_id: number | null;
+  rejected_by_id: number | null;
+  marked_paid_by_id: number | null;
+  requested_on: string | null;
+  inspection_started_on: string | null;
+  inspection_completed_on: string | null;
+  settlement_paid_on: string | null;
+  approved_on: string | null;
+  checked_out_on: string | null;
+  rejected_on: string | null;
+  refund_paid_on: string | null;
+  created_at: string;
+  updated_at: string;
+  message?: string;
+}
+
+export interface CreateMoveOutInput {
+  booking_id: number;
+  /** Date-only (`yyyy-mm-dd`) — the API echoes back a full ISO datetime. */
+  expected_move_out: string;
+  reason?: string;
+}
+
+// ---------------------------------------------------------------------------
+// Group booking enquiry (`POST /booking-management/group-booking-enquiry`)
+// ---------------------------------------------------------------------------
+
+/** Not documented as a fixed enum — `CO_LIVE` is the only confirmed value; `MALE_ONLY`/
+ * `FEMALE_ONLY` follow the same SCREAMING_SNAKE convention used across this API. */
+export type GroupBookingArrangement = 'MALE_ONLY' | 'FEMALE_ONLY' | 'CO_LIVE' | (string & {});
+/** `THREE_MEALS` is confirmed by the doc; `TWO_MEALS` is inferred from the same convention. */
+export type GroupBookingMeals = 'TWO_MEALS' | 'THREE_MEALS' | (string & {});
+export type GroupBookingFoodType = 'VEGETARIAN' | 'NON_VEG' | (string & {});
+export type GroupBookingStatus = 'PENDING' | 'RESOLVED' | 'REJECTED' | (string & {});
+
+export interface CreateGroupBookingEnquiryInput {
+  contact_name: string;
+  contact_phone: string;
+  organisation?: string;
+  beds_required: number;
+  city_id: number;
+  locality_id?: number | null;
+  male_count?: number;
+  female_count?: number;
+  preferred_arrangement: GroupBookingArrangement;
+  meals_per_day: GroupBookingMeals;
+  food_type: GroupBookingFoodType;
+  /** Date-only (`yyyy-mm-dd`) — the API echoes back a full ISO datetime. */
+  check_in_date: string;
+  check_out_date: string;
+}
+
+export interface ApiGroupBookingEnquiry {
+  id: number;
+  contact_name: string;
+  contact_phone: string;
+  organisation: string | null;
+  beds_required: number;
+  male_count: number;
+  female_count: number;
+  preferred_arrangement: GroupBookingArrangement;
+  meals_per_day: GroupBookingMeals;
+  food_type: GroupBookingFoodType;
+  check_in_date: string;
+  check_out_date: string;
+  stay_dates: unknown | null;
+  city_name: string;
+  locality_name: string | null;
+  locality_id: number | null;
+  city_id: number;
+  state_id: number;
+  state_name: string;
+  status: GroupBookingStatus;
+  resolved_on: string | null;
+  resolved_by: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+// ---------------------------------------------------------------------------
+// Property lead (`POST /property-management/property-lead`) — a tenant reports a PG/hostel
+// that isn't listed yet. Hostel-only (`PropertyTypeEnum` has no Flat/Homestay values).
+// ---------------------------------------------------------------------------
+
+export type PropertyLeadType = 'PG' | 'HOSTEL' | 'CO_LIVING' | (string & {});
+export type PropertyLeadStatus = 'NEW' | 'REVIEWING' | 'CONTACTED' | 'ONBOARDED' | 'REJECTED' | (string & {});
+
+export interface CreatePropertyLeadInput {
+  property_name: string;
+  property_type: PropertyLeadType;
+  address_line_1: string;
+  /** Photos of the property — note the field is `images`, not `media`. */
+  images?: MediaAttachment[];
+  state_id?: number | null;
+  city_id: number;
+  locality_id?: number | null;
+  owner_name: string;
+  owner_phone: string;
+}
+
+export interface ApiPropertyLead {
+  id: number;
+  property_name: string;
+  property_type: PropertyLeadType;
+  address_line_1: string;
+  images: MediaAttachment[] | null;
+  state_id: number | null;
+  state_name: string | null;
+  city_id: number;
+  city_name: string;
+  locality_id: number | null;
+  locality_name: string | null;
+  owner_name: string;
+  owner_phone: string;
+  status: PropertyLeadStatus;
+  notes: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+// ===========================================================================
+// Extend stay (`GET/POST /tenant/extend-stay`) — Daily/Hourly checked-in bookings only.
+// ===========================================================================
+
+export type ExtensionMode = 'HOURLY' | 'DAILY' | (string & {});
+
+export interface ApiExtendStayProperty {
+  id: number;
+  name: string;
+  max_hourly_extension_hours: number | null;
+  max_daily_extension_days: number | null;
+  hourly_window_start: number | null;
+  hourly_window_end: number | null;
+}
+
+export interface ApiExtendStayBooking {
+  id: number;
+  code: string;
+  booking_mode: ApiBookingMode;
+  status: BookingStatusApi;
+  check_in_date: string;
+  check_out_date: string | null;
+  duration_hours: number | null;
+  hourly_start_slot: number | null;
+  hourly_end_slot: number | null;
+  room_number: string;
+  bed_number: string;
+}
+
+/** `GET /tenant/extend-stay?booking_id=` — a preview, not a saved request. `can_extend` is
+ * false (with no further detail documented) when the booking isn't eligible. */
+export interface ApiExtendStayPreview {
+  booking: ApiExtendStayBooking;
+  property: ApiExtendStayProperty;
+  can_extend: boolean;
+  max_allowed: number;
+  unit_rate: number;
+  extension_mode: ExtensionMode;
+}
+
+export interface ExtendStayBillSummary {
+  rate_label: string;
+  unit_rate: number;
+  quantity: number;
+  base_amount: number;
+  gst_rate: number;
+  gst_amount: number;
+  coupon_discount: number;
+  total_payable: number;
+}
+
+export interface CheckExtensionAvailabilityInput {
+  booking_id: string;
+  quantity: number;
+  coupon_code?: string | null;
+}
+
+/** `POST /tenant/extend-stay` with `action: 'check-availability'` — a preview, not a saved
+ * request. */
+export interface ApiExtendStayAvailability {
+  available: boolean;
+  /** Undocumented but expected alongside `available: false` (mirrors `checkExtensionAvailability`'s
+   * mock shape) — treated as optional since no sample response shows it. */
+  reason?: string | null;
+  max_allowed: number;
+  quantity: number;
+  extension_mode: ExtensionMode;
+  new_check_out_date: string | null;
+  new_hourly_end_slot: number | null;
+  new_duration_hours: number | null;
+  bill_summary: ExtendStayBillSummary;
+}
+
+export interface CreateExtensionInput {
+  booking_id: string;
+  quantity: number;
+  payment_method: PaymentMethod;
+  coupon_code?: string | null;
+}
+
+export type ExtensionStatusApi = 'PENDING_PAYMENT' | 'CONFIRMED' | 'CANCELLED' | (string & {});
+
+export interface ApiStayExtension {
+  id: number;
+  code: string;
+  status: ExtensionStatusApi;
+  extension_mode: ExtensionMode;
+  quantity: number;
+  initiated_by: string;
+  previous_check_out_date: string | null;
+  previous_hourly_end_slot: number | null;
+  previous_duration_hours: number | null;
+  new_check_out_date: string | null;
+  new_hourly_end_slot: number | null;
+  new_duration_hours: number | null;
+  unit_rate: number;
+  base_amount: number;
+  gst_rate: number;
+  gst_amount: number;
+  total_payable: number;
+  invoice_id: number;
+  invoice_number: string;
+  pdf_attachment: string | null;
+  created_at: string;
+  confirmed_at: string | null;
+}
+
+export interface ApiExtendStayInvoiceSummary {
+  id: number;
+  invoice_number: string;
+  type: string;
+  amount: number;
+  status: string;
+}
+
+export interface ApiExtendStayPaymentHint {
+  payment_method: PaymentMethod;
+  note: string;
+}
+
+/** `POST /tenant/extend-stay` (create) response. `transaction` is the gateway order for an
+ * online payment method (null for CASH) — same shape the booking/pay-rent flows already use
+ * to drive the Razorpay checkout. */
+export interface ApiCreateExtensionResponse {
+  extension: ApiStayExtension;
+  invoice: ApiExtendStayInvoiceSummary;
+  bill_summary: ExtendStayBillSummary;
+  instantly_confirmed: boolean;
+  transaction: ApiBookingTransaction | null;
+  /** Undocumented shape when non-null — not consumed by the client. */
+  payment: unknown | null;
+  payment_hint: ApiExtendStayPaymentHint | null;
 }

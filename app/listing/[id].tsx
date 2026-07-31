@@ -1,7 +1,8 @@
 /** T-S13 — Property details page with verification/trust surfaced. */
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { View, ScrollView, useWindowDimensions } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
+import { useFocusEffect } from '@react-navigation/native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -13,7 +14,7 @@ import { listingCarouselImages, listingPhotoCount, PROPERTY_IMAGE_ASPECT } from 
 import { getListing, LISTINGS } from '@/data';
 import { inr, formatDate } from '@/lib/format';
 import { listingNearLandmarkTitle, isPromotedListing } from '@/lib/listingDisplay';
-import { defaultCheckIn, defaultCheckOut } from '@/lib/dates';
+import { defaultCheckOut, clampCheckInToFuture } from '@/lib/dates';
 import { useSaved } from '@/store/saved';
 import { recordView } from '@/store/recentlyViewed';
 import { haptic } from '@/lib/haptics';
@@ -225,7 +226,7 @@ export default function ListingDetail() {
     withFood: boolean;
   } | null>(null);
   const [stayValues, setStayValues] = useState<StayBookingValues>(() => {
-    const nextCheckIn = checkIn || defaultCheckIn();
+    const nextCheckIn = clampCheckInToFuture(checkIn);
     return {
       checkIn: nextCheckIn,
       checkOut: checkOut || defaultCheckOut(nextCheckIn),
@@ -233,6 +234,21 @@ export default function ListingDetail() {
       hours: routeHours ? Number(routeHours) : 4,
     };
   });
+
+  // The `useState` initializer above only runs once, at mount — if this screen stays mounted
+  // (or cached) across a midnight rollover or a long background spell, that frozen check-in
+  // date silently slips into the past. Re-clamp it forward every time the screen regains
+  // focus, same rule as the initial mount, without clobbering a still-valid future date the
+  // tenant deliberately picked.
+  useFocusEffect(
+    useCallback(() => {
+      setStayValues((prev) => {
+        const clamped = clampCheckInToFuture(prev.checkIn);
+        if (clamped === prev.checkIn) return prev;
+        return { ...prev, checkIn: clamped, checkOut: prev.checkOut && clamped <= prev.checkOut ? prev.checkOut : defaultCheckOut(clamped) };
+      });
+    }, []),
+  );
 
   /** Switching mode changes the pricing tiers entirely, so any in-progress occupancy pick
    * no longer applies. */
@@ -283,6 +299,7 @@ export default function ListingDetail() {
   const hasCompletedReview = REVIEW_CATEGORIES.every((category) => reviewRatings[category.key] > 0);
   const weeklyMenu = l.weeklyFoodMenu ? buildWeeklyMenuFromApi(l.weeklyFoodMenu) : buildWeeklyMenu(l.foodMenu);
   const todayMenu = weeklyMenu.find((menu) => menu.day === selectedWeekDay) ?? weeklyMenu[0];
+  const hasFoodMenu = l.foodIncluded && weeklyMenu.some((menu) => menu.meals.length > 0);
 
   const promoted = !apiId && isPromotedListing(l.id, LISTINGS);
   const availableModeSegments = BOOKING_MODE_SEGMENTS.filter((s) => (
@@ -294,17 +311,22 @@ export default function ListingDetail() {
   const occupancyPriceSuffix = selectedBookingMode === 'hourly' ? '/hr' : selectedBookingMode === 'daily' ? '/day' : '/mo';
   type OccupancyOption = { key: string; title: string; hasAc: boolean; acLabel: 'AC' | 'Non-AC'; withFood: boolean; rent: number };
   type OccupancyTier = { sharingType: string; layout?: string; available: number; rent: number; options: OccupancyOption[] };
-  const occupancyTiers: OccupancyTier[] = l.pricingVariants
+  // Flat/Home stay book the whole (single, backend-seeded) unit — there's just one rent, no
+  // AC/food tiers, so the tiered occupancy picker below doesn't apply at all.
+  const unitRent = l.isUnitProperty ? l.pricingVariants?.[0]?.rent ?? l.priceFrom : 0;
+  const occupancyTiers: OccupancyTier[] = l.isUnitProperty
+    ? []
+    : l.pricingVariants
     ? l.pricingVariants.map((v): OccupancyTier => ({
         sharingType: v.sharingType,
         layout: v.layout,
         available: v.available,
-        rent: Math.min(v.acWithFood, v.acNoFood, v.nonAcWithFood, v.nonAcNoFood),
+        rent: Math.min(v.acWithFood ?? Infinity, v.acNoFood ?? Infinity, v.nonAcWithFood ?? Infinity, v.nonAcNoFood ?? Infinity),
         options: [
-          { key: `${v.layout}-ac-with-food`, title: `${v.sharingType} room with food`, hasAc: true, acLabel: 'AC', withFood: true, rent: v.acWithFood },
-          { key: `${v.layout}-ac-without-food`, title: `${v.sharingType} room without food`, hasAc: true, acLabel: 'AC', withFood: false, rent: v.acNoFood },
-          { key: `${v.layout}-nonac-with-food`, title: `${v.sharingType} room with food`, hasAc: false, acLabel: 'Non-AC', withFood: true, rent: v.nonAcWithFood },
-          { key: `${v.layout}-nonac-without-food`, title: `${v.sharingType} room without food`, hasAc: false, acLabel: 'Non-AC', withFood: false, rent: v.nonAcNoFood },
+          { key: `${v.layout}-ac-with-food`, title: `${v.sharingType} room with food`, hasAc: true, acLabel: 'AC', withFood: true, rent: v.acWithFood ?? 0 },
+          { key: `${v.layout}-ac-without-food`, title: `${v.sharingType} room without food`, hasAc: true, acLabel: 'AC', withFood: false, rent: v.acNoFood ?? 0 },
+          { key: `${v.layout}-nonac-with-food`, title: `${v.sharingType} room with food`, hasAc: false, acLabel: 'Non-AC', withFood: true, rent: v.nonAcWithFood ?? 0 },
+          { key: `${v.layout}-nonac-without-food`, title: `${v.sharingType} room without food`, hasAc: false, acLabel: 'Non-AC', withFood: false, rent: v.nonAcNoFood ?? 0 },
         ],
       }))
     : (selectedBookingMode === 'hourly'
@@ -427,7 +449,34 @@ export default function ListingDetail() {
             ) : null}
           </Card>
 
-          {/* Occupancy */}
+          {/* Price — Flat/Home stay only: a single whole-property price, no room/bed tiers. */}
+          {l.isUnitProperty ? (
+            <Card>
+              <Text variant="h3" style={{ marginBottom: spacing.xs }}>Price</Text>
+              <Text variant="caption" color={palette.inkTertiary} style={{ marginBottom: spacing.md }}>
+                This {l.type === 'Flat' ? 'flat' : 'home stay'} is booked in full — up to {l.maxOccupancy ?? 1} guest{(l.maxOccupancy ?? 1) > 1 ? 's' : ''}.
+              </Text>
+              <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+                <Text variant="bodyMd" weight="600">
+                  {selectedBookingMode === 'hourly' ? 'Hourly price' : selectedBookingMode === 'daily' ? 'Daily price' : 'Monthly price'}
+                </Text>
+                <Text variant="h3" mono color={palette.navy}>{inr(unitRent)}{occupancyPriceSuffix}</Text>
+              </View>
+              {/* Hourly/daily stays have no lock-in — no security deposit applies. */}
+              {selectedBookingMode === 'monthly' ? (
+                <>
+                  <Divider style={{ marginTop: spacing.md, marginBottom: spacing.md }} />
+                  <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+                    <View style={{ flex: 1, paddingRight: spacing.md }}>
+                      <Text variant="bodyMd" weight="600">Safety deposit</Text>
+                      <Text variant="caption" color={palette.inkTertiary}>One-time refundable</Text>
+                    </View>
+                    <Text variant="bodyMd" weight="700" mono color={palette.navy}>{inr(l.securityDeposit)}</Text>
+                  </View>
+                </>
+              ) : null}
+            </Card>
+          ) : (
           <Card>
             <Text variant="h3" style={{ marginBottom: spacing.xs }}>Occupancy</Text>
             <Text variant="caption" color={palette.inkTertiary} style={{ marginBottom: spacing.md }}>
@@ -581,6 +630,7 @@ export default function ListingDetail() {
               </>
             ) : null}
           </Card>
+          )}
 
           {/* Amenities */}
           <Card>
@@ -594,17 +644,15 @@ export default function ListingDetail() {
             </View>
           </Card>
 
-          {/* Food menu */}
-          <Card>
-            <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: spacing.md }}>
-              <Text variant="h3">Food menu</Text>
-              {l.foodIncluded ? (
+          {/* Food menu — hidden entirely when the property has no food data */}
+          {hasFoodMenu ? (
+            <Card>
+              <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: spacing.md }}>
+                <Text variant="h3">Food menu</Text>
                 <PressableScale onPress={() => setFoodSheetOpen(true)} haptics={false}>
                   <Text variant="bodySm" weight="600" color={palette.coralDark}>More</Text>
                 </PressableScale>
-              ) : null}
-            </View>
-            {l.foodIncluded ? (
+              </View>
               <View style={{ gap: spacing.md }}>
                 <View style={{ flexDirection: 'row', alignItems: 'center', gap: spacing.sm }}>
                   <View style={{ width: 40, height: 40, borderRadius: radius.md, backgroundColor: palette.successTint, alignItems: 'center', justifyContent: 'center' }}>
@@ -640,15 +688,8 @@ export default function ListingDetail() {
                   </View>
                 ))}
               </View>
-            ) : (
-              <View style={{ flexDirection: 'row', alignItems: 'center', gap: spacing.sm }}>
-                <Ionicons name="close-circle-outline" size={18} color={palette.inkTertiary} />
-                <Text variant="bodySm" color={palette.inkSecondary}>
-                  Food is not available at this property.
-                </Text>
-              </View>
-            )}
-          </Card>
+            </Card>
+          ) : null}
 
           {/* Ratings & reviews */}
           <View>
@@ -757,26 +798,45 @@ export default function ListingDetail() {
       {/* Sticky CTA */}
       <View style={{ position: 'absolute', bottom: 0, left: 0, right: 0, paddingHorizontal: spacing.base, paddingTop: spacing.md, paddingBottom: insets.bottom + spacing.md, backgroundColor: palette.surface, borderTopWidth: 1, borderTopColor: palette.border }}>
         <Button
-          label={l.verified ? 'Choose Room/Bed' : 'Request This Property'}
-          icon={l.verified ? 'bed-outline' : 'paper-plane-outline'}
-          onPress={() => l.verified ? router.push({
-            pathname: `/listing/${l.id}/select`,
-            params: {
-              checkIn: stayValues.checkIn,
-              checkOut: stayValues.checkOut,
-              startTime: stayValues.startTime,
-              hours: String(stayValues.hours),
-              occupancy: selectedOccupancy?.sharingType ?? '',
-              occupancyTitle: selectedOccupancy?.title ?? '',
-              acType: selectedOccupancy?.acLabel ?? '',
-              selectedRent: selectedOccupancy ? String(selectedOccupancy.rent) : '',
-              bookingType: selectedBookingMode,
-              layout: selectedOccupancy?.layout ?? '',
-              withFood: selectedOccupancy ? String(selectedOccupancy.withFood) : '',
-              propertyName: l.name,
-            },
-          }) : router.push(`/listing/${l.id}/request`)}
-          disabled={l.verified && !selectedOccupancy}
+          label={l.verified ? (l.isUnitProperty ? 'Add Guest Details' : 'Choose Room/Bed') : 'Request This Property'}
+          icon={l.verified ? (l.isUnitProperty ? 'people-outline' : 'bed-outline') : 'paper-plane-outline'}
+          onPress={() => {
+            if (!l.verified) { router.push(`/listing/${l.id}/request`); return; }
+            if (l.isUnitProperty) {
+              router.push({
+                pathname: `/listing/${l.id}/guests`,
+                params: {
+                  checkIn: stayValues.checkIn,
+                  checkOut: stayValues.checkOut,
+                  startTime: stayValues.startTime,
+                  hours: String(stayValues.hours),
+                  bookingType: selectedBookingMode,
+                  rent: String(unitRent),
+                  maxOccupancy: String(l.maxOccupancy ?? 1),
+                  propertyName: l.name,
+                },
+              });
+              return;
+            }
+            router.push({
+              pathname: `/listing/${l.id}/select`,
+              params: {
+                checkIn: stayValues.checkIn,
+                checkOut: stayValues.checkOut,
+                startTime: stayValues.startTime,
+                hours: String(stayValues.hours),
+                occupancy: selectedOccupancy?.sharingType ?? '',
+                occupancyTitle: selectedOccupancy?.title ?? '',
+                acType: selectedOccupancy?.acLabel ?? '',
+                selectedRent: selectedOccupancy ? String(selectedOccupancy.rent) : '',
+                bookingType: selectedBookingMode,
+                layout: selectedOccupancy?.layout ?? '',
+                withFood: selectedOccupancy ? String(selectedOccupancy.withFood) : '',
+                propertyName: l.name,
+              },
+            });
+          }}
+          disabled={l.verified && (l.isUnitProperty ? unitRent <= 0 : !selectedOccupancy)}
           full size="lg"
         />
       </View>

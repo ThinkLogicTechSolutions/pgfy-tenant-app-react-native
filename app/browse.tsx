@@ -9,7 +9,7 @@ import { Text, EmptyState, IconButton, PressableScale } from '@/components/ui';
 import { ListingCard, CraftedFooter } from '@/components/domain';
 import {
   BrowseFiltersSheet,
-  DEFAULT_BROWSE_FILTERS,
+  getDefaultBrowseFilters,
   browseFiltersFromParams,
   matchesBrowseFilters,
   browseFiltersActiveCount,
@@ -273,8 +273,8 @@ export default function Browse() {
           setFiltersOpen(false);
         }}
         onClear={() => {
-          setDraftFilters(DEFAULT_BROWSE_FILTERS);
-          setFilters(DEFAULT_BROWSE_FILTERS);
+          setDraftFilters(getDefaultBrowseFilters());
+          setFilters(getDefaultBrowseFilters());
           setFiltersOpen(false);
         }}
       />
