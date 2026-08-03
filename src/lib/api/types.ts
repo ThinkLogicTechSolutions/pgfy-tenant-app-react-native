@@ -553,7 +553,16 @@ export interface ApiBooking {
   actual_check_out: string | null;
   hourly_start_slot: number | null;
   hourly_end_slot: number | null;
+  /** Full recurring monthly rent (MONTHLY bookings) — unchanged by first-month proration. */
   base_rent: number;
+  /** Actually-charged move-in rent — equals `base_rent` unless the check-in day (8+) prorated
+   * it down to the days remaining in that calendar month. DAILY/HOURLY: same as `base_rent`. */
+  move_in_rent?: number;
+  /** Calendar days in the check-in month (MONTHLY only) — null otherwise. */
+  days_in_month?: number | null;
+  /** Days actually charged on the move-in invoice — equals `days_in_month` when not
+   * prorated, so `prorated_days < days_in_month` is the "was this booking prorated?" check. */
+  prorated_days?: number | null;
   security_deposit: number;
   total_paid: number | null;
   next_rent_due: string | null;
@@ -1546,4 +1555,51 @@ export interface ApiCreateExtensionResponse {
   /** Undocumented shape when non-null — not consumed by the client. */
   payment: unknown | null;
   payment_hint: ApiExtendStayPaymentHint | null;
+}
+
+// ---------------------------------------------------------------------------
+// Refer & earn (GET /tenant/refer-and-earn?summary=true&list=true)
+// ---------------------------------------------------------------------------
+
+export interface ApiReferralBenefit {
+  value: number;
+  type: 'FLAT' | (string & {});
+}
+
+export interface ApiReferralBenefits {
+  you_get: ApiReferralBenefit;
+  friend_gets: ApiReferralBenefit;
+}
+
+export interface ApiReferralStats {
+  total_saved: number;
+  referred_count: number;
+  pending_count: number;
+}
+
+export type ReferralStatusApi = 'PENDING' | 'COMPLETED' | (string & {});
+
+export interface ApiReferralItem {
+  id: number;
+  status: ReferralStatusApi;
+  referred_name: string;
+  referred_phone: string;
+  referred_email: string | null;
+  referred_avatar: string | null;
+  referrer_reward_value: number;
+  referrer_reward_type: string;
+  referrer_reward_applied: boolean;
+  referrer_reward_amount: number;
+  referred_discount_applied: boolean;
+  completed_at: string | null;
+  created_at: string;
+}
+
+/** `referral_code` is `null` until the tenant has booked and checked in to their first
+ * property — that's what gates the invite link (`share.pgfy.in/referral?code=...`). */
+export interface ApiReferralSummary {
+  referral_code: string | null;
+  benefits: ApiReferralBenefits;
+  stats: ApiReferralStats;
+  referrals: ApiReferralItem[];
 }

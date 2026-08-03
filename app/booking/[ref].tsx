@@ -84,6 +84,7 @@ export default function BookingDetails() {
   const isHourly = b.booking_mode === 'HOURLY';
   const isUnit = isUnitBooking(b) || isUnitPropertyType(b.property);
   const extension = latestConfirmedExtension(b.extensions);
+  const isProrated = b.booking_mode === 'MONTHLY' && b.prorated_days != null && b.days_in_month != null && b.prorated_days < b.days_in_month;
   const sortedExtensions = [...(b.extensions ?? [])].sort(
     (x, y) => new Date(y.created_at).getTime() - new Date(x.created_at).getTime(),
   );
@@ -195,6 +196,9 @@ export default function BookingDetails() {
 
         <Card>
           <Text variant="h3" style={{ marginBottom: spacing.md }}>Payment summary</Text>
+          {isProrated ? (
+            <DetailRow label={`First month rent (${b.prorated_days} days)`} value={inr(b.move_in_rent ?? b.base_rent)} />
+          ) : null}
           <DetailRow label={isHourly ? 'Hourly rate' : b.booking_mode === 'DAILY' ? 'Daily rate' : 'Monthly rent'} value={inr(b.base_rent)} />
           <DetailRow label="Security deposit" value={inr(b.security_deposit)} />
           {amount ? <DetailRow label="Amount paid now" value={inr(paidAmount)} bold /> : b.total_paid != null ? <DetailRow label="Total paid" value={inr(b.total_paid)} /> : null}

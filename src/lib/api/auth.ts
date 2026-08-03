@@ -47,6 +47,9 @@ export interface VerifyOtpInput {
   countryCode?: string;
   /** Only meaningful on first login, where the backend creates the profile. */
   name?: string;
+  /** From a `share.pgfy.in/referral?code=...` link opened before signing in — only meaningful
+   * on first login, same as `name`. */
+  referralCode?: string;
 }
 
 /** Verify the OTP and open a session. */
@@ -55,6 +58,7 @@ export async function verifyPhoneOtp({
   otp,
   countryCode = DEFAULT_COUNTRY_CODE,
   name,
+  referralCode,
 }: VerifyOtpInput): Promise<AuthResponse> {
   const [deviceId, fcmId] = await Promise.all([getDeviceId(), getFcmToken()]);
   return request<AuthResponse>('/authenticate', {
@@ -71,6 +75,7 @@ export async function verifyPhoneOtp({
       deviceType: DEVICE_TYPE,
       ...(name ? { name } : {}),
       ...(fcmId ? { fcmId } : {}),
+      ...(referralCode ? { referral_code: referralCode } : {}),
     },
   });
 }

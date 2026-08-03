@@ -27,8 +27,9 @@ interface AuthContextValue {
   /** True once a guest session (Skip on login) is active — no tenant profile, browse-only. */
   isGuest: boolean;
   sendOtp: (phone: string) => Promise<void>;
-  /** Resolves to the verified profile so the caller can route on `newLogin`. */
-  verifyOtp: (phone: string, otp: string) => Promise<{ user: ApiProfile; newLogin: boolean }>;
+  /** Resolves to the verified profile so the caller can route on `newLogin`. `referralCode`
+   * only matters on first login (a `share.pgfy.in/referral?code=...` link opened pre-signin). */
+  verifyOtp: (phone: string, otp: string, referralCode?: string) => Promise<{ user: ApiProfile; newLogin: boolean }>;
   /** Open a guest session so the tenant can browse without signing in. */
   continueAsGuest: () => Promise<void>;
   updateProfile: (patch: UpdateTenantProfileInput) => Promise<ApiProfile>;
@@ -149,8 +150,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const verifyOtp = useCallback(
-    async (phone: string, otp: string) => {
-      const { access_token, user: profile, newLogin } = await authApi.verifyPhoneOtp({ phone, otp });
+    async (phone: string, otp: string, referralCode?: string) => {
+      const { access_token, user: profile, newLogin } = await authApi.verifyPhoneOtp({ phone, otp, referralCode });
       await applySession(access_token, profile);
       return { user: profile, newLogin };
     },

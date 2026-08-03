@@ -37,6 +37,11 @@
               "scheme": "https",
               "host": "share.pgfy.in",
               "pathPrefix": "/property"
+            },
+            {
+              "scheme": "https",
+              "host": "share.pgfy.in",
+              "pathPrefix": "/referral"
             }
           ],
           "category": ["BROWSABLE", "DEFAULT"]
