@@ -15,7 +15,9 @@ export ANDROID_HOME="$HOME/Library/Android/sdk"
 export PATH="$ANDROID_HOME/platform-tools:$PATH"
 ```
 
-> **Disk space:** Gradle downloads several GB on the first build. If your system disk is low, the local build script stores caches on `/Volumes/Sunil_WD1/.gradle` automatically. Override with `GRADLE_USER_HOME` if needed.
+> **Disk space:** Gradle downloads several GB on the first build; the local build script defaults `GRADLE_USER_HOME` to `~/.gradle` on your system disk. Override with `GRADLE_USER_HOME` if you want it elsewhere — but keep it off any exFAT-formatted drive (see the note below on where the project itself lives).
+>
+> **exFAT warning:** if this project's own folder is on an external exFAT drive, `expo run:android` / Gradle builds can fail intermittently with `Unable to delete file/directory ... New files were found` — that's exFAT's lack of proper POSIX file locking, not a code bug. Gradle's own caches are kept off it by the default above, but the project's `node_modules/**/build` output still lives wherever the repo is checked out. If you hit this, the reliable fix is moving the repo to an APFS volume (internal disk, or an external drive reformatted to APFS); retrying the build sometimes works around a single transient failure but isn't a real fix.
 
 ## Option A — Local build (no EAS quota)
 

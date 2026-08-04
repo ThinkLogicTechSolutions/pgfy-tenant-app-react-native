@@ -630,7 +630,16 @@ export interface ApiBooking {
   actual_check_out: string | null;
   hourly_start_slot: number | null;
   hourly_end_slot: number | null;
+  /** Full recurring monthly rent (MONTHLY bookings) — unchanged by first-month proration. */
   base_rent: number;
+  /** Actually-charged move-in rent — equals `base_rent` unless the check-in day (8+) prorated
+   * it down to the days remaining in that calendar month. DAILY/HOURLY: same as `base_rent`. */
+  move_in_rent?: number;
+  /** Calendar days in the check-in month (MONTHLY only) — null otherwise. */
+  days_in_month?: number | null;
+  /** Days actually charged on the move-in invoice — equals `days_in_month` when not
+   * prorated, so `prorated_days < days_in_month` is the "was this booking prorated?" check. */
+  prorated_days?: number | null;
   security_deposit: number;
   total_paid: number | null;
   next_rent_due: string | null;

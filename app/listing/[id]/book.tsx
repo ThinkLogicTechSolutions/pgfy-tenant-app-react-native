@@ -9,6 +9,7 @@ import { Text, ScreenHeader, Card, Button, Input, Divider, Badge, Sheet, Pressab
 import { StayBookingFields, type StayBookingValues } from '@/components/search';
 import { getListing } from '@/data';
 import { computeCheckout, platformFeeFromMasterConfig, isCouponUsable, couponDiscountAmount, referralDiscountAmount, type CheckoutIntent, type AppliedCoupon } from '@/lib/billing';
+import { computeMonthlyProration } from '@/lib/proration';
 import type { BookingMode } from '@/data/types';
 import { inr } from '@/lib/format';
 import { defaultCheckOut, clampCheckInToFuture } from '@/lib/dates';
@@ -102,10 +103,22 @@ export default function BookConfig() {
     };
   });
 
+  // Mid-month check-in (day 8+) only charges from check-in through month-end — an estimate
+  // of the real server-side proration (`computeBookingBill.ts`), shown so "Payable now"
+  // doesn't overstate the actual first-month charge.
+  const proration = billingMode === 'monthly' ? computeMonthlyProration(monthlyRent, stayDates.checkIn) : null;
+  const firstMonthRent = proration ? proration.moveInRent : monthlyRent;
+
   const { isGuest, user } = useAuth();
   const { config: masterConfig } = useMasterData();
   const kycVerified = user?.kyc_status === 'VERIFIED';
-  const rentLabel = billingMode === 'hourly' ? 'Hourly rate' : billingMode === 'daily' ? 'Daily rate' : 'First month rent';
+  const rentLabel = billingMode === 'hourly'
+    ? 'Hourly rate'
+    : billingMode === 'daily'
+      ? 'Daily rate'
+      : proration?.isProrated
+        ? `First month rent (${proration.proratedDays} days)`
+        : 'First month rent';
   const depositAmount = billingMode === 'monthly' ? dep : 0;
   const modeLabel = billingMode === 'monthly' ? 'Monthly' : billingMode === 'daily' ? 'Daily' : 'Hourly';
   const apiBookingMode = billingMode === 'hourly' ? 'HOURLY' : billingMode === 'daily' ? 'DAILY' : 'MONTHLY';
@@ -119,7 +132,9 @@ export default function BookConfig() {
     title: `${listing?.name ?? 'Booking'} — ${modeLabel} booking`,
     subtitle: isUnitBooking ? `Whole property · ${guestList.length} guest${guestList.length > 1 ? 's' : ''}` : `${room} · Bed ${bed} · ${sharing}`,
     billingMode,
-    baseAmount: monthlyRent,
+    baseAmount: firstMonthRent,
+    // GST classification uses the full monthly rate (matches the backend, which resolves the
+    // GST rate from the property's config independent of proration).
     unitRate: monthlyRent,
     deposit: depositAmount,
     allowAutopay: billingMode === 'monthly',
@@ -331,6 +346,11 @@ export default function BookConfig() {
         {/* Bill */}
         <Card>
           <Text variant="overline" color={palette.inkTertiary} style={{ marginBottom: spacing.sm }}>BILL SUMMARY</Text>
+          {proration?.isProrated ? (
+            <Text variant="caption" color={palette.inkTertiary} style={{ marginBottom: spacing.sm }}>
+              Charged only for {proration.proratedDays} days this month (check-in to month-end) — full {inr(monthlyRent)}/mo from next month.
+            </Text>
+          ) : null}
           <Row k={rentLabel} v={inr(quote.base)} />
           {quote.deposit > 0 ? <Row k="Security deposit (refundable)" v={inr(quote.deposit)} /> : null}
           {quote.platformFee > 0 ? <Row k="Platform fee" v={inr(quote.platformFee)} /> : null}

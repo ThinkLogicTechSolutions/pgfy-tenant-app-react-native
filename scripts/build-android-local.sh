@@ -41,8 +41,11 @@ fi
 
 echo "ANDROID_HOME=${ANDROID_HOME:-$ANDROID_SDK_ROOT}"
 
-# Gradle caches can exceed 5 GB; default to the project drive if unset.
-export GRADLE_USER_HOME="${GRADLE_USER_HOME:-/Volumes/Sunil_WD1/.gradle}"
+# Gradle caches can exceed 5 GB, but they must NOT live on an exFAT drive (the project's own
+# volume, if it's external) — exFAT lacks proper POSIX file locking, and Gradle's incremental
+# build/delete cycle fails intermittently there ("Unable to delete file/directory ... New files
+# were found"). Default to the standard internal-disk location unless explicitly overridden.
+export GRADLE_USER_HOME="${GRADLE_USER_HOME:-$HOME/.gradle}"
 mkdir -p "$GRADLE_USER_HOME"
 echo "GRADLE_USER_HOME=$GRADLE_USER_HOME"
 
