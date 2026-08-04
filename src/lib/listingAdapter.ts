@@ -8,6 +8,7 @@ import type {
   ApiFoodMenu,
   ApiProperty,
   ApiPropertyDetails,
+  ApiPropertyRating,
   ApiRoomBedAvailability,
   ContinueBrowsingProperty,
   PropertyCategory,
@@ -27,6 +28,7 @@ import type {
   Room,
   Review,
   SharingType,
+  TenantRating,
   WeeklyMenuDay,
 } from '@/data/types';
 
@@ -365,14 +367,25 @@ export function apiFoodMenuToWeeklyMenu(menu: ApiFoodMenu): WeeklyMenuDay[] {
   });
 }
 
-function toReview(r: ApiPropertyDetails['reviews'][number], i: number): Review {
+function toReview(r: ApiPropertyRating): Review {
   return {
-    id: String(r.id ?? i),
-    author: r.author ?? 'Tenant',
-    avatar: r.avatar ?? '',
-    rating: Number(r.rating ?? 0),
-    date: r.created_at ?? '',
-    text: r.comment ?? '',
+    id: String(r.id),
+    author: r.tenant_name,
+    avatar: r.tenant_avatar?.link ?? '',
+    rating: r.ratings.overall,
+    date: r.created_at,
+    text: r.review ?? '',
+  };
+}
+
+export function toTenantRating(r: ApiPropertyRating): TenantRating {
+  return {
+    id: r.id,
+    tenantName: r.tenant_name,
+    tenantAvatar: r.tenant_avatar?.link ?? null,
+    ratings: { ...r.ratings },
+    review: r.review,
+    createdAt: r.created_at,
   };
 }
 
@@ -439,8 +452,8 @@ export function propertyDetailsToListing(p: ApiPropertyDetails): Listing {
     description: p.description ?? '',
     priceFrom: p.starting_rent,
     securityDeposit: p.security_deposit,
-    rating: p.rating ?? 0,
-    reviewCount: p.reviews.length,
+    rating: p.rating?.overall ?? 0,
+    reviewCount: p.rating?.count ?? p.reviews.length,
     pgfyScore,
     verified: p.verification.is_verified,
     certificates: p.verification.documents.map((d) => ({ label: docLabel(d.key), status: toCertificateStatus(d.status) })),
@@ -458,7 +471,13 @@ export function propertyDetailsToListing(p: ApiPropertyDetails): Listing {
     tags: [],
     nearby: [],
     reviews: p.reviews.map(toReview),
-    ratingBreakdown: [],
+    ratingBreakdown: p.rating ? [
+      { label: 'Cleanliness', value: p.rating.categories.cleanliness },
+      { label: 'Food', value: p.rating.categories.food },
+      { label: 'Safety', value: p.rating.categories.safety },
+      { label: 'Staff', value: p.rating.categories.staff },
+      { label: 'Price', value: p.rating.categories.price },
+    ] : [],
     noticePeriodDays: p.notice_period_days,
     lockInMonths: p.lock_in_period_months,
     addedOn: '',
@@ -477,6 +496,12 @@ export function propertyDetailsToListing(p: ApiPropertyDetails): Listing {
     dailyPricing: [],
     manager: { name: '', phone: '' },
     canRate: p.can_rate,
+    myRating: p.my_rating ? toTenantRating(p.my_rating) : null,
+    referralDiscount: {
+      applicable: p.referral_discount.referred_user_discount.applicable,
+      value: p.referral_discount.referred_user_discount.value,
+      type: (p.referral_discount.referred_user_discount.type as 'FLAT' | 'PERCENTAGE' | null) ?? null,
+    },
     isFavorite: p.is_favorite,
     favoriteId: p.favorite_id,
   };
@@ -486,7 +511,9 @@ export function propertyDetailsToListing(p: ApiPropertyDetails): Listing {
 // Room / bed availability (`GET /tenant/properties/:id?layout=&is_ac=&with_food=`)
 // ===========================================================================
 
-const BED_STATUS_MAP: Record<string, Bed['status']> = {
+/** Shared with the room-swap picker (`app/room-swap.tsx`), which renders the same bed-status
+ * vocabulary from a differently-shaped API response. */
+export const BED_STATUS_MAP: Record<string, Bed['status']> = {
   AVAILABLE: 'available',
   OCCUPIED: 'occupied',
   RESERVED: 'reserved',

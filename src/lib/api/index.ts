@@ -24,11 +24,14 @@ export * as moveOutApi from './moveOut';
 export * as groupBookingApi from './groupBooking';
 export * as propertyLeadApi from './propertyLead';
 export * as extendStayApi from './extendStay';
+export * as changeBedApi from './changeBed';
 export * as continueBrowsingApi from './continueBrowsing';
 export * as dashboardApi from './dashboard';
 export * as searchApi from './search';
 export * as uploadApi from './upload';
 export { UploadFileType } from './upload';
+export * as referralApi from './referral';
+export * as ratingsApi from './ratings';
 
 export type {
   SendOtpInput,
@@ -111,8 +114,16 @@ export type {
   VerificationDocStatus,
   ApiVerificationDocument,
   ApiPropertyVerification,
-  ApiPropertyReview,
   ApiPropertyDetails,
+  ApiRatingCategoryScores,
+  PropertyRatingStatus,
+  ApiPropertyRating,
+  CreateRatingInput,
+  UpdateRatingInput,
+  ApiPropertyRatingSummary,
+  DiscountTypeEnum,
+  ApiDiscountDetail,
+  ApiReferralDiscountInfo,
   ApiBedStatus,
   ApiRoomBed,
   ApiPropertyRoom,
@@ -167,6 +178,9 @@ export type {
   ApiMyStayBooking,
   ApiMyStayInvoice,
   ApiMyStayBilling,
+  AnnouncementGuestType,
+  AnnouncementStatus,
+  ApiAnnouncement,
   ApiMyStayResponse,
   MaintenanceStatus,
   ApiMaintenanceTicket,
@@ -209,4 +223,19 @@ export type {
   ApiExtendStayInvoiceSummary,
   ApiExtendStayPaymentHint,
   ApiCreateExtensionResponse,
+  ApiSwapBed,
+  ApiSwapRoom,
+  ApiSwapFloorGroup,
+  ChangeBedRequestStatus,
+  ApiChangeBedLocation,
+  ApiChangeBedRent,
+  ApiChangeBedRequest,
+  CreateChangeBedInput,
+  CancelChangeBedInput,
+  ApiReferralBenefit,
+  ApiReferralBenefits,
+  ApiReferralStats,
+  ReferralStatusApi,
+  ApiReferralItem,
+  ApiReferralSummary,
 } from './types';

@@ -39,10 +39,23 @@ export function couponDiscountAmount(coupon: ApiCoupon, base: number): number {
 }
 
 /** A coupon already resolved to a specific ₹ amount for this checkout — computed by the
- * caller (who has the real coupon list) via `couponDiscountAmount`. */
+ * caller (who has the real coupon list) via `couponDiscountAmount`. Also doubles as the
+ * carrier for an auto-applied referral discount (see `referralDiscountAmount`) — same
+ * "already resolved to a ₹ amount" shape, just sourced differently. */
 export interface AppliedCoupon {
   code: string;
   amount: number;
+  /** Overrides the default "Coupon {code}" checkout line label — e.g. "Referral discount". */
+  label?: string;
+}
+
+/** The real ₹ discount a referral signup benefit (`ApiReferralDiscountInfo.referred_user_
+ * discount`) works out to against a given base amount — same FLAT/PERCENTAGE resolution as
+ * `couponDiscountAmount`, uncapped (the API doesn't return a max for this one). */
+export function referralDiscountAmount(type: 'FLAT' | 'PERCENTAGE' | null, value: number | null, base: number): number {
+  if (!type || value == null) return 0;
+  const raw = type === 'PERCENTAGE' ? (base * value) / 100 : value;
+  return Math.max(0, Math.round(raw));
 }
 
 export type GstRate = 0 | 5 | 12 | 18;
@@ -210,7 +223,7 @@ export function computeCheckout(intent: CheckoutIntent, coupon?: AppliedCoupon):
   if (wantsFee) lines.push({ label: 'Platform fee', amount: platformFee });
   if (wantsGst) lines.push({ label: rate === 0 ? 'GST (exempt)' : `GST (${rate}%)`, amount: gst, tone: 'muted' });
   if (couponDiscount > 0) {
-    lines.push({ label: `Coupon ${coupon!.code}`, amount: -couponDiscount, tone: 'discount' });
+    lines.push({ label: coupon!.label ?? `Coupon ${coupon!.code}`, amount: -couponDiscount, tone: 'discount' });
   }
 
   return {

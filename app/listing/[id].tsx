@@ -7,9 +7,9 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { palette, spacing, radius, shadows } from '@/theme';
-import { Text, Card, IconButton, Divider, Button, EmptyState, Sheet, Input, PressableScale, Skeleton, SegmentedControl } from '@/components/ui';
+import { Text, Card, IconButton, Divider, Button, EmptyState, Sheet, PressableScale, Skeleton, SegmentedControl } from '@/components/ui';
 import { StayBookingFields, type StayBookingValues } from '@/components/search';
-import { PgfyScore, StatusPill, RatingPill, ReviewCard, WeeklyFoodMenuSheet, buildWeeklyMenu, buildWeeklyMenuFromApi, PropertyImageCarousel, PromotedBadge, type WeekDay } from '@/components/domain';
+import { PgfyScore, StatusPill, RatingPill, ReviewCard, WeeklyFoodMenuSheet, PropertyRatingSection, buildWeeklyMenu, buildWeeklyMenuFromApi, PropertyImageCarousel, PromotedBadge, type WeekDay } from '@/components/domain';
 import { listingCarouselImages, listingPhotoCount, PROPERTY_IMAGE_ASPECT } from '@/lib/media';
 import { getListing, LISTINGS } from '@/data';
 import { inr, formatDate } from '@/lib/format';
@@ -100,15 +100,6 @@ const MONTHLY_PLAN_META = [
   { key: 'monthly_nonac_no_food', label: 'Monthly · Non-AC · No food' },
 ] as const;
 
-const REVIEW_CATEGORIES = [
-  { key: 'cleanliness', label: 'Cleanliness', hint: 'How clean were the room and common areas?' },
-  { key: 'food', label: 'Food', hint: 'How was the quality and consistency of meals?' },
-  { key: 'safety', label: 'Safety', hint: 'Did you feel safe and secure at the property?' },
-  { key: 'staff', label: 'Staff', hint: 'How helpful and responsive were the staff?' },
-  { key: 'price', label: 'Price', hint: 'How fair was the pricing for what you received?' },
-] as const;
-type ReviewCategoryKey = (typeof REVIEW_CATEGORIES)[number]['key'];
-
 function pricingAnchorKey(hasAcRoom: boolean, foodIncluded: boolean) {
   if (hasAcRoom && foodIncluded) return 'monthly_ac_with_food';
   if (hasAcRoom) return 'monthly_ac_no_food';
@@ -132,13 +123,12 @@ function occupancyPlanKey(hasAcRoom: boolean, withFood: boolean) {
 
 export default function ListingDetail() {
   const {
-    id, checkIn, checkOut, openReview, openFoodMenu,
+    id, checkIn, checkOut, openFoodMenu,
     bookingType: routeBookingType, startTime: routeStartTime, hours: routeHours,
   } = useLocalSearchParams<{
     id: string;
     checkIn?: string;
     checkOut?: string;
-    openReview?: string;
     openFoodMenu?: string;
     bookingType?: string;
     startTime?: string;
@@ -158,7 +148,6 @@ export default function ListingDetail() {
   const [favorite, setFavorite] = useState<{ isFavorite: boolean; favoriteId: number | null }>({ isFavorite: false, favoriteId: null });
   const [favoriteBusy, setFavoriteBusy] = useState(false);
 
-  const [reviewOpen, setReviewOpen] = useState(false);
   const [foodSheetOpen, setFoodSheetOpen] = useState(false);
   const [selectedWeekDay, setSelectedWeekDay] = useState<WeekDay>('Mon');
   const [expandedOccupancy, setExpandedOccupancy] = useState<string | null>(null);
@@ -258,22 +247,22 @@ export default function ListingDetail() {
     setExpandedOccupancy(null);
   };
 
-  const [reviewRatings, setReviewRatings] = useState<Record<ReviewCategoryKey, number>>({
-    cleanliness: 0,
-    food: 0,
-    safety: 0,
-    staff: 0,
-    price: 0,
-  });
-  const [submitted, setSubmitted] = useState(false);
-
   useEffect(() => {
     if (listing) recordView(listing.id);
   }, [listing?.id]);
 
-  useEffect(() => {
-    if (openReview === '1') setReviewOpen(true);
-  }, [openReview]);
+  // Re-fetch after the tenant creates/edits/deletes their rating — the aggregate rating,
+  // rating breakdown, and reviews list all depend on the server, not just their own rating.
+  const refreshAfterRatingChange = () => {
+    if (!apiId) return;
+    propertyApi.getPropertyDetails(apiId, { bookingMode: apiBookingMode })
+      .then((data) => {
+        const mapped = propertyDetailsToListing(data);
+        setApiListing(mapped);
+        cachePropertyDetails(apiId, mapped);
+      })
+      .catch(() => {});
+  };
 
   useEffect(() => {
     if (openFoodMenu === '1') setFoodSheetOpen(true);
@@ -295,8 +284,6 @@ export default function ListingDetail() {
   const l = listing;
   /** Mock listings have no `canRate` field — default to allowed. */
   const canRate = l.canRate !== false;
-  const averageReviewRating = Math.round((Object.values(reviewRatings).reduce((sum, rating) => sum + rating, 0) / REVIEW_CATEGORIES.length) * 10) / 10;
-  const hasCompletedReview = REVIEW_CATEGORIES.every((category) => reviewRatings[category.key] > 0);
   const weeklyMenu = l.weeklyFoodMenu ? buildWeeklyMenuFromApi(l.weeklyFoodMenu) : buildWeeklyMenu(l.foodMenu);
   const todayMenu = weeklyMenu.find((menu) => menu.day === selectedWeekDay) ?? weeklyMenu[0];
   const hasFoodMenu = l.foodIncluded && weeklyMenu.some((menu) => menu.meals.length > 0);
@@ -317,18 +304,26 @@ export default function ListingDetail() {
   const occupancyTiers: OccupancyTier[] = l.isUnitProperty
     ? []
     : l.pricingVariants
-    ? l.pricingVariants.map((v): OccupancyTier => ({
-        sharingType: v.sharingType,
-        layout: v.layout,
-        available: v.available,
-        rent: Math.min(v.acWithFood ?? Infinity, v.acNoFood ?? Infinity, v.nonAcWithFood ?? Infinity, v.nonAcNoFood ?? Infinity),
-        options: [
-          { key: `${v.layout}-ac-with-food`, title: `${v.sharingType} room with food`, hasAc: true, acLabel: 'AC', withFood: true, rent: v.acWithFood ?? 0 },
-          { key: `${v.layout}-ac-without-food`, title: `${v.sharingType} room without food`, hasAc: true, acLabel: 'AC', withFood: false, rent: v.acNoFood ?? 0 },
-          { key: `${v.layout}-nonac-with-food`, title: `${v.sharingType} room with food`, hasAc: false, acLabel: 'Non-AC', withFood: true, rent: v.nonAcWithFood ?? 0 },
-          { key: `${v.layout}-nonac-without-food`, title: `${v.sharingType} room without food`, hasAc: false, acLabel: 'Non-AC', withFood: false, rent: v.nonAcNoFood ?? 0 },
-        ],
-      }))
+    ? l.pricingVariants
+        .map((v): OccupancyTier => {
+          // A ₹0 (or unset) rate means the owner isn't offering that AC/food combo for this
+          // layout at all — not a free option, so it shouldn't be selectable.
+          const allOptions: OccupancyOption[] = [
+            { key: `${v.layout}-ac-with-food`, title: `${v.sharingType} room with food`, hasAc: true, acLabel: 'AC', withFood: true, rent: v.acWithFood ?? 0 },
+            { key: `${v.layout}-ac-without-food`, title: `${v.sharingType} room without food`, hasAc: true, acLabel: 'AC', withFood: false, rent: v.acNoFood ?? 0 },
+            { key: `${v.layout}-nonac-with-food`, title: `${v.sharingType} room with food`, hasAc: false, acLabel: 'Non-AC', withFood: true, rent: v.nonAcWithFood ?? 0 },
+            { key: `${v.layout}-nonac-without-food`, title: `${v.sharingType} room without food`, hasAc: false, acLabel: 'Non-AC', withFood: false, rent: v.nonAcNoFood ?? 0 },
+          ];
+          const options = allOptions.filter((o) => o.rent > 0);
+          return {
+            sharingType: v.sharingType,
+            layout: v.layout,
+            available: v.available,
+            rent: options.length ? Math.min(...options.map((o) => o.rent)) : 0,
+            options,
+          };
+        })
+        .filter((tier) => tier.options.length > 0)
     : (selectedBookingMode === 'hourly'
         ? l.hourlyPricing.map((h) => ({ sharingType: h.sharingType, rent: h.rentPerHour, available: h.available }))
         : selectedBookingMode === 'daily'
@@ -336,18 +331,20 @@ export default function ListingDetail() {
           : l.pricing
       ).map((tier): OccupancyTier => {
         const plans = monthlyPlansForTier(tier.rent, l.amenities.includes('AC'), l.foodIncluded);
+        const allOptions: OccupancyOption[] = [
+          { key: `${tier.sharingType}-ac-with-food`, title: `${tier.sharingType} room with food`, hasAc: true, acLabel: 'AC', withFood: true, rent: plans.find((p) => p.key === occupancyPlanKey(true, true))?.amount ?? tier.rent },
+          { key: `${tier.sharingType}-ac-without-food`, title: `${tier.sharingType} room without food`, hasAc: true, acLabel: 'AC', withFood: false, rent: plans.find((p) => p.key === occupancyPlanKey(true, false))?.amount ?? tier.rent },
+          { key: `${tier.sharingType}-nonac-with-food`, title: `${tier.sharingType} room with food`, hasAc: false, acLabel: 'Non-AC', withFood: true, rent: plans.find((p) => p.key === occupancyPlanKey(false, true))?.amount ?? tier.rent },
+          { key: `${tier.sharingType}-nonac-without-food`, title: `${tier.sharingType} room without food`, hasAc: false, acLabel: 'Non-AC', withFood: false, rent: plans.find((p) => p.key === occupancyPlanKey(false, false))?.amount ?? tier.rent },
+        ];
+        const options = allOptions.filter((o) => o.rent > 0);
         return {
           sharingType: tier.sharingType,
           available: tier.available,
-          rent: tier.rent,
-          options: [
-            { key: `${tier.sharingType}-ac-with-food`, title: `${tier.sharingType} room with food`, hasAc: true, acLabel: 'AC', withFood: true, rent: plans.find((p) => p.key === occupancyPlanKey(true, true))?.amount ?? tier.rent },
-            { key: `${tier.sharingType}-ac-without-food`, title: `${tier.sharingType} room without food`, hasAc: true, acLabel: 'AC', withFood: false, rent: plans.find((p) => p.key === occupancyPlanKey(true, false))?.amount ?? tier.rent },
-            { key: `${tier.sharingType}-nonac-with-food`, title: `${tier.sharingType} room with food`, hasAc: false, acLabel: 'Non-AC', withFood: true, rent: plans.find((p) => p.key === occupancyPlanKey(false, true))?.amount ?? tier.rent },
-            { key: `${tier.sharingType}-nonac-without-food`, title: `${tier.sharingType} room without food`, hasAc: false, acLabel: 'Non-AC', withFood: false, rent: plans.find((p) => p.key === occupancyPlanKey(false, false))?.amount ?? tier.rent },
-          ],
+          rent: options.length ? Math.min(...options.map((o) => o.rent)) : tier.rent,
+          options,
         };
-      });
+      }).filter((tier) => tier.options.length > 0);
 
   return (
     <View style={{ flex: 1 }}>
@@ -693,15 +690,7 @@ export default function ListingDetail() {
 
           {/* Ratings & reviews */}
           <View>
-            <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: spacing.md }}>
-              <Text variant="h3">Ratings & reviews</Text>
-              {canRate ? (
-                <PressableScale onPress={() => setReviewOpen(true)} haptics={false} style={{ flexDirection: 'row', alignItems: 'center', gap: 3 }}>
-                  <Ionicons name="create-outline" size={15} color={palette.coralDark} />
-                  <Text variant="bodySm" weight="600" color={palette.coralDark}>Write a review</Text>
-                </PressableScale>
-              ) : null}
-            </View>
+            <Text variant="h3" style={{ marginBottom: spacing.md }}>Ratings & reviews</Text>
 
             {l.ratingBreakdown.length > 0 ? (
               <Card style={{ marginBottom: spacing.base }}>
@@ -718,30 +707,16 @@ export default function ListingDetail() {
               </Card>
             ) : null}
 
-            {canRate ? (
-              <Card style={{ marginBottom: spacing.md }}>
-                {submitted ? (
-                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: spacing.md }}>
-                    <Ionicons name="checkmark-circle" size={26} color={palette.success} />
-                    <View style={{ flex: 1 }}>
-                      <Text variant="bodyMd" weight="700">Thanks for rating!</Text>
-                      <Text variant="caption" color={palette.inkSecondary}>You rated this property {averageReviewRating.toFixed(1)} ★</Text>
-                    </View>
-                  </View>
-                ) : (
-                  <View style={{ alignItems: 'center', gap: spacing.sm }}>
-                    <Text variant="bodyMd" weight="600">Stayed here? Rate this property</Text>
-                    <View style={{ flexDirection: 'row', gap: spacing.sm }}>
-                      {[1, 2, 3, 4, 5].map((n) => (
-                        <PressableScale key={n} haptics onPress={() => setReviewOpen(true)} scaleTo={0.85} style={{ padding: 2 }}>
-                          <Ionicons name={n <= Math.round(averageReviewRating) ? 'star' : 'star-outline'} size={32} color={n <= Math.round(averageReviewRating) ? palette.star : palette.borderStrong} />
-                        </PressableScale>
-                      ))}
-                    </View>
-                    <Text variant="caption" color={palette.inkTertiary}>Rate category-wise to share your experience</Text>
-                  </View>
-                )}
-              </Card>
+            {apiId ? (
+              <View style={{ marginBottom: spacing.md }}>
+                <PropertyRatingSection
+                  propertyId={apiId}
+                  propertyName={l.name}
+                  initialMyRating={l.myRating}
+                  canRate={canRate}
+                  onChanged={refreshAfterRatingChange}
+                />
+              </View>
             ) : null}
 
             {l.reviews.length > 0 ? (
@@ -850,50 +825,6 @@ export default function ListingDetail() {
         initialDay={selectedWeekDay}
       />
 
-      {/* Write-a-review sheet */}
-      <Sheet visible={reviewOpen} onClose={() => setReviewOpen(false)} title="Rate this property" scroll>
-        <View style={{ gap: spacing.base }}>
-          <Text variant="bodySm" color={palette.inkSecondary}>Share your experience at {l.name} to help other tenants.</Text>
-          {REVIEW_CATEGORIES.map((category) => (
-            <Card key={category.key} style={{ backgroundColor: palette.surfaceRaised }}>
-              <Text variant="bodyMd" weight="700">{category.label}</Text>
-              <Text variant="caption" color={palette.inkSecondary} style={{ marginTop: 4 }}>
-                {category.hint}
-              </Text>
-              <View style={{ flexDirection: 'row', gap: spacing.sm, marginTop: spacing.md }}>
-                {[1, 2, 3, 4, 5].map((n) => (
-                  <PressableScale
-                    key={`${category.key}-${n}`}
-                    haptics
-                    onPress={() => setReviewRatings((prev) => ({ ...prev, [category.key]: n }))}
-                    scaleTo={0.85}
-                    style={{ padding: 2 }}
-                  >
-                    <Ionicons
-                      name={n <= reviewRatings[category.key] ? 'star' : 'star-outline'}
-                      size={28}
-                      color={n <= reviewRatings[category.key] ? palette.star : palette.borderStrong}
-                    />
-                  </PressableScale>
-                ))}
-              </View>
-              <Text variant="caption" color={reviewRatings[category.key] ? palette.inkSecondary : palette.inkTertiary} style={{ marginTop: spacing.sm }}>
-                {reviewRatings[category.key]
-                  ? ['Poor', 'Poor', 'Fair', 'Good', 'Very good', 'Excellent'][reviewRatings[category.key]]
-                  : 'Tap a star to rate'}
-              </Text>
-            </Card>
-          ))}
-          <Input label="Your review (optional)" placeholder="What did you like or dislike?" multiline maxLength={500} style={{ height: 100 }} />
-          <Button
-            label="Submit review"
-            icon="checkmark"
-            disabled={!hasCompletedReview}
-            onPress={() => { haptic.success(); setSubmitted(true); setReviewOpen(false); }}
-            full size="lg"
-          />
-        </View>
-      </Sheet>
     </View>
   );
 }

@@ -28,15 +28,6 @@ export const REFERRAL_PROGRAM: ReferralProgram = {
   referredReward: { kind: 'percentage', value: 10 },
 };
 
-/** The signed-in tenant's referral identity & running totals. */
-export const REFERRAL = {
-  code: 'AARAV500',
-  link: 'https://pgfy.in/r/AARAV500',
-  totalEarned: 1500,
-  referredCount: 3,
-  pending: 1,
-};
-
 /** Store link used when inviting friends / promoting group booking. */
 export const APP_STORE_URL = 'https://pgfy.in/app';
 

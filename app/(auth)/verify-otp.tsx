@@ -15,6 +15,7 @@ import { Text, Button, ScreenHeader } from '@/components/ui';
 import { haptic } from '@/lib/haptics';
 import { useAuth } from '@/context/AuthContext';
 import { errorMessage } from '@/lib/api';
+import { getPendingReferralCode, clearPendingReferralCode } from '@/lib/referral';
 
 export default function VerifyOtp() {
   const router = useRouter();
@@ -50,7 +51,9 @@ export default function VerifyOtp() {
   const verify = async () => {
     setLoading(true);
     try {
-      const { newLogin } = await verifyOtp(String(phone), code);
+      const referralCode = await getPendingReferralCode();
+      const { newLogin } = await verifyOtp(String(phone), code, referralCode ?? undefined);
+      await clearPendingReferralCode();
       haptic.success();
       router.replace(newLogin ? '/(auth)/register' : '/(tabs)');
     } catch (e) {

@@ -7,6 +7,7 @@ export { MediaSectionGrid } from './MediaSectionGrid';
 export { BedLegend, SelectableBed, SelectableRoom, type RoomCompatibility } from './RoomBedSelector';
 export { SectionHeader } from './SectionHeader';
 export { ReviewCard, InvoiceRow, VisitorCard, TicketRow, NotificationRow } from './Rows';
+export { PropertyRatingSection } from './PropertyRating';
 export { HoldBanner } from './HoldBanner';
 export { PastBookingCard } from './PastBookingCard';
 export { CraftedFooter } from './CraftedFooter';

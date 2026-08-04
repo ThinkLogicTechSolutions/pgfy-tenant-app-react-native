@@ -42,7 +42,7 @@ export {
   type ScratchCardStatus,
 } from './brandRewards';
 export {
-  REFERRAL_PROGRAM, REFERRAL, APP_STORE_URL, formatBenefit,
+  REFERRAL_PROGRAM, APP_STORE_URL, formatBenefit,
   type ReferralBenefit, type ReferralProgram, type RewardKind,
 } from './referral';
 

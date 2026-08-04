@@ -17,7 +17,7 @@ import { palette } from '@/theme';
 import { useMessaging } from '@/lib/messaging';
 import { AuthProvider, useAuth } from '@/context/AuthContext';
 import { MasterDataProvider } from '@/context/MasterDataContext';
-import { AlertDialog, AlertDialogHost } from '@/components/ui';
+import { AlertDialog, AlertDialogHost, ToastHost } from '@/components/ui';
 
 SplashScreen.preventAutoHideAsync();
 SystemUI.setBackgroundColorAsync(palette.bg).catch(() => {});
@@ -83,6 +83,7 @@ export default function RootLayout() {
             </Stack>
             <AlertDialog />
             <AlertDialogHost />
+            <ToastHost />
           </MasterDataProvider>
         </AuthProvider>
       </SafeAreaProvider>

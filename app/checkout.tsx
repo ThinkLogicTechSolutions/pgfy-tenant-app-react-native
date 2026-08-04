@@ -42,6 +42,11 @@ export default function Checkout() {
     if (!couponParam) return undefined;
     try { return JSON.parse(couponParam) as AppliedCoupon; } catch { return undefined; }
   }, [couponParam]);
+  // An auto-applied referral discount rides on `appliedCoupon` (same shape, for consistent
+  // pricing math) but carries a `label` and isn't a real coupon code — the backend already
+  // knows the tenant is a referred user and applies it itself, so it must never be sent as
+  // `coupon_code` (a fake "REFERRAL" code would either no-op or fail coupon validation).
+  const realCouponCode = appliedCoupon && !appliedCoupon.label ? appliedCoupon.code : null;
   const [autopay, setAutopay] = useState(false);
   const [method, setMethod] = useState<string>('upi');
   const [loading, setLoading] = useState(false);
@@ -124,7 +129,7 @@ export default function Checkout() {
           booking_id: String(intent.extension.bookingId),
           quantity: intent.extension.quantity,
           payment_method: payMethod.toUpperCase() as PaymentMethod,
-          coupon_code: appliedCoupon?.code ?? null,
+          coupon_code: realCouponCode,
         });
 
         const tx = res.transaction;
@@ -169,7 +174,7 @@ export default function Checkout() {
           duration_hours: intent.booking.durationHours ?? null,
           payment_method: (autopay ? 'UPI' : payMethod.toUpperCase()) as PaymentMethod,
           payment_frequency: autopay ? 'AUTOPAY' : 'PAY_ONCE',
-          coupon_code: appliedCoupon?.code ?? null,
+          coupon_code: realCouponCode,
           // Flat/Home stay: whole-unit booking with named guests, no room/bed/layout.
           ...(intent.booking.guests
             ? { guests: intent.booking.guests, guest_count: intent.booking.guestCount }

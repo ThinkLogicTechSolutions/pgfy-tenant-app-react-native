@@ -220,8 +220,37 @@ export interface Listing {
   weeklyFoodMenu?: WeeklyMenuDay[];
   /** Whether the signed-in tenant may rate this property (API-backed listings only). */
   canRate?: boolean;
+  /** The signed-in tenant's own rating of this property, or `null` if they haven't rated it
+   * (API-backed listings only) — carries the full category breakdown so the edit sheet can
+   * prefill from it. */
+  myRating?: TenantRating | null;
+  /** Discount applied to *this* tenant's own booking checkout for having been referred
+   * (API-backed listings only) — `null` type/value when `applicable` is false. */
+  referralDiscount?: {
+    applicable: boolean;
+    value: number | null;
+    type: 'FLAT' | 'PERCENTAGE' | null;
+  };
   isFavorite?: boolean;
   favoriteId?: number | null;
+}
+
+/** A tenant's own rating/review of a property — the shape shared by `Listing.myRating` and
+ * the property's `reviews` list (API-backed listings only). */
+export interface TenantRating {
+  id: number;
+  tenantName: string;
+  tenantAvatar: string | null;
+  ratings: {
+    cleanliness: number;
+    food: number;
+    safety: number;
+    staff: number;
+    price: number;
+    overall: number;
+  };
+  review: string | null;
+  createdAt: string;
 }
 
 export interface CuratedRail {

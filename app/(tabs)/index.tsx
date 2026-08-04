@@ -6,14 +6,14 @@
  * The previous home is preserved at `src/legacy/HomeScreenClassic.tsx`.
  */
 import { useEffect, useMemo, useState } from 'react';
-import { View, ScrollView, ActivityIndicator, TextInput } from 'react-native';
+import { View, ScrollView, TextInput } from 'react-native';
 import { Image } from 'expo-image';
 import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import { palette, spacing, radius, shadows, fontFamily } from '@/theme';
-import { Text, IconButton, PressableScale, Avatar, Button, EmptyState } from '@/components/ui';
+import { Text, IconButton, PressableScale, Avatar, Button, EmptyState, Skeleton } from '@/components/ui';
 import { CityTile, SectionHeader, CraftedFooter, PromotedBadge } from '@/components/domain';
 import { BrowseFiltersSheet, getDefaultBrowseFilters, browseFiltersToParams, type BrowseFilters } from '@/components/search';
 import { locationPicker } from '@/store/locationPicker';
@@ -203,6 +203,24 @@ function NearbyCard({
   );
 }
 
+/** Mirrors `NearbyCard`'s layout (230-wide cover + name/rating/price rows) so the shimmer
+ * doesn't jump when the real cards swap in. */
+function NearbyCardSkeleton() {
+  return (
+    <View style={{ width: 230, backgroundColor: palette.surface, borderRadius: radius.lg, borderWidth: 1, borderColor: palette.border, overflow: 'hidden' }}>
+      <Skeleton width="100%" height={132} rounded={0} />
+      <View style={{ padding: spacing.md, gap: 8 }}>
+        <Skeleton width="80%" height={14} />
+        <Skeleton width="55%" height={12} />
+        <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginTop: 2 }}>
+          <Skeleton width={70} height={14} />
+          <Skeleton width={50} height={18} rounded={radius.pill} />
+        </View>
+      </View>
+    </View>
+  );
+}
+
 function ContinueCard({ listing, onPress }: { listing: Listing; onPress: () => void }) {
   return (
     <PressableScale
@@ -330,12 +348,17 @@ export default function Home() {
 
   const popularTiles = useMemo(
     () =>
-      popularDestinations.map((d) => ({
-        id: String(d.id),
-        name: d.city.name,
-        image: d.avatar?.link,
-        landmarkId: CITY_LANDMARKS[d.city.name] ?? 'cityscape',
-      })),
+      popularDestinations
+        // Defensive: a destination row whose eager-loaded `city` failed to join (deleted/
+        // inactive city_id) would otherwise throw here and blank the whole Home screen.
+        .filter((d) => d.status === 'ACTIVE' && !!d.city?.name)
+        .sort((a, b) => a.priority - b.priority)
+        .map((d) => ({
+          id: String(d.id),
+          name: d.city.name,
+          image: d.avatar?.link,
+          landmarkId: CITY_LANDMARKS[d.city.name] ?? 'cityscape',
+        })),
     [popularDestinations],
   );
 
@@ -616,9 +639,13 @@ export default function Home() {
               />
             </View>
             {dashboardLoading ? (
-              <View style={{ paddingVertical: spacing.lg, alignItems: 'center' }}>
-                <ActivityIndicator color={palette.navy} />
-              </View>
+              <ScrollView
+                horizontal
+                showsHorizontalScrollIndicator={false}
+                contentContainerStyle={{ gap: spacing.md, paddingHorizontal: spacing.base }}
+              >
+                {[0, 1, 2].map((i) => <NearbyCardSkeleton key={i} />)}
+              </ScrollView>
             ) : nearby.length > 0 ? (
               <ScrollView
                 horizontal

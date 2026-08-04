@@ -8,7 +8,7 @@ import { palette, spacing, radius } from '@/theme';
 import { Text, ScreenHeader, Card, Button, Input, Divider, Badge, Sheet, PressableScale } from '@/components/ui';
 import { StayBookingFields, type StayBookingValues } from '@/components/search';
 import { getListing } from '@/data';
-import { computeCheckout, platformFeeFromMasterConfig, isCouponUsable, couponDiscountAmount, type CheckoutIntent, type AppliedCoupon } from '@/lib/billing';
+import { computeCheckout, platformFeeFromMasterConfig, isCouponUsable, couponDiscountAmount, referralDiscountAmount, type CheckoutIntent, type AppliedCoupon } from '@/lib/billing';
 import type { BookingMode } from '@/data/types';
 import { inr } from '@/lib/format';
 import { defaultCheckOut, clampCheckInToFuture } from '@/lib/dates';
@@ -145,7 +145,15 @@ export default function BookConfig() {
       },
     } : {}),
   };
-  const quote = computeCheckout(intent, appliedCoupon ?? undefined);
+  // A referral signup discount applies automatically (`applicable: true`) unless the tenant
+  // picks a manual coupon instead — the manual choice always wins.
+  const referralDiscount = listing?.referralDiscount;
+  const referralAppliedCoupon: AppliedCoupon | null = referralDiscount?.applicable
+    ? { code: 'REFERRAL', label: 'Referral discount', amount: referralDiscountAmount(referralDiscount.type, referralDiscount.value, monthlyRent) }
+    : null;
+  const effectiveCoupon = appliedCoupon ?? referralAppliedCoupon ?? undefined;
+
+  const quote = computeCheckout(intent, effectiveCoupon);
   const netPayable = quote.total;
 
   const findCoupon = (code: string) => coupons.find((c) => c.code.toUpperCase() === code.trim().toUpperCase());
@@ -201,7 +209,7 @@ export default function BookConfig() {
     if (!kycVerified) { setKycOpen(true); return; }
     router.push({
       pathname: '/checkout',
-      params: { intent: JSON.stringify(intent), coupon: appliedCoupon ? JSON.stringify(appliedCoupon) : '' },
+      params: { intent: JSON.stringify(intent), coupon: effectiveCoupon ? JSON.stringify(effectiveCoupon) : '' },
     });
   };
 
@@ -262,6 +270,14 @@ export default function BookConfig() {
                 <Text variant="bodySm" weight="600" color={palette.coralDark}>View all</Text>
               </PressableScale>
             </View>
+            {!appliedCoupon && referralAppliedCoupon ? (
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: palette.successTint, borderRadius: radius.md, padding: spacing.sm, marginBottom: spacing.sm }}>
+                <Ionicons name="gift-outline" size={16} color={palette.success} />
+                <Text variant="caption" color={palette.success} style={{ flex: 1 }}>
+                  Referral discount applied — you saved {inr(referralAppliedCoupon.amount)}!
+                </Text>
+              </View>
+            ) : null}
             <View style={{ flexDirection: 'row', gap: spacing.sm }}>
               <Input containerStyle={{ flex: 1 }} placeholder="Promo code" value={promo} onChangeText={(v) => { setPromo(v); setPromoError(false); }} autoCapitalize="characters" icon="pricetag-outline" />
               <Button label="Apply" variant="subtle" onPress={applyPromo} />

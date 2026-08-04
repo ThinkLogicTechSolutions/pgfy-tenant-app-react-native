@@ -378,15 +378,89 @@ export interface ApiPropertyVerification {
   documents: ApiVerificationDocument[];
 }
 
-/** Best-effort shape — the doc doesn't cover a populated example, so the adapter reads
- * defensively and falls back gracefully if a field is named differently. */
-export interface ApiPropertyReview {
-  id?: number | string;
-  author?: string;
-  avatar?: string | null;
-  rating?: number;
-  created_at?: string;
-  comment?: string;
+// ---------------------------------------------------------------------------
+// Property ratings (GET/POST/PATCH/DELETE /tenant/ratings) — a tenant's rating of a
+// property they've booked. The same shape appears in a property's `reviews`/`my_rating`
+// (GET /tenant/properties/:id) and standalone in the ratings CRUD responses.
+// ---------------------------------------------------------------------------
+
+export interface ApiRatingCategoryScores {
+  cleanliness: number;
+  food: number;
+  safety: number;
+  staff: number;
+  price: number;
+  overall: number;
+}
+
+export type PropertyRatingStatus = 'ACTIVE' | (string & {});
+
+export interface ApiPropertyRating {
+  id: number;
+  property_id: number;
+  booking_id: number;
+  tenant_id: number;
+  tenant_name: string;
+  tenant_avatar: ProfileAsset | null;
+  ratings: ApiRatingCategoryScores;
+  review: string | null;
+  status: PropertyRatingStatus;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface CreateRatingInput {
+  property_id: number;
+  cleanliness_rating: number;
+  food_rating: number;
+  safety_rating: number;
+  staff_rating: number;
+  price_rating: number;
+  review?: string;
+}
+
+export interface UpdateRatingInput {
+  cleanliness_rating: number;
+  food_rating: number;
+  safety_rating: number;
+  staff_rating: number;
+  price_rating: number;
+  review?: string;
+}
+
+/** A property's aggregate rating (`GET /tenant/properties/:id`'s `rating` field). */
+export interface ApiPropertyRatingSummary {
+  overall: number;
+  count: number;
+  categories: {
+    cleanliness: number;
+    food: number;
+    safety: number;
+    staff: number;
+    price: number;
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Referral discount (surfaced on GET /tenant/properties/:id — applies at booking checkout)
+// ---------------------------------------------------------------------------
+
+export type DiscountTypeEnum = 'FLAT' | 'PERCENTAGE' | (string & {});
+
+export interface ApiDiscountDetail {
+  applicable: boolean;
+  referral_id: number | null;
+  value: number | null;
+  type: DiscountTypeEnum | null;
+}
+
+/** `referred_user_discount` applies to *this* tenant's own (first) booking at this property;
+ * `referrer_reward` describes what the tenant who referred them earns on their own next
+ * checkout — not something this booking's checkout ever applies itself. */
+export interface ApiReferralDiscountInfo {
+  applicable: boolean;
+  referred_user_discount: ApiDiscountDetail;
+  referrer_reward: ApiDiscountDetail;
 }
 
 /** `GET /tenant/properties/:id?booking_mode=&record_view=` — full property details. */
@@ -429,9 +503,12 @@ export interface ApiPropertyDetails {
   food_menu_enabled: boolean;
   food_menu: ApiFoodMenu | null;
   verification: ApiPropertyVerification;
-  rating: number | null;
-  reviews: ApiPropertyReview[];
+  rating: ApiPropertyRatingSummary | null;
+  reviews: ApiPropertyRating[];
   can_rate: boolean;
+  /** The signed-in tenant's own rating of this property, or `null` if they haven't rated it. */
+  my_rating: ApiPropertyRating | null;
+  referral_discount: ApiReferralDiscountInfo;
 }
 
 // ===========================================================================
@@ -1074,14 +1151,37 @@ export interface ApiMyStayBilling {
   invoices: ApiMyStayInvoice[];
 }
 
-/** `GET /tenant/my-stay?bed_id=` — full stay detail for one bed. `announcements`/
- * `maintenance` shapes aren't documented (always empty in observed responses), so they're
- * left as opaque arrays rather than guessed at. */
+export type AnnouncementGuestType = 'HOURLY' | 'DAILY' | 'MONTHLY' | (string & {});
+export type AnnouncementStatus = 'SENT' | (string & {});
+
+export interface ApiAnnouncement {
+  id: number;
+  owner_id: number;
+  created_by_id: number;
+  created_by_name: string;
+  created_by_email: string | null;
+  created_by_phone: string | null;
+  created_by_avatar: ProfileAsset | null;
+  target_all_properties: boolean;
+  guest_types: AnnouncementGuestType[];
+  title: string;
+  description: string;
+  recipient_count: number;
+  status: AnnouncementStatus;
+  created_at: string;
+  updated_at: string;
+}
+
+/** `GET /tenant/my-stay?bed_id=` — full stay detail for one bed. `bed_changes` is this
+ * booking's room/bed-change history — same shape `/tenant/change-bed` returns (see
+ * `ApiChangeBedRequest`); a `SCHEDULED` entry is an upcoming, owner-approved move the
+ * tenant hasn't been switched into yet. */
 export interface ApiMyStayResponse {
   booking: ApiMyStayBooking;
   billing: ApiMyStayBilling;
-  announcements: unknown[];
-  maintenance: unknown[];
+  announcements: ApiAnnouncement[];
+  maintenance: ApiMaintenanceTicket[];
+  bed_changes: ApiChangeBedRequest[];
 }
 
 // ---------------------------------------------------------------------------
@@ -1546,4 +1646,129 @@ export interface ApiCreateExtensionResponse {
   /** Undocumented shape when non-null — not consumed by the client. */
   payment: unknown | null;
   payment_hint: ApiExtendStayPaymentHint | null;
+}
+
+// ===========================================================================
+// Room swap / bed change (`GET/POST /tenant/change-bed`, `GET/PATCH /tenant/change-bed/:id`)
+// ===========================================================================
+
+export interface ApiSwapBed {
+  id: number;
+  bed_number: string;
+  status: string;
+}
+
+/** One room's availability for swap, within `GET /tenant/change-bed?booking_id=`'s
+ * floor grouping. `monthly_rent` is `null` when the room's layout has no MONTHLY rate
+ * card configured. */
+export interface ApiSwapRoom {
+  id: number;
+  room_number: string;
+  layout: string;
+  sharing_count: number;
+  is_ac: boolean;
+  available_count: number;
+  monthly_rent: number | null;
+  beds: ApiSwapBed[];
+}
+
+export interface ApiSwapFloorGroup {
+  id: number;
+  name: string;
+  rooms: ApiSwapRoom[];
+}
+
+export type ChangeBedRequestStatus = 'SCHEDULED' | 'COMPLETED' | 'CANCELLED' | (string & {});
+
+/** The floor/room/bed a change-bed request moves from/to. `floor`/`room`/`bed` go `null`
+ * once the request is cancelled (the `*_id`s remain). */
+export interface ApiChangeBedLocation {
+  floor_id: number;
+  room_id: number;
+  bed_id: number;
+  floor: { id: number; name: string } | null;
+  room: { id: number; room_number: string; layout: string; sharing_count: number } | null;
+  bed: { id: number; bed_number: string; status: string } | null;
+}
+
+export interface ApiChangeBedRent {
+  old_rent: number;
+  new_rent: number;
+  net_change: number;
+}
+
+/** A room/bed-change request — returned by create, by-id fetch, and cancel. */
+export interface ApiChangeBedRequest {
+  id: number;
+  booking_id: number;
+  tenant_id: number;
+  property_id: number;
+  status: ChangeBedRequestStatus;
+  reason: string | null;
+  effective_on: string;
+  requested_by_role: string;
+  requested_on: string;
+  completed_on: string | null;
+  cancelled_on: string | null;
+  from: ApiChangeBedLocation;
+  to: ApiChangeBedLocation;
+  rent: ApiChangeBedRent;
+}
+
+export interface CreateChangeBedInput {
+  booking_id: number;
+  target_bed_id: number;
+  reason: string;
+}
+
+export interface CancelChangeBedInput {
+  booking_id: number;
+  cancel_reason: string;
+}
+
+// ---------------------------------------------------------------------------
+// Refer & earn (GET /tenant/refer-and-earn?summary=true&list=true)
+// ---------------------------------------------------------------------------
+
+export interface ApiReferralBenefit {
+  value: number;
+  type: 'FLAT' | (string & {});
+}
+
+export interface ApiReferralBenefits {
+  you_get: ApiReferralBenefit;
+  friend_gets: ApiReferralBenefit;
+}
+
+export interface ApiReferralStats {
+  total_saved: number;
+  referred_count: number;
+  pending_count: number;
+}
+
+export type ReferralStatusApi = 'PENDING' | 'COMPLETED' | (string & {});
+
+export interface ApiReferralItem {
+  id: number;
+  status: ReferralStatusApi;
+  referred_name: string;
+  referred_phone: string;
+  referred_email: string | null;
+  referred_avatar: string | null;
+  referrer_reward_value: number;
+  referrer_reward_type: string;
+  referrer_reward_applied: boolean;
+  referrer_reward_amount: number;
+  referred_discount_applied: boolean;
+  completed_at: string | null;
+  created_at: string;
+}
+
+/** `referral_code` is `null` until the tenant has booked and checked in to their first
+ * property — that's what gates the invite link (`share.pgfy.in/referral?code=...`). */
+export interface ApiReferralSummary {
+  referral_code: string | null;
+  benefits: ApiReferralBenefits;
+  stats: ApiReferralStats;
+  referrals: ApiReferralItem[];
 }
