@@ -284,11 +284,11 @@ export default function Visitors() {
             ) : null}
             <Input label="Visitor name" icon="person-outline" placeholder="Full name" value={form.name} onChangeText={set('name')} />
             <Input label="Phone number" icon="call-outline" keyboardType="number-pad" placeholder="10-digit mobile" value={form.phone} onChangeText={set('phone')} />
+            <PickerField label="Visit date" icon="calendar-outline" value={formatDate(form.date.toISOString())} onPress={() => setPicker(picker === 'date' ? null : 'date')} />
             <View style={{ flexDirection: 'row', gap: spacing.md }}>
-              <PickerField label="Visit date" icon="calendar-outline" value={formatDate(form.date.toISOString())} onPress={() => setPicker(picker === 'date' ? null : 'date')} />
               <PickerField label="Entry time" icon="time-outline" value={formatTime12h(form.entryTime)} onPress={() => setPicker(picker === 'entry' ? null : 'entry')} />
+              <PickerField label="Expected exit time" icon="time-outline" value={formatTime12h(form.exitTime)} onPress={() => setPicker(picker === 'exit' ? null : 'exit')} />
             </View>
-            <PickerField label="Expected exit time" icon="time-outline" value={formatTime12h(form.exitTime)} onPress={() => setPicker(picker === 'exit' ? null : 'exit')} />
 
             {picker === 'date' ? (
               <View style={pickerWrapStyle}>

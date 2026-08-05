@@ -25,23 +25,6 @@ export {
   type CancellationCharge, type BookingCancellation,
 } from './cancellation';
 export {
-  BRAND_VENDORS,
-  BRAND_OFFERS,
-  activeOffers,
-  getVendor,
-  getOffer,
-  pickRandomOffer,
-  isRewardExpired,
-  isRewardOpened,
-  DEMO_SCRATCH_CARDS,
-  VENDOR_CATEGORY_ICON,
-  type BrandVendor,
-  type BrandOffer,
-  type TenantReward,
-  type VendorCategory,
-  type ScratchCardStatus,
-} from './brandRewards';
-export {
   REFERRAL_PROGRAM, APP_STORE_URL, formatBenefit,
   type ReferralBenefit, type ReferralProgram, type RewardKind,
 } from './referral';

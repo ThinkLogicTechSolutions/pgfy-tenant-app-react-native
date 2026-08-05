@@ -10,6 +10,7 @@ import { StayDateRangeField } from '@/components/search';
 import { EmptyInvoices } from '@/components/illustrations';
 import { billingApi, errorMessage, type ApiInvoice, type ApiBillingSummary } from '@/lib/api';
 import type { CheckoutIntent } from '@/lib/billing';
+import { toLocalIso } from '@/lib/dates';
 import { inr, formatDate, formatDayMonth } from '@/lib/format';
 
 type FilterKey = 'this_month' | 'last_month' | 'this_year' | 'custom';
@@ -25,7 +26,7 @@ const FILTERS: { key: FilterKey; label: string }[] = [
 const CUSTOM_RANGE_MAX_YEARS_BACK = 2;
 
 function toIso(date: Date) {
-  return date.toISOString().slice(0, 10);
+  return toLocalIso(date);
 }
 
 function monthStart(date: Date) {

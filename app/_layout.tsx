@@ -33,6 +33,9 @@ function SessionRedirect() {
     if (status === 'authenticated') wasAuthenticated.current = true;
     if (status === 'unauthenticated' && wasAuthenticated.current && segments[0] !== '(auth)') {
       wasAuthenticated.current = false;
+      // dismissAll first — a plain `replace` only swaps the current screen, leaving every
+      // authenticated screen still in history for the back button/gesture to walk into.
+      router.dismissAll();
       router.replace('/(auth)/login');
     }
   }, [status, segments, router]);

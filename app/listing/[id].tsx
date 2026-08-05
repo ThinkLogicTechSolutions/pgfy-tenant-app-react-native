@@ -1,8 +1,7 @@
 /** T-S13 — Property details page with verification/trust surfaced. */
-import { useCallback, useEffect, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { View, ScrollView, useWindowDimensions } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import { useFocusEffect } from '@react-navigation/native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -15,6 +14,7 @@ import { getListing, LISTINGS } from '@/data';
 import { inr, formatDate } from '@/lib/format';
 import { listingNearLandmarkTitle, isPromotedListing } from '@/lib/listingDisplay';
 import { defaultCheckOut, clampCheckInToFuture } from '@/lib/dates';
+import { useCheckInFreshness } from '@/lib/useCheckInFreshness';
 import { useSaved } from '@/store/saved';
 import { recordView } from '@/store/recentlyViewed';
 import { haptic } from '@/lib/haptics';
@@ -22,6 +22,7 @@ import type { BookingMode, Listing } from '@/data/types';
 import { propertyApi, favoritesApi, errorMessage, type ApiBookingMode } from '@/lib/api';
 import { propertyDetailsToListing, parseApiPropertyId } from '@/lib/listingAdapter';
 import { cachePropertyDetails } from '@/store/propertyDetailsCache';
+import { useAuth } from '@/context/AuthContext';
 import { alert } from '@/lib/alertDialog';
 
 function formatTime12(t: string) {
@@ -138,6 +139,7 @@ export default function ListingDetail() {
   const insets = useSafeAreaInsets();
   const { width } = useWindowDimensions();
   const saved = useSaved();
+  const { user } = useAuth();
 
   const apiId = parseApiPropertyId(String(id));
   const mockListing = apiId ? null : getListing(String(id));
@@ -224,20 +226,10 @@ export default function ListingDetail() {
     };
   });
 
-  // The `useState` initializer above only runs once, at mount — if this screen stays mounted
-  // (or cached) across a midnight rollover or a long background spell, that frozen check-in
-  // date silently slips into the past. Re-clamp it forward every time the screen regains
-  // focus, same rule as the initial mount, without clobbering a still-valid future date the
-  // tenant deliberately picked.
-  useFocusEffect(
-    useCallback(() => {
-      setStayValues((prev) => {
-        const clamped = clampCheckInToFuture(prev.checkIn);
-        if (clamped === prev.checkIn) return prev;
-        return { ...prev, checkIn: clamped, checkOut: prev.checkOut && clamped <= prev.checkOut ? prev.checkOut : defaultCheckOut(clamped) };
-      });
-    }, []),
-  );
+  // See `useCheckInFreshness` — re-clamps `stayValues.checkIn` forward both on navigation
+  // focus and on the app returning from the background, so it never silently shows a past
+  // date after this screen has been sitting open (or merely backgrounded) for a while.
+  useCheckInFreshness(setStayValues);
 
   /** Switching mode changes the pricing tiers entirely, so any in-progress occupancy pick
    * no longer applies. */
@@ -710,6 +702,7 @@ export default function ListingDetail() {
             {apiId ? (
               <View style={{ marginBottom: spacing.md }}>
                 <PropertyRatingSection
+                  key={`${user?.id ?? 'guest'}-${apiId}`}
                   propertyId={apiId}
                   propertyName={l.name}
                   initialMyRating={l.myRating}
@@ -720,9 +713,12 @@ export default function ListingDetail() {
             ) : null}
 
             {l.reviews.length > 0 ? (
-              <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: spacing.md }} style={{ marginHorizontal: -spacing.base, paddingHorizontal: spacing.base }}>
-                {l.reviews.map((r) => <ReviewCard key={r.id} review={r} />)}
-              </ScrollView>
+              <>
+                <Text variant="bodyMd" weight="700" style={{ marginBottom: spacing.sm }}>Customer's reviews</Text>
+                <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: spacing.md }} style={{ marginHorizontal: -spacing.base, paddingHorizontal: spacing.base }}>
+                  {l.reviews.map((r) => <ReviewCard key={r.id} review={r} />)}
+                </ScrollView>
+              </>
             ) : (
               <Text variant="bodySm" color={palette.inkTertiary}>No reviews yet.</Text>
             )}
@@ -773,8 +769,8 @@ export default function ListingDetail() {
       {/* Sticky CTA */}
       <View style={{ position: 'absolute', bottom: 0, left: 0, right: 0, paddingHorizontal: spacing.base, paddingTop: spacing.md, paddingBottom: insets.bottom + spacing.md, backgroundColor: palette.surface, borderTopWidth: 1, borderTopColor: palette.border }}>
         <Button
-          label={l.verified ? (l.isUnitProperty ? 'Add Guest Details' : 'Choose Room/Bed') : 'Request This Property'}
-          icon={l.verified ? (l.isUnitProperty ? 'people-outline' : 'bed-outline') : 'paper-plane-outline'}
+          label={l.verified ? (l.isUnitProperty ? 'Book this property' : 'Choose Room/Bed') : 'Request This Property'}
+          // icon={l.verified ? (l.isUnitProperty ? 'people-outline' : 'bed-outline') : 'paper-plane-outline'}
           onPress={() => {
             if (!l.verified) { router.push(`/listing/${l.id}/request`); return; }
             if (l.isUnitProperty) {

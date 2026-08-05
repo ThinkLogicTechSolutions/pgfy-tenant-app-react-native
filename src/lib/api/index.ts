@@ -32,6 +32,7 @@ export * as uploadApi from './upload';
 export { UploadFileType } from './upload';
 export * as referralApi from './referral';
 export * as ratingsApi from './ratings';
+export * as rewardsApi from './rewards';
 
 export type {
   SendOtpInput,
@@ -52,7 +53,7 @@ export type {
   RoomBedAvailabilityQuery,
 } from './property';
 export type { ContinueBrowsingProperty, ContinueBrowsingPage, ContinueBrowsingMediaSection } from './continueBrowsing';
-export type { DashboardQuery, DashboardResponse } from './dashboard';
+export type { DashboardQuery, DashboardResponse, DashboardStayDuration } from './dashboard';
 export type {
   SearchProperty,
   SearchResponse,
@@ -63,6 +64,8 @@ export type {
 } from './search';
 export type { UploadPurpose, UploadResult, UploadFileInput } from './upload';
 export type { ListBookingsQuery } from './booking';
+export type { ListFavoritePropertiesQuery } from './favorites';
+export type { ListRewardsQuery } from './rewards';
 export type { ListBillingRentQuery } from './billing';
 export type { ListCouponsQuery } from './coupons';
 export type { ListMaintenanceQuery } from './maintenance';
@@ -78,6 +81,9 @@ export type {
   Occupation,
   OccupationDetails,
   BankDetails,
+  RoommatePreferences,
+  SleepScheduleApi,
+  DietPreferenceApi,
   AuthResponse,
   GuestAuthResponse,
   KycStatus,
@@ -126,12 +132,14 @@ export type {
   ApiReferralDiscountInfo,
   ApiBedStatus,
   ApiRoomBed,
+  ApiRoomRoommatePreference,
   ApiPropertyRoom,
   ApiPropertyFloor,
   ApiSelectedOccupancy,
   ApiRoomBedAvailability,
   FavoriteStatus,
   TenantFavoriteProperty,
+  ApiFavoritePropertyItem,
   BookingStatusApi,
   PaymentMethod,
   PaymentFrequency,
@@ -184,7 +192,6 @@ export type {
   ApiMyStayResponse,
   MaintenanceStatus,
   ApiMaintenanceTicket,
-  MaintenanceSummary,
   ApiMaintenanceListResponse,
   CreateMaintenanceInput,
   VisitorLogStatus,
@@ -238,4 +245,15 @@ export type {
   ReferralStatusApi,
   ApiReferralItem,
   ApiReferralSummary,
+  ScratchCardStatusApi,
+  RewardCouponStatusApi,
+  OfferCouponTypeApi,
+  RewardIssueSource,
+  RewardAsset,
+  ApiRewardVendor,
+  ApiRewardOffer,
+  ApiRewardCoupon,
+  ApiReward,
+  ApiRewardDetail,
+  RewardAction,
 } from './types';

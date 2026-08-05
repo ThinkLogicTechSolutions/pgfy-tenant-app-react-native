@@ -17,7 +17,7 @@ import { haptic } from '@/lib/haptics';
 import { useAuth } from '@/context/AuthContext';
 import { savePendingReferralCode } from '@/lib/referral';
 
-const REFERRAL_LINK_BASE = 'https://share.pgfy.in/referral';
+const REFERRAL_LINK_BASE = 'https://share-dev.pgfy.in/referral';
 
 function formatReferralBenefit(b: ApiReferralBenefit): string {
   return b.type === 'FLAT' ? inr(b.value) : `${b.value}%`;

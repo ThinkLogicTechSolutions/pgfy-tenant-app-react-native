@@ -13,6 +13,7 @@ import { EmptyBookings } from '@/components/illustrations';
 import { bookingApi, errorMessage, type ApiBooking } from '@/lib/api';
 import { bookingStatusLabel, bookingStatusTone, bookingModeLabel, bookingCoverImage, isActiveBookingStatus, isUnitBooking } from '@/lib/bookingDisplay';
 import { isUnitPropertyType } from '@/lib/listingAdapter';
+import { toLocalIso } from '@/lib/dates';
 import { inr, formatDate } from '@/lib/format';
 import { haptic } from '@/lib/haptics';
 
@@ -33,7 +34,7 @@ const DATE_FILTERS: { key: DateFilter; label: string }[] = [
 function monthsAgoIso(months: number): string {
   const d = new Date();
   d.setMonth(d.getMonth() - months);
-  return d.toISOString().slice(0, 10);
+  return toLocalIso(d);
 }
 
 function matchesDateFilter(checkIn: string, filter: DateFilter): boolean {

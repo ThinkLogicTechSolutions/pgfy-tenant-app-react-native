@@ -175,7 +175,7 @@ export default function BookingDetails() {
           <Text variant="h3" style={{ marginBottom: spacing.md }}>Stay details</Text>
           <DetailRow label="Booking reference" value={b.code} />
           {isUnit ? (
-            <DetailRow label="Booking" value={`Whole property${b.guest_count ? ` · ${b.guest_count} guest${b.guest_count > 1 ? 's' : ''}` : ''}`} />
+            <DetailRow label="Booking" value={`${b.guest_count ? ` · ${b.guest_count} guest${b.guest_count > 1 ? 's' : ''}` : ''}`} />
           ) : (
             <>
               <DetailRow label="Room / Bed" value={`${b.room_number} · Bed ${b.bed_number}`} />

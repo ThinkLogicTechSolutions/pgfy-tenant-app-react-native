@@ -49,11 +49,11 @@ export default function PaymentSuccess() {
         ) : null}
         <View style={{ alignSelf: 'stretch', marginTop: spacing.xl, gap: spacing.sm }}>
           {bookingId ? (
-            <Button label="View booking" full size="lg" onPress={() => router.replace({ pathname: '/booking/[ref]', params: { ref: bookingId } })} />
+            <Button label="View booking" full size="lg" onPress={() => { router.dismissAll(); router.push({ pathname: '/booking/[ref]', params: { ref: bookingId } }); }} />
           ) : (
-            <Button label="View my stay" full size="lg" onPress={() => router.replace('/(tabs)/stay')} />
+            <Button label="View my stay" full size="lg" onPress={() => { router.dismissAll(); router.replace('/(tabs)/stay'); }} />
           )}
-          <Button label="Done" variant="outline" full size="lg" onPress={() => router.replace('/(tabs)')} />
+          <Button label="Done" variant="outline" full size="lg" onPress={() => { router.dismissAll(); router.replace('/(tabs)'); }} />
         </View>
       </View>
     </View>

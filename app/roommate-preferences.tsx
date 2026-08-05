@@ -1,31 +1,69 @@
-/** T-S — Roommate preferences ("More about yourself"). Optional, consent-gated;
- *  drives the room compatibility score. Reachable after booking or later from My Stay. */
+/** T-S — Roommate preferences ("More about yourself"). Optional, consent-gated; drives the
+ *  room match score shown during room/bed selection. Real `PATCH /profile/tenant-profile/:id`.
+ *  Reachable after booking, from room/bed selection, or later from My Stay. */
 import { useState } from 'react';
 import { View, ScrollView } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { palette, spacing, radius } from '@/theme';
-import { Text, Card, Button, Chip, IconButton, PressableScale } from '@/components/ui';
+import { Text, Card, Button, Chip, Input, IconButton, PressableScale } from '@/components/ui';
 import { haptic } from '@/lib/haptics';
-import { getProfile, setPreferences, type LifestylePrefs, type SleepSchedule, type Diet } from '@/store/profile';
+import { toast } from '@/lib/toast';
+import { alert } from '@/lib/alertDialog';
+import { useAuth } from '@/context/AuthContext';
+import { errorMessage, type SleepScheduleApi, type DietPreferenceApi } from '@/lib/api';
+
+const SLEEP_OPTIONS: { value: SleepScheduleApi; label: string }[] = [
+  { value: 'EARLY_BIRD', label: 'Early sleeper' },
+  { value: 'NIGHT_OWL', label: 'Night owl' },
+];
+
+const DIET_OPTIONS: { value: DietPreferenceApi; label: string }[] = [
+  { value: 'VEGETARIAN', label: 'Vegetarian' },
+  { value: 'VEGAN', label: 'Vegan' },
+  { value: 'NON_VEGETARIAN', label: 'Non-vegetarian' },
+];
 
 export default function RoommatePreferences() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
-  const initial = getProfile();
+  const { user, updateProfile } = useAuth();
+  const existing = user?.roommate_preferences;
 
-  const [prefs, setPrefs] = useState<LifestylePrefs>(initial.prefs);
-  const [consent, setConsent] = useState(initial.consentToShare);
-
-  const set = (patch: Partial<LifestylePrefs>) => { setPrefs((p) => ({ ...p, ...patch })); haptic.select(); };
+  const [smoking, setSmoking] = useState<boolean | null>(existing?.smoking_pref ?? null);
+  const [alcohol, setAlcohol] = useState<boolean | null>(existing?.alcohol_pref ?? null);
+  const [sleep, setSleep] = useState<SleepScheduleApi | null>(existing?.sleep_schedule ?? null);
+  const [diet, setDiet] = useState<DietPreferenceApi | null>(existing?.diet_preference ?? null);
+  const [aboutMe, setAboutMe] = useState(existing?.about_me ?? '');
+  const [consent, setConsent] = useState(existing?.show_preferences_to_roommates ?? false);
+  const [saving, setSaving] = useState(false);
 
   const skip = () => (router.canGoBack() ? router.back() : router.replace('/(tabs)/stay'));
 
-  const save = () => {
-    setPreferences(prefs, consent);
-    haptic.success();
-    skip();
+  const save = async () => {
+    if (saving) return;
+    setSaving(true);
+    try {
+      await updateProfile({
+        roommate_preferences: {
+          sleep_schedule: sleep,
+          diet_preference: diet,
+          smoking_pref: smoking,
+          alcohol_pref: alcohol,
+          about_me: aboutMe.trim() || null,
+          show_preferences_to_roommates: consent,
+        },
+      });
+      haptic.success();
+      toast.success('Preferences saved');
+      skip();
+    } catch (e) {
+      haptic.error();
+      alert("Couldn't save your preferences", errorMessage(e));
+    } finally {
+      setSaving(false);
+    }
   };
 
   return (
@@ -40,26 +78,36 @@ export default function RoommatePreferences() {
 
       <ScrollView contentContainerStyle={{ paddingHorizontal: spacing.base, paddingBottom: insets.bottom + spacing.xl, gap: spacing.base }} showsVerticalScrollIndicator={false}>
         <PrefSection label="Smoking">
-          <Chip label="Non-smoking" active={prefs.smoking === false} onPress={() => set({ smoking: false })} />
-          <Chip label="Smoking-friendly" active={prefs.smoking === true} onPress={() => set({ smoking: true })} />
+          <Chip label="Non-smoking" active={smoking === false} onPress={() => { setSmoking(false); haptic.select(); }} />
+          <Chip label="Smoking-friendly" active={smoking === true} onPress={() => { setSmoking(true); haptic.select(); }} />
         </PrefSection>
 
         <PrefSection label="Alcohol">
-          <Chip label="No alcohol" active={prefs.alcohol === false} onPress={() => set({ alcohol: false })} />
-          <Chip label="Alcohol-friendly" active={prefs.alcohol === true} onPress={() => set({ alcohol: true })} />
+          <Chip label="No alcohol" active={alcohol === false} onPress={() => { setAlcohol(false); haptic.select(); }} />
+          <Chip label="Alcohol-friendly" active={alcohol === true} onPress={() => { setAlcohol(true); haptic.select(); }} />
         </PrefSection>
 
         <PrefSection label="Sleep schedule">
-          {(['early', 'late'] as SleepSchedule[]).map((s) => (
-            <Chip key={s} label={s === 'early' ? 'Early sleeper' : 'Night owl'} active={prefs.sleep === s} onPress={() => set({ sleep: s })} />
+          {SLEEP_OPTIONS.map((o) => (
+            <Chip key={o.value} label={o.label} active={sleep === o.value} onPress={() => { setSleep(o.value); haptic.select(); }} />
           ))}
         </PrefSection>
 
         <PrefSection label="Diet">
-          {(['veg', 'vegan', 'nonveg'] as Diet[]).map((d) => (
-            <Chip key={d} label={d === 'veg' ? 'Vegetarian' : d === 'vegan' ? 'Vegan' : 'Non-vegetarian'} active={prefs.diet === d} onPress={() => set({ diet: d })} />
+          {DIET_OPTIONS.map((o) => (
+            <Chip key={o.value} label={o.label} active={diet === o.value} onPress={() => { setDiet(o.value); haptic.select(); }} />
           ))}
         </PrefSection>
+
+        <Input
+          label="About you (optional)"
+          placeholder="e.g. Quiet, early sleeper"
+          multiline
+          maxLength={200}
+          value={aboutMe}
+          onChangeText={setAboutMe}
+          style={{ height: 80 }}
+        />
 
         <Card>
           <PressableScale onPress={() => { setConsent((c) => !c); haptic.select(); }} haptics={false} style={{ flexDirection: 'row', alignItems: 'center', gap: spacing.md }}>
@@ -82,8 +130,8 @@ export default function RoommatePreferences() {
       </ScrollView>
 
       <View style={{ paddingHorizontal: spacing.base, paddingBottom: insets.bottom + spacing.base, paddingTop: spacing.sm, gap: spacing.sm }}>
-        <Button label="Save preferences" onPress={save} full size="lg" />
-        <Button label="Skip for now" variant="ghost" onPress={skip} full />
+        <Button label="Save preferences" onPress={save} loading={saving} full size="lg" />
+        <Button label="Skip for now" variant="ghost" onPress={skip} full disabled={saving} />
       </View>
     </View>
   );

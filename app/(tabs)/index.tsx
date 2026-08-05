@@ -15,16 +15,17 @@ import { Ionicons } from '@expo/vector-icons';
 import { palette, spacing, radius, shadows, fontFamily } from '@/theme';
 import { Text, IconButton, PressableScale, Avatar, Button, EmptyState, Skeleton } from '@/components/ui';
 import { CityTile, SectionHeader, CraftedFooter, PromotedBadge } from '@/components/domain';
-import { BrowseFiltersSheet, getDefaultBrowseFilters, browseFiltersToParams, type BrowseFilters } from '@/components/search';
+import { BrowseFiltersSheet, getDefaultBrowseFilters, browseFiltersToParams, type BrowseFilters, type StayBookingValues } from '@/components/search';
 import { locationPicker } from '@/store/locationPicker';
 import { useTenantLocation } from '@/store/location';
 import { recordView } from '@/store/recentlyViewed';
 import { useSaved } from '@/store/saved';
 import { unreadCount } from '@/data';
 import { useAuth } from '@/context/AuthContext';
-import { dashboardApi, continueBrowsingApi, errorMessage, type LocalityMaster } from '@/lib/api';
+import { dashboardApi, continueBrowsingApi, errorMessage, type LocalityMaster, type DashboardStayDuration } from '@/lib/api';
 import { continueBrowsingToListing } from '@/lib/listingAdapter';
 import { defaultCheckIn, defaultCheckOut } from '@/lib/dates';
+import { useCheckInFreshness } from '@/lib/useCheckInFreshness';
 import { listingSupportsBookingMode } from '@/lib/listingDisplay';
 import { inr } from '@/lib/format';
 import { haptic } from '@/lib/haptics';
@@ -77,6 +78,12 @@ const STAY_TYPES: { key: BookingMode; label: string; subtitle: string; icon: key
   { key: 'daily', label: 'Daily', subtitle: 'Short term', icon: 'partly-sunny', accent: palette.coral, tint: palette.coralTint },
   { key: 'hourly', label: 'Hourly', subtitle: 'By the hour', icon: 'hourglass', accent: palette.info, tint: palette.infoTint },
 ];
+
+const STAY_DURATION_BY_MODE: Record<BookingMode, DashboardStayDuration> = {
+  monthly: 'MONTHLY',
+  daily: 'DAILY',
+  hourly: 'HOURLY',
+};
 
 /** Split items into N-row columns for a 2-row horizontal rail. */
 function intoColumns<T>(items: T[], rows = 2): T[][] {
@@ -393,6 +400,11 @@ export default function Home() {
     setFiltersOpen(true);
   };
 
+  // `openFilters` refreshes the date on open, but if the sheet is left open while the app
+  // gets backgrounded (or just sits idle) overnight, nothing re-triggers that reset — see
+  // `useCheckInFreshness`. Adapts it to `draftFilters.stay`'s nested shape.
+  useCheckInFreshness<StayBookingValues>((updater) => setDraftFilters((prev) => ({ ...prev, stay: updater(prev.stay) })));
+
   // "Near you" + "Popular areas" — location-scoped, from the tenant dashboard API.
   const [nearYou, setNearYou] = useState<Listing[]>([]);
   const [nearYouPromotedIds, setNearYouPromotedIds] = useState<Set<string>>(new Set());
@@ -413,7 +425,7 @@ export default function Home() {
     const coordinates: [number, number] | undefined =
       geo.source === 'gps' && geo.lat != null && geo.lng != null ? [geo.lat, geo.lng] : undefined;
     dashboardApi
-      .getDashboard({ cityId: geo.cityId, coordinates })
+      .getDashboard({ cityId: geo.cityId, coordinates, stayDuration: STAY_DURATION_BY_MODE[stayType] })
       .then((res) => {
         if (!active) return;
         setNearYou(res.near_you.map(continueBrowsingToListing));
@@ -432,8 +444,10 @@ export default function Home() {
     return () => {
       active = false;
     };
-  }, [operational, geo?.cityId, geo?.lat, geo?.lng, geo?.source]);
+  }, [operational, geo?.cityId, geo?.lat, geo?.lng, geo?.source, stayType]);
 
+  // The dashboard call above is already scoped to `stayType` via `stay_duration`, so this is
+  // just a defensive client-side pass — a safety net, not the primary filter.
   const nearby = useMemo(() => {
     return nearYou.filter((l) => listingSupportsBookingMode(l, stayType)).slice(0, 6);
   }, [nearYou, stayType]);

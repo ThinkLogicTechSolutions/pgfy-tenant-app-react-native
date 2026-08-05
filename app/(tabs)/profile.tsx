@@ -1,11 +1,11 @@
 /** T-S27 — Tenant profile & settings. */
-import { useState } from 'react';
-import { View, ScrollView, Switch, Alert, Linking } from 'react-native';
+import { useEffect, useState } from 'react';
+import { View, ScrollView, Switch, Linking } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { palette, spacing, radius } from '@/theme';
-import { Text, Card, Avatar, Divider, ListRow, PressableScale, EmptyState } from '@/components/ui';
+import { Text, Card, Avatar, Divider, ListRow, PressableScale, EmptyState, Sheet, Input, Button } from '@/components/ui';
 import { VerifiedBadge } from '@/components/domain';
 import { EmptyAuth } from '@/components/illustrations';
 import { REFERRAL_PROGRAM, formatBenefit } from '@/data';
@@ -15,7 +15,7 @@ import { LOGIN_ROUTE } from '@/lib/guestGuard';
 import { haptic } from '@/lib/haptics';
 import { isBankDetailsComplete, bankDetailsSummary } from '@/lib/bankDetails';
 import { useSaved } from '@/store/saved';
-import { useRewards } from '@/store/rewards';
+import { rewardsApi, profileApi, errorMessage } from '@/lib/api';
 
 const PRIVACY_URL = 'https://pgfy.in/privacyPolicy.html';
 const TERMS_URL = 'https://pgfy.in/termsCondtions.html';
@@ -28,7 +28,7 @@ export default function Profile() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const saved = useSaved();
-  const { lockedCount, revealed } = useRewards();
+  const [rewardCounts, setRewardCounts] = useState({ locked: 0, scratched: 0 });
   const auth = useAuth();
   const { user, isGuest } = auth;
   const bankComplete = isBankDetailsComplete(user?.bank_details);
@@ -40,6 +40,20 @@ export default function Profile() {
   const hasOccupationDetails = !!occupation;
   const profileVerified = kycVerified && hasOccupationDetails;
   const [push, setPush] = useState(true);
+  const [deleteSheetOpen, setDeleteSheetOpen] = useState(false);
+  const [deleteReason, setDeleteReason] = useState('');
+  const [deletingAccount, setDeletingAccount] = useState(false);
+
+  useEffect(() => {
+    if (isGuest) return;
+    rewardsApi.listRewards({ limit: 100 })
+      .then((page) => {
+        const locked = page.data.filter((r) => r.status === 'LOCKED').length;
+        const scratched = page.data.filter((r) => r.status === 'SCRATCHED').length;
+        setRewardCounts({ locked, scratched });
+      })
+      .catch(() => {});
+  }, [isGuest]);
 
   /** "Complete your KYC" — KYC first, then occupation details, whichever is missing. */
   const completeVerification = () => {
@@ -52,31 +66,47 @@ export default function Profile() {
     }
   };
 
+  // Shared by a plain logout and the post-delete-request logout — clears the whole
+  // navigation stack (not just `replace`s the current screen) so nothing in the authenticated
+  // app is left behind in history for the back button/gesture to walk into.
+  const performLogout = async () => {
+    haptic.warning();
+    // signOut invalidates the token server-side and clears local session state.
+    await auth.signOut();
+    router.dismissAll();
+    router.replace('/(auth)/login');
+  };
+
   const logout = () => {
     alert('Log out?', 'You will need to sign in again to manage your bookings.', [
       { text: 'Cancel', style: 'cancel' },
-      {
-        text: 'Log out',
-        style: 'destructive',
-        onPress: async () => {
-          haptic.warning();
-          // signOut invalidates the token server-side and clears local session state.
-          await auth.signOut();
-          router.replace('/(auth)/login');
-        },
-      },
+      { text: 'Log out', style: 'destructive', onPress: performLogout },
     ]);
   };
 
   const deleteAccount = () => {
-    Alert.alert(
-      'Delete account?',
-      'This will permanently remove your PGfy account and booking history. This action cannot be undone.',
-      [
-        { text: 'Cancel', style: 'cancel' },
-        { text: 'Delete', style: 'destructive', onPress: () => haptic.error() },
-      ],
-    );
+    setDeleteReason('');
+    setDeleteSheetOpen(true);
+  };
+
+  const submitDeleteRequest = async () => {
+    if (!deleteReason.trim() || deletingAccount) return;
+    setDeletingAccount(true);
+    try {
+      await profileApi.requestAccountDeletion(deleteReason.trim());
+      setDeleteSheetOpen(false);
+      haptic.success();
+      alert(
+        "We've received your request",
+        "We'll verify your pending bookings and dues, then delete your data. You'll be logged out now.",
+        [{ text: 'OK', onPress: performLogout }],
+      );
+    } catch (e) {
+      haptic.error();
+      alert("Couldn't submit your request", errorMessage(e));
+    } finally {
+      setDeletingAccount(false);
+    }
   };
 
   if (isGuest) {
@@ -97,6 +127,7 @@ export default function Profile() {
   }
 
   return (
+    <>
     <ScrollView contentContainerStyle={{ paddingTop: insets.top + spacing.sm, paddingHorizontal: spacing.base, paddingBottom: insets.bottom + spacing['3xl'] }} showsVerticalScrollIndicator={false}>
       <Text variant="h1" style={{ marginBottom: spacing.base }}>Profile</Text>
 
@@ -180,16 +211,16 @@ export default function Profile() {
           iconBg={palette.coralTint}
           title="Rewards"
           subtitle={
-            lockedCount > 0
-              ? `${lockedCount} scratch card${lockedCount === 1 ? '' : 's'} to reveal`
-              : revealed.length > 0
-                ? `${revealed.length} partner coupon${revealed.length === 1 ? '' : 's'}`
+            rewardCounts.locked > 0
+              ? `${rewardCounts.locked} scratch card${rewardCounts.locked === 1 ? '' : 's'} to reveal`
+              : rewardCounts.scratched > 0
+                ? `${rewardCounts.scratched} partner coupon${rewardCounts.scratched === 1 ? '' : 's'}`
                 : 'Earn coupons after booking'
           }
           right={
-            lockedCount > 0 ? (
+            rewardCounts.locked > 0 ? (
               <View style={{ backgroundColor: palette.coral, minWidth: 22, height: 22, borderRadius: 11, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 6 }}>
-                <Text variant="caption" weight="700" color={palette.white}>{lockedCount}</Text>
+                <Text variant="caption" weight="700" color={palette.white}>{rewardCounts.locked}</Text>
               </View>
             ) : undefined
           }
@@ -254,6 +285,34 @@ export default function Profile() {
         </Text>
       </PressableScale>
     </ScrollView>
+
+    <Sheet visible={deleteSheetOpen} onClose={() => (deletingAccount ? null : setDeleteSheetOpen(false))} title="Delete account">
+      <View style={{ gap: spacing.base }}>
+        <Text variant="bodySm" color={palette.inkSecondary}>
+          This submits a request to delete your PGfy account. We&apos;ll first verify you have no pending bookings or dues before removing your data — this doesn&apos;t happen instantly.
+        </Text>
+        <Input
+          label="Reason for leaving"
+          placeholder="e.g. Moving abroad, no longer need this service"
+          multiline
+          maxLength={300}
+          value={deleteReason}
+          onChangeText={setDeleteReason}
+          style={{ height: 90 }}
+        />
+        <Button
+          label="Submit delete request"
+          variant="danger"
+          full
+          size="lg"
+          disabled={!deleteReason.trim()}
+          loading={deletingAccount}
+          onPress={submitDeleteRequest}
+        />
+        <Button label="Cancel" variant="ghost" full disabled={deletingAccount} onPress={() => setDeleteSheetOpen(false)} />
+      </View>
+    </Sheet>
+    </>
   );
 }
 

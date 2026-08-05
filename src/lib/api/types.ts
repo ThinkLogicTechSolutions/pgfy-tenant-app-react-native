@@ -55,6 +55,23 @@ export interface BankDetails {
   account_holder_name?: string | null;
 }
 
+// ---------------------------------------------------------------------------
+// Roommate preferences (`PATCH /profile/tenant-profile/:id`) — optional, consent-gated
+// lifestyle prefs that drive the room match score shown during room/bed selection.
+// ---------------------------------------------------------------------------
+
+export type SleepScheduleApi = 'EARLY_BIRD' | 'NIGHT_OWL' | (string & {});
+export type DietPreferenceApi = 'VEGETARIAN' | 'VEGAN' | 'NON_VEGETARIAN' | (string & {});
+
+export interface RoommatePreferences {
+  sleep_schedule: SleepScheduleApi | null;
+  diet_preference: DietPreferenceApi | null;
+  smoking_pref: boolean | null;
+  alcohol_pref: boolean | null;
+  about_me: string | null;
+  show_preferences_to_roommates: boolean;
+}
+
 /** The `user` object returned by `/authenticate` and the `/profile/tenant-profile` service. */
 export interface ApiProfile {
   id: number;
@@ -69,7 +86,7 @@ export interface ApiProfile {
   personal_details: PersonalDetails | null;
   occupation_details: OccupationDetails | null;
   kyc_documents: KycDocuments | null;
-  roommate_preferences: unknown | null;
+  roommate_preferences: RoommatePreferences | null;
   bank_details: BankDetails | null;
   status: ProfileStatus;
   push_notification_enabled: boolean;
@@ -316,6 +333,13 @@ export interface ApiProperty {
   available_beds: number;
   reserved_beds: number;
   revenue_mtd?: number;
+  rating_count?: number;
+  avg_cleanliness_rating?: number | null;
+  avg_food_rating?: number | null;
+  avg_safety_rating?: number | null;
+  avg_staff_rating?: number | null;
+  avg_price_rating?: number | null;
+  avg_overall_rating?: number | null;
   created_at: string;
   updated_at: string;
 }
@@ -429,15 +453,17 @@ export interface UpdateRatingInput {
 }
 
 /** A property's aggregate rating (`GET /tenant/properties/:id`'s `rating` field). */
+/** Aggregate rating across all tenants. Every score is nullable: a category nobody has rated
+ * yet comes back `null` (not 0), and `overall` is null until there's at least one rating. */
 export interface ApiPropertyRatingSummary {
-  overall: number;
+  overall: number | null;
   count: number;
   categories: {
-    cleanliness: number;
-    food: number;
-    safety: number;
-    staff: number;
-    price: number;
+    cleanliness: number | null;
+    food: number | null;
+    safety: number | null;
+    staff: number | null;
+    price: number | null;
   };
 }
 
@@ -523,6 +549,17 @@ export interface ApiRoomBed {
   status: ApiBedStatus;
 }
 
+/** One current occupant's lifestyle prefs, as surfaced on a room in the availability
+ * response — a room can have more than one occupant, so this is a per-tenant entry, not an
+ * aggregate. Only occupants who've filled in prefs (and consented to share them) appear. */
+export interface ApiRoomRoommatePreference {
+  tenant_id: number;
+  sleep_schedule: SleepScheduleApi | null;
+  diet_preference: DietPreferenceApi | null;
+  smoking_pref: boolean | null;
+  alcohol_pref: boolean | null;
+}
+
 export interface ApiPropertyRoom {
   id: number;
   room_number: string;
@@ -532,9 +569,10 @@ export interface ApiPropertyRoom {
   filled: number;
   available: number;
   price: number;
-  /** 0–100 roommate compatibility score, computed server-side. */
+  /** 0–100 roommate compatibility score, computed server-side against the tenant's own
+   * saved `roommate_preferences` — 0 (or absent signal) when the tenant hasn't set any. */
   match_score: number;
-  roommate_preferences: unknown | null;
+  roommate_preferences: ApiRoomRoommatePreference[] | null;
   beds: ApiRoomBed[];
 }
 
@@ -572,6 +610,12 @@ export interface TenantFavoriteProperty {
   status: FavoriteStatus;
   created_at: string;
   updated_at: string;
+}
+
+/** `GET /tenant-management/tenant-favorite-property?$eager[]=property` list item — the
+ * favorite record eager-loaded with the full property row. */
+export interface ApiFavoritePropertyItem extends TenantFavoriteProperty {
+  property: ApiProperty;
 }
 
 // ===========================================================================
@@ -1047,6 +1091,8 @@ export interface ApiStayProperty {
   property_type: string;
   /** `FLAT`/`HOMESTAY` book the whole unit — no room/bed/floor tier applies. */
   property_category?: PropertyCategory | null;
+  /** [longitude, latitude] — drives the "View directions" map link. */
+  coordinates?: [number, number] | null;
 }
 
 export interface ApiStayBookingSummary {
@@ -1255,18 +1301,9 @@ export interface CreateMaintenanceInput {
   bed_id: number;
 }
 
-export interface MaintenanceSummary {
-  open: number;
-  in_progress: number;
-  resolved: number;
-}
-
-/** `GET /maintenance-management/maintenance` wraps the paginated list in a `listing` key
- * alongside a tenant-wide `summary` (counts aren't scoped to the current page). */
-export interface ApiMaintenanceListResponse {
-  summary: MaintenanceSummary;
-  listing: Paginated<ApiMaintenanceTicket>;
-}
+/** `GET /maintenance-management/maintenance` — a plain paginated list, same shape as every
+ * other Feathers list endpoint (`{total, skip, limit, data}`), not wrapped in a `listing` key. */
+export type ApiMaintenanceListResponse = Paginated<ApiMaintenanceTicket>;
 
 // ---------------------------------------------------------------------------
 // Visitor log (`GET/POST/PATCH/DELETE /tenant-management/visitor-log`)
@@ -1781,3 +1818,93 @@ export interface ApiReferralSummary {
   stats: ApiReferralStats;
   referrals: ApiReferralItem[];
 }
+
+// ---------------------------------------------------------------------------
+// Brand rewards (GET /tenant/rewards, GET /tenant/rewards/:id, PATCH /tenant/rewards/:id)
+// A reward is a scratch card issued to the tenant (e.g. on check-in) for a partner-vendor
+// offer; scratching it draws a coupon, which is then redeemed with that partner directly.
+// ---------------------------------------------------------------------------
+
+/** LOCKED → not yet scratched; SCRATCHED → coupon drawn; EXPIRED → lapsed unscratched. */
+export type ScratchCardStatusApi = 'LOCKED' | 'SCRATCHED' | 'EXPIRED' | (string & {});
+/** The drawn coupon's own lifecycle, independent of the scratch card's status above. */
+export type RewardCouponStatusApi = 'AVAILABLE' | 'ASSIGNED' | 'REDEEMED' | 'EXPIRED' | (string & {});
+export type OfferCouponTypeApi = 'UNIQUE' | 'COMMON' | (string & {});
+export type RewardIssueSource = 'CHECK_IN' | (string & {});
+
+/** Media reference shape used by rewards (vendor logos, offer banners) — lighter than
+ * `ProfileAsset`/`MasterMediaAsset`: no `type`/`key` fields. */
+export interface RewardAsset {
+  link: string;
+  metadata?: { size?: number } | null;
+  thumbnail?: string | null;
+}
+
+export interface ApiRewardVendor {
+  id: number;
+  name: string;
+  logo: RewardAsset | null;
+  category: string;
+  website: string;
+  t_and_c: string;
+  status: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface ApiRewardOffer {
+  id: number;
+  vendor_id: number;
+  title: string;
+  description: string;
+  banner: RewardAsset | null;
+  offer_url: string;
+  expiry_date: string;
+  coupon_type: OfferCouponTypeApi;
+  common_code: string | null;
+  redemption_instructions: string;
+  t_and_c: string;
+  status: string;
+  activated_on: string | null;
+  expired_on: string | null;
+  created_at: string;
+  updated_at: string;
+  vendor: ApiRewardVendor;
+}
+
+/** Only present once the reward has been scratched (drawn a real coupon). */
+export interface ApiRewardCoupon {
+  id: number;
+  code: string;
+  status: RewardCouponStatusApi;
+  redeemed_on: string | null;
+}
+
+/** `GET /tenant/rewards` list item. */
+export interface ApiReward {
+  id: number;
+  tenant_id: number;
+  booking_id: number;
+  offer_id: number;
+  issue_source: RewardIssueSource;
+  invoice_id: number | null;
+  status: ScratchCardStatusApi;
+  scratched_at: string | null;
+  expiry_date: string;
+  created_at: string;
+  updated_at: string;
+  offer: ApiRewardOffer;
+  is_expired: boolean;
+  coupon: ApiRewardCoupon | null;
+}
+
+/** `GET /tenant/rewards/:id` — the list item shape plus denormalized convenience fields
+ * (duplicated from `offer`/`offer.vendor`) for a single-reward detail view. */
+export interface ApiRewardDetail extends ApiReward {
+  redemption_instructions: string;
+  t_and_c: string;
+  offer_url: string;
+  vendor: ApiRewardVendor;
+}
+
+export type RewardAction = 'scratch' | 'redeem';

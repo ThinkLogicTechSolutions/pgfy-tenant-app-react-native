@@ -12,7 +12,7 @@
       "supportsTablet": true,
       "bundleIdentifier": "in.pgfy.tenant",
       "googleServicesFile": "./GoogleService-Info.plist",
-      "associatedDomains": ["applinks:share.pgfy.in"]
+      "associatedDomains": ["applinks:share.pgfy.in","applinks:share-dev.pgfy.in" ]
     },
     "android": {
       "package": "in.pgfy.tenant",
@@ -41,6 +41,16 @@
             {
               "scheme": "https",
               "host": "share.pgfy.in",
+              "pathPrefix": "/referral"
+            },
+            {
+              "scheme": "https",
+              "host": "share-dev.pgfy.in",
+              "pathPrefix": "/property"
+            },
+            {
+              "scheme": "https",
+              "host": "share-dev.pgfy.in",
               "pathPrefix": "/referral"
             }
           ],

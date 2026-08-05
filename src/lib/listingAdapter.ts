@@ -471,13 +471,15 @@ export function propertyDetailsToListing(p: ApiPropertyDetails): Listing {
     tags: [],
     nearby: [],
     reviews: p.reviews.map(toReview),
+    // A category nobody has rated yet comes back null — drop it rather than charting it as
+    // 0.0, which would read as a terrible score instead of "no data".
     ratingBreakdown: p.rating ? [
       { label: 'Cleanliness', value: p.rating.categories.cleanliness },
       { label: 'Food', value: p.rating.categories.food },
       { label: 'Safety', value: p.rating.categories.safety },
       { label: 'Staff', value: p.rating.categories.staff },
       { label: 'Price', value: p.rating.categories.price },
-    ] : [],
+    ].filter((c): c is { label: string; value: number } => c.value != null) : [],
     noticePeriodDays: p.notice_period_days,
     lockInMonths: p.lock_in_period_months,
     addedOn: '',
@@ -522,8 +524,9 @@ export const BED_STATUS_MAP: Record<string, Bed['status']> = {
 
 /** Maps the real floor/room/bed availability response onto the mock `Floor[]` shape the
  * room-selection screen renders. Fields the API doesn't return (deposit, amenities, photo,
- * roommate profile) fall back to neutral defaults — `match_score` is surfaced as the
- * compatibility score directly instead of being recomputed from a (nonexistent) profile. */
+ * aggregate roommate profile) fall back to neutral defaults — `match_score` and the
+ * per-occupant `roommate_preferences` are surfaced as-is instead of being recomputed
+ * client-side from a (nonexistent for real properties) profile. */
 export function apiRoomAvailabilityToFloors(data: ApiRoomBedAvailability, gender: Gender): Floor[] {
   return data.floors.map((floor) => ({
     id: String(floor.id),
@@ -546,6 +549,14 @@ export function apiRoomAvailabilityToFloors(data: ApiRoomBedAvailability, gender
         amenities: room.is_ac ? ['AC'] : [],
         beds,
         occupied: room.filled,
+        matchScore: room.match_score,
+        roommatePrefs: room.roommate_preferences?.map((p) => ({
+          tenantId: p.tenant_id,
+          sleepSchedule: p.sleep_schedule,
+          dietPreference: p.diet_preference,
+          smokingPref: p.smoking_pref,
+          alcoholPref: p.alcohol_pref,
+        })),
       };
     }),
   }));

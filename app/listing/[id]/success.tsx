@@ -21,7 +21,6 @@ import {
 import { getListing, ACTIVE_BOOKING } from '@/data';
 import { inr } from '@/lib/format';
 import { releaseHold } from '@/store/hold';
-import { grantScratchCard } from '@/store/rewards';
 
 const HERO_BLOCK_HEIGHT = 248;
 const TICK_SIZE = 112;
@@ -45,8 +44,7 @@ export default function Success() {
 
   useEffect(() => {
     releaseHold();
-    grantScratchCard(ACTIVE_BOOKING.ref, listing?.name ?? 'Your property');
-  }, [listing?.name]);
+  }, []);
 
   useEffect(() => {
     messageOpacity.value = withDelay(520, withTiming(1, { duration: 420 }));

@@ -19,7 +19,8 @@ import * as Sharing from 'expo-sharing';
 import { palette, spacing, radius } from '@/theme';
 import { Text, IconButton, Button, Divider, EmptyState } from '@/components/ui';
 import { bookingApi, stayApi, errorMessage, type BookingStatusApi, type ApiMyStayResponse } from '@/lib/api';
-import { bookingStatusLabel, buildCheckInPassPayload } from '@/lib/bookingDisplay';
+import { bookingStatusLabel, buildCheckInPassPayload, isUnitBooking } from '@/lib/bookingDisplay';
+import { isUnitPropertyType } from '@/lib/listingAdapter';
 import { formatDate } from '@/lib/format';
 import { alert } from '@/lib/alertDialog';
 
@@ -30,6 +31,8 @@ interface PassView {
   checkInDate: string;
   propertyName: string;
   propertyLocality: string;
+  /** Flat/Homestay bookings have no room/bed tier — hide that row entirely. */
+  isUnit: boolean;
   roomNumber: string;
   bedNumber: string;
   checkInOtp: string | null;
@@ -49,6 +52,7 @@ function passViewFromMyStay(data: ApiMyStayResponse): PassView {
     checkInDate: b.check_in_date,
     propertyName: b.property.name,
     propertyLocality: b.property.locality,
+    isUnit: isUnitPropertyType(b.property),
     roomNumber: b.room.room_number,
     bedNumber: b.bed.bed_number,
     checkInOtp: b.check_in_otp,
@@ -109,6 +113,7 @@ export default function Pass() {
           checkInDate: b.check_in_date,
           propertyName: b.property.name,
           propertyLocality: b.property.locality,
+          isUnit: isUnitBooking(b) || isUnitPropertyType(b.property),
           roomNumber: b.room_number,
           bedNumber: b.bed_number,
           checkInOtp: b.check_in_otp,
@@ -236,7 +241,7 @@ export default function Pass() {
 
             <View style={{ flexDirection: 'row', width: '100%', marginTop: spacing.lg }}>
               <Detail label="Booking ref" value={b.code} />
-              <Detail label="Room / Bed" value={`${b.roomNumber} · ${b.bedNumber}`} />
+              {b.isUnit ? null : <Detail label="Room / Bed" value={`${b.roomNumber} · ${b.bedNumber}`} />}
             </View>
             <Divider style={{ marginVertical: spacing.md, width: '100%' }} />
             <View style={{ flexDirection: 'row', width: '100%' }}>

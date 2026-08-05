@@ -21,7 +21,6 @@ import { propertyDetailsToListing, formatLayoutFallback, isUnitPropertyType } fr
 import { getCachedPropertyDetails, cachePropertyDetails } from '@/store/propertyDetailsCache';
 import { inr, formatDate, titleCaseFromSnake } from '@/lib/format';
 import { platformFeeFromMasterConfig, type CheckoutIntent } from '@/lib/billing';
-import { useProfile } from '@/store/profile';
 import { useAuth } from '@/context/AuthContext';
 import { useMasterData } from '@/context/MasterDataContext';
 import { LOGIN_ROUTE } from '@/lib/guestGuard';
@@ -42,7 +41,7 @@ const EXTEND_ACTION = { icon: 'time-outline', label: 'Extend Booking', route: 'e
 export default function Stay() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
-  const { isGuest } = useAuth();
+  const { isGuest, user } = useAuth();
 
   const [beds, setBeds] = useState<ApiBedStay[] | null>(null);
   const [selectedBedId, setSelectedBedId] = useState<number | null>(null);
@@ -53,7 +52,6 @@ export default function Stay() {
   const [switcherOpen, setSwitcherOpen] = useState(false);
   const [foodMenuOpen, setFoodMenuOpen] = useState(false);
   const [propertyListing, setPropertyListing] = useState<Listing | null>(null);
-  const profile = useProfile();
   const { config: masterConfig } = useMasterData();
   const { width } = useWindowDimensions();
   // Floor the tile width so 3 columns + 2 gaps never overflow & wrap unevenly.
@@ -218,7 +216,7 @@ export default function Stay() {
       : tileW;
 
   const shareProperty = async () => {
-    const link = `https://share.pgfy.in/property/${b.property.id}`;
+    const link = `https://share-dev.pgfy.in/property/${b.property.id}`;
     try {
       await Share.share({
         message: `Check out ${b.property.name} on PGfy in ${b.property.locality} — find your next stay here: ${link}`,
@@ -229,13 +227,17 @@ export default function Stay() {
   };
 
   const openDirections = async () => {
-    if (!propertyListing || (!propertyListing.lat && !propertyListing.lng)) {
+    // [longitude, latitude] — property-details' own `lat`/`lng` aren't populated by that
+    // endpoint, but `coordinates` rides along on every tenant-stay response (beds list, my-stay).
+    const coordinates = b.property.coordinates;
+    if (!coordinates) {
       Alert.alert('Directions unavailable', 'This property has no location on file yet.');
       return;
     }
+    const [lng, lat] = coordinates;
     const label = encodeURIComponent(`${b.property.name}, ${b.property.locality}, ${b.property.city}`);
-    const appleUrl = `http://maps.apple.com/?ll=${propertyListing.lat},${propertyListing.lng}&q=${label}`;
-    const googleUrl = `https://www.google.com/maps/search/?api=1&query=${propertyListing.lat},${propertyListing.lng}`;
+    const appleUrl = `http://maps.apple.com/?ll=${lat},${lng}&q=${label}`;
+    const googleUrl = `https://www.google.com/maps/search/?api=1&query=${lat},${lng}`;
     const url = Platform.OS === 'ios' ? appleUrl : googleUrl;
     try {
       await Linking.openURL(url);
@@ -355,8 +357,8 @@ export default function Stay() {
             </Card>
           ) : null}
 
-          {/* Roommate preferences — prompt to complete if skipped after booking */}
-          {!profile.preferencesFilled ? (
+          {/* Roommate preferences — prompt to complete until saved to the real profile */}
+          {!user?.roommate_preferences ? (
             <PressableScale onPress={() => router.push('/roommate-preferences')} scaleTo={0.99} style={{ flexDirection: 'row', alignItems: 'center', gap: spacing.md, backgroundColor: palette.surface, borderRadius: radius.lg, borderWidth: 1, borderColor: palette.border, padding: spacing.base }}>
               <View style={{ width: 44, height: 44, borderRadius: radius.md, backgroundColor: palette.navyTint, alignItems: 'center', justifyContent: 'center' }}>
                 <Ionicons name="people-circle-outline" size={22} color={palette.navy} />
@@ -476,10 +478,14 @@ export default function Stay() {
               async-fetched state that lags behind switching stays, so trusting it caused the
               rating shown to stay stuck on the previously selected property. Always self-fetch,
               scoped by the `key` remount below, so it's authoritative for whichever property is
-              actually selected. */}
+              actually selected. The key also includes the signed-in tenant's id, not just the
+              property's — the same physical bed/property is reused across different tenants
+              over time, so property/bed id alone doesn't change across a logout → different-
+              tenant-login, and the component would otherwise keep showing the previous tenant's
+              rating until something unrelated happened to re-render it. */}
           <View style={{ marginBottom: spacing.md }}>
             <PropertyRatingSection
-              key={b.property.id}
+              key={`${user?.id ?? 'guest'}-${b.property.id}`}
               propertyId={b.property.id}
               propertyName={b.property.name}
             />

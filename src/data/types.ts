@@ -108,6 +108,16 @@ export interface RoommateProfile {
   diet: 'veg' | 'vegan' | 'nonveg';
 }
 
+/** One current occupant's lifestyle prefs, as reported by the real room/bed availability API
+ *  (a room can have more than one occupant, so this is per-tenant, not aggregated). */
+export interface RoomRoommatePreference {
+  tenantId: number;
+  sleepSchedule: string | null;
+  dietPreference: string | null;
+  smokingPref: boolean | null;
+  alcoholPref: boolean | null;
+}
+
 export interface Room {
   id: string;
   number: string;
@@ -120,6 +130,12 @@ export interface Room {
   beds: Bed[];
   occupied: number;
   roommateProfile?: RoommateProfile;
+  /** Server-computed 0–100 compatibility score (real API rooms only) — takes priority over
+   * client-side `computeCompatibility` scoring when present. */
+  matchScore?: number;
+  /** Current occupants' individual preferences (real API rooms only), for the compatibility
+   * breakdown sheet. */
+  roommatePrefs?: RoomRoommatePreference[];
 }
 
 export interface Floor {

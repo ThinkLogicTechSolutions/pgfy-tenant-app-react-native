@@ -73,8 +73,8 @@ export function PropertySupport() {
     if (!isRefresh) setError(null);
     maintenanceApi.listMaintenance({ limit: PAGE_SIZE, skip })
       .then((page) => {
-        setTickets((prev) => (skip === 0 ? page.listing.data : [...prev, ...page.listing.data]));
-        setTotal(page.listing.total);
+        setTickets((prev) => (skip === 0 ? page.data : [...prev, ...page.data]));
+        setTotal(page.total);
       })
       .catch((e) => setError(errorMessage(e)))
       .finally(() => setBusy(false));

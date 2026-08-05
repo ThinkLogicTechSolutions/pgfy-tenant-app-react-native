@@ -2,6 +2,17 @@ import { formatDate } from '@/lib/format';
 
 export type DateOption = { iso: string; label: string };
 
+/** `YYYY-MM-DD` from a `Date`'s own local calendar fields — never `toISOString().slice(0, 10)`,
+ * which reads the UTC calendar date instead and is off by one day whenever the device's local
+ * offset pushes local midnight across a UTC day boundary (e.g. anywhere east of UTC rolls
+ * back to yesterday; anywhere west rolls forward to tomorrow). */
+export function toLocalIso(d: Date): string {
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${y}-${m}-${day}`;
+}
+
 /** Upcoming calendar days from a start date (default: the real device date — booking dates
  * are sent to a real API, so they must track actual today, not the app's mock `NOW`). */
 export function dateOptions(count: number, startFrom?: string): DateOption[] {
@@ -11,7 +22,7 @@ export function dateOptions(count: number, startFrom?: string): DateOption[] {
   for (let i = 0; i < count; i++) {
     const d = new Date(base);
     d.setDate(d.getDate() + i);
-    const iso = d.toISOString().slice(0, 10);
+    const iso = toLocalIso(d);
     out.push({ iso, label: formatDate(iso) });
   }
   return out;

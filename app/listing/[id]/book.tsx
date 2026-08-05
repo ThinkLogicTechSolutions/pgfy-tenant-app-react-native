@@ -5,7 +5,7 @@ import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { palette, spacing, radius } from '@/theme';
-import { Text, ScreenHeader, Card, Button, Input, Divider, Badge, Sheet, PressableScale } from '@/components/ui';
+import { Text, ScreenHeader, Card, Button, Input, Divider, Badge, Sheet, PressableScale, Skeleton } from '@/components/ui';
 import { StayBookingFields, type StayBookingValues } from '@/components/search';
 import { getListing } from '@/data';
 import { computeCheckout, platformFeeFromMasterConfig, isCouponUsable, couponDiscountAmount, referralDiscountAmount, type CheckoutIntent, type AppliedCoupon } from '@/lib/billing';
@@ -13,6 +13,7 @@ import { computeMonthlyProration } from '@/lib/proration';
 import type { BookingMode } from '@/data/types';
 import { inr } from '@/lib/format';
 import { defaultCheckOut, clampCheckInToFuture } from '@/lib/dates';
+import { useCheckInFreshness } from '@/lib/useCheckInFreshness';
 import { haptic } from '@/lib/haptics';
 import { useAuth } from '@/context/AuthContext';
 import { useMasterData } from '@/context/MasterDataContext';
@@ -93,6 +94,40 @@ export default function BookConfig() {
     return () => { active = false; };
   }, [apiId]);
   const billingMode: BookingMode = bookingType === 'hourly' ? 'hourly' : bookingType === 'daily' ? 'daily' : 'monthly';
+
+  // Monthly bookings starting mid-cycle prorate against the property's own DAILY price for
+  // this occupancy when it has one configured — fetched fresh (scoped to DAILY) since the
+  // listing above was fetched scoped to MONTHLY and doesn't carry DAILY tiers.
+  const [dailyRateOverride, setDailyRateOverride] = useState<number | null>(null);
+  // Tracks the DAILY-pricing lookup below so the bill summary can hold off rendering numbers
+  // that are about to change — otherwise the tenant briefly sees a `monthlyRent/daysInMonth`
+  // estimate that then jumps to the property's real configured daily rate a moment later.
+  const [dailyRateLoading, setDailyRateLoading] = useState(false);
+  useEffect(() => {
+    if (!apiId || billingMode !== 'monthly' || !listing?.bookingConfig.dailyEnabled) {
+      setDailyRateOverride(null);
+      setDailyRateLoading(false);
+      return;
+    }
+    let active = true;
+    setDailyRateLoading(true);
+    propertyApi.getPropertyDetails(apiId, { bookingMode: 'DAILY' })
+      .then((data) => {
+        if (!active) return;
+        const tier = isUnitBooking
+          ? data.pricing.find((t) => t.rent != null)
+          : data.pricing.find((t) => t.layout === layout);
+        const rate = isUnitBooking
+          ? tier?.rent
+          : isAc === 'true'
+            ? (withFood === 'true' ? tier?.ac_with_food : tier?.ac_no_food)
+            : (withFood === 'true' ? tier?.non_ac_with_food : tier?.non_ac_no_food);
+        setDailyRateOverride(rate ?? null);
+      })
+      .catch(() => { if (active) setDailyRateOverride(null); })
+      .finally(() => { if (active) setDailyRateLoading(false); });
+    return () => { active = false; };
+  }, [apiId, billingMode, listing?.bookingConfig.dailyEnabled, isUnitBooking, layout, isAc, withFood]);
   const [stayDates, setStayDates] = useState<StayBookingValues>(() => {
     const nextCheckIn = clampCheckInToFuture(checkIn);
     return {
@@ -102,12 +137,19 @@ export default function BookConfig() {
       hours: hours ? Number(hours) : 4,
     };
   });
+  // See `useCheckInFreshness` — this screen can sit open (or merely backgrounded) for a
+  // while before the tenant actually pays, so re-clamp forward on focus and on app resume
+  // rather than trusting the one-time mount computation above.
+  useCheckInFreshness(setStayDates);
 
   // Mid-month check-in (day 8+) only charges from check-in through month-end — an estimate
   // of the real server-side proration (`computeBookingBill.ts`), shown so "Payable now"
   // doesn't overstate the actual first-month charge.
-  const proration = billingMode === 'monthly' ? computeMonthlyProration(monthlyRent, stayDates.checkIn) : null;
+  const proration = billingMode === 'monthly' ? computeMonthlyProration(monthlyRent, stayDates.checkIn, dailyRateOverride) : null;
   const firstMonthRent = proration ? proration.moveInRent : monthlyRent;
+  // Only a mid-month check-in's rent actually depends on `dailyRateOverride` — a day-1–7
+  // check-in charges the full month regardless, so there's nothing to wait on in that case.
+  const billPending = !!proration?.isProrated && dailyRateLoading;
 
   const { isGuest, user } = useAuth();
   const { config: masterConfig } = useMasterData();
@@ -130,7 +172,7 @@ export default function BookConfig() {
   const intent: CheckoutIntent = {
     kind: billingMode === 'hourly' ? 'booking-hourly' : billingMode === 'daily' ? 'booking-daily' : 'booking-monthly',
     title: `${listing?.name ?? 'Booking'} — ${modeLabel} booking`,
-    subtitle: isUnitBooking ? `Whole property · ${guestList.length} guest${guestList.length > 1 ? 's' : ''}` : `${room} · Bed ${bed} · ${sharing}`,
+    subtitle: isUnitBooking ? `${guestList.length} guest${guestList.length > 1 ? 's' : ''}` : `${room} · Bed ${bed} · ${sharing}`,
     billingMode,
     baseAmount: firstMonthRent,
     // GST classification uses the full monthly rate (matches the backend, which resolves the
@@ -244,7 +286,7 @@ export default function BookConfig() {
           <Row k="Property" v={listing?.name ?? '—'} />
           {isUnitBooking ? (
             <>
-              <Row k="Booking" v="Whole property" />
+              {/* <Row k="Booking" v="Whole property" /> */}
               <View>
                 <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingVertical: spacing.sm }}>
                   <Text variant="bodySm" color={palette.inkSecondary}>Guests</Text>
@@ -276,8 +318,10 @@ export default function BookConfig() {
         </Card>
 
         {/* Promo — real coupons (billing_api.md) are property-scoped, so there's nothing to
-            offer on a mock listing. */}
-        {apiId ? (
+            offer on a mock listing, and no card at all once we know there's nothing on offer
+            for this property. A referral discount (if any) still applies and shows in the
+            payment summary below regardless of whether this card renders. */}
+        {apiId && coupons.length > 0 ? (
           <Card>
             <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: spacing.sm }}>
               <Text variant="overline" color={palette.inkTertiary}>OFFERS</Text>
@@ -346,18 +390,35 @@ export default function BookConfig() {
         {/* Bill */}
         <Card>
           <Text variant="overline" color={palette.inkTertiary} style={{ marginBottom: spacing.sm }}>BILL SUMMARY</Text>
-          {proration?.isProrated ? (
-            <Text variant="caption" color={palette.inkTertiary} style={{ marginBottom: spacing.sm }}>
-              Charged only for {proration.proratedDays} days this month (check-in to month-end) — full {inr(monthlyRent)}/mo from next month.
-            </Text>
-          ) : null}
-          <Row k={rentLabel} v={inr(quote.base)} />
-          {quote.deposit > 0 ? <Row k="Security deposit (refundable)" v={inr(quote.deposit)} /> : null}
-          {quote.platformFee > 0 ? <Row k="Platform fee" v={inr(quote.platformFee)} /> : null}
-          <Row k={quote.gstRate === 0 ? 'GST (exempt)' : `GST (${quote.gstRate}%)`} v={inr(quote.gst)} />
-          {quote.couponDiscount > 0 ? <Row k="Discount" v={`− ${inr(quote.couponDiscount)}`} accent={palette.success} /> : null}
-          <Divider style={{ marginVertical: spacing.sm }} />
-          <Row k="Net payable now" v={inr(netPayable)} bold last />
+          {billPending ? (
+            <View style={{ gap: spacing.md, paddingVertical: spacing.xs }}>
+              <Skeleton width="100%" height={16} />
+              <Skeleton width="70%" height={16} />
+              <Skeleton width="55%" height={16} />
+              <Skeleton width="80%" height={20} />
+            </View>
+          ) : (
+            <>
+              {proration?.isProrated ? (
+                <Text variant="caption" color={palette.inkTertiary} style={{ marginBottom: spacing.sm }}>
+                  Charged only for {proration.proratedDays} days this month (check-in to month-end) — full {inr(monthlyRent)}/mo from next month.
+                </Text>
+              ) : null}
+              <Row k={rentLabel} v={inr(quote.base)} />
+              {quote.deposit > 0 ? <Row k="Security deposit (refundable)" v={inr(quote.deposit)} /> : null}
+              {quote.platformFee > 0 ? <Row k="Platform fee" v={inr(quote.platformFee)} /> : null}
+              <Row k={quote.gstRate === 0 ? 'GST (exempt)' : `GST (${quote.gstRate}%)`} v={inr(quote.gst)} />
+              {quote.couponDiscount > 0 ? (
+                <Row
+                  k={appliedCoupon ? `Coupon discount (${quote.couponCode})` : 'Referral discount'}
+                  v={`− ${inr(quote.couponDiscount)}`}
+                  accent={palette.success}
+                />
+              ) : null}
+              <Divider style={{ marginVertical: spacing.sm }} />
+              <Row k="Net payable now" v={inr(netPayable)} bold last />
+            </>
+          )}
         </Card>
 
         {/* Confidence */}
@@ -377,9 +438,9 @@ export default function BookConfig() {
       <View style={{ position: 'absolute', bottom: 0, left: 0, right: 0, flexDirection: 'row', alignItems: 'center', gap: spacing.md, paddingHorizontal: spacing.base, paddingTop: spacing.md, paddingBottom: insets.bottom + spacing.md, backgroundColor: palette.surface, borderTopWidth: 1, borderTopColor: palette.border }}>
         <View>
           <Text variant="caption" color={palette.inkTertiary}>Payable</Text>
-          <Text variant="h3" mono color={palette.navy}>{inr(netPayable)}</Text>
+          {billPending ? <Skeleton width={90} height={22} /> : <Text variant="h3" mono color={palette.navy}>{inr(netPayable)}</Text>}
         </View>
-        <Button label="Proceed to Pay" icon="lock-closed" onPress={proceed} full size="lg" style={{ flex: 1 }} />
+        <Button label="Proceed to Pay" icon="lock-closed" onPress={proceed} full size="lg" style={{ flex: 1 }} disabled={billPending} />
       </View>
 
       <Sheet visible={kycOpen} onClose={() => setKycOpen(false)} title="Verify your profile">

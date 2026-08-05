@@ -170,7 +170,9 @@ export default function ExtendBooking() {
         <Card>
           <Text variant="overline" color={palette.inkTertiary} style={{ marginBottom: spacing.sm }}>CURRENT STAY</Text>
           <Row k="Booking" v={b.code} />
-          <Row k="Room / Bed" v={`${b.room_number} · Bed ${b.bed_number}`} />
+          {b.room_number && b.bed_number ? (
+            <Row k="Room / Bed" v={`${b.room_number} · Bed ${b.bed_number}`} />
+          ) : null}
           <Row k={isHourly ? 'Stay window' : 'Stay dates'} v={currentWindow} last />
         </Card>
 
