@@ -103,3 +103,8 @@ export async function uploadMaintenanceImage(uri: string): Promise<UploadResult>
 export async function uploadPropertyLeadImage(uri: string): Promise<UploadResult> {
   return uploadFile({ uri, fileType: UploadFileType.IMAGE, purpose: 'USER' });
 }
+
+/** A photo attached to a platform/property support query. */
+export async function uploadSupportQueryImage(uri: string): Promise<UploadResult> {
+  return uploadFile({ uri, fileType: UploadFileType.IMAGE, purpose: 'SUPPORT_QUERY' });
+}

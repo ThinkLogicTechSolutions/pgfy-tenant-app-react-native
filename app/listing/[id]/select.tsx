@@ -76,7 +76,10 @@ export default function SelectBed() {
       .catch((e) => { if (active) setFloorsError(errorMessage(e)); })
       .finally(() => { if (active) setFloorsLoading(false); });
     return () => { active = false; };
-  }, [apiId, layout, apiBookingMode, wantsAc, withFood, retryTick]);
+    // `match_score` is computed server-side against the tenant's own saved preferences, so a
+    // room fetched before the tenant filled them in (or edited them) is stuck showing a stale
+    // score until refetched — re-run whenever the saved preferences object changes.
+  }, [apiId, layout, apiBookingMode, wantsAc, withFood, retryTick, user?.roommate_preferences]);
 
   const floors = apiId ? apiFloors : mockListing?.floors ?? null;
   const headerSubtitle = apiId ? (propertyName || 'Property') : mockListing ? listingNearLandmarkTitle(mockListing) : '';

@@ -1306,6 +1306,74 @@ export interface CreateMaintenanceInput {
 export type ApiMaintenanceListResponse = Paginated<ApiMaintenanceTicket>;
 
 // ---------------------------------------------------------------------------
+// Platform support — FAQs (`GET /support/faq`) & support queries
+// (`GET/POST /support/support-query`, `GET /support/support-query/:id`)
+// ---------------------------------------------------------------------------
+
+export interface ApiFaq {
+  id: number;
+  question: string;
+  answer: string;
+  priority: number;
+  panel: SupportPanel;
+  status: MasterStatus;
+  created_at: string;
+  updated_at: string;
+}
+
+export type ApiFaqListResponse = Paginated<ApiFaq>;
+
+export type SupportQueryStatus = 'PENDING' | 'RESOLVED' | (string & {});
+
+/** Only present when the request eager-loads it (`$eager=[category]`). */
+export interface ApiSupportQueryCategoryRef {
+  id: number;
+  name: string;
+  panel: SupportPanel;
+}
+
+/** Shape of one row in `POST /upload`'s response — attach it to a query as-is. */
+export interface ApiSupportQueryAttachment {
+  link: string;
+  thumbnail?: string | null;
+  key?: string;
+  purpose?: string;
+  fileType?: number;
+  metadata?: { size?: number; duration?: number } | null;
+}
+
+export interface ApiSupportQuery {
+  id: number;
+  owner_id?: number | null;
+  tenant_id?: number | null;
+  panel: SupportPanel;
+  category_id: number;
+  category?: ApiSupportQueryCategoryRef | null;
+  description: string;
+  name?: string | null;
+  phone?: string | null;
+  email?: string | null;
+  avatar?: ApiSupportQueryAttachment | null;
+  attachments?: ApiSupportQueryAttachment[] | null;
+  resolved_by?: number | null;
+  resolved_by_name?: string | null;
+  resolved_by_email?: string | null;
+  resolved_by_phone?: string | null;
+  resolved_on?: string | null;
+  status: SupportQueryStatus;
+  created_at: string;
+  updated_at: string;
+}
+
+export type ApiSupportQueryListResponse = Paginated<ApiSupportQuery>;
+
+export interface CreateSupportQueryInput {
+  category_id: number;
+  description: string;
+  attachments?: ApiSupportQueryAttachment[];
+}
+
+// ---------------------------------------------------------------------------
 // Visitor log (`GET/POST/PATCH/DELETE /tenant-management/visitor-log`)
 // ---------------------------------------------------------------------------
 

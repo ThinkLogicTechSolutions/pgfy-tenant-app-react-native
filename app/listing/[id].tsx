@@ -293,7 +293,7 @@ export default function ListingDetail() {
   // Flat/Home stay book the whole (single, backend-seeded) unit — there's just one rent, no
   // AC/food tiers, so the tiered occupancy picker below doesn't apply at all.
   const unitRent = l.isUnitProperty ? l.pricingVariants?.[0]?.rent ?? l.priceFrom : 0;
-  const occupancyTiers: OccupancyTier[] = l.isUnitProperty
+  const occupancyTiersRaw: OccupancyTier[] = l.isUnitProperty
     ? []
     : l.pricingVariants
     ? l.pricingVariants
@@ -337,6 +337,11 @@ export default function ListingDetail() {
           options,
         };
       }).filter((tier) => tier.options.length > 0);
+
+  // Hide sold-out layouts entirely, and lead with whichever layout has the most open beds.
+  const occupancyTiers = occupancyTiersRaw
+    .filter((tier) => tier.available > 0)
+    .sort((a, b) => b.available - a.available);
 
   return (
     <View style={{ flex: 1 }}>

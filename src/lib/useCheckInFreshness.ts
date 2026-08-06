@@ -12,7 +12,7 @@
  *    (or the app simply left running) overnight while this exact screen stayed the active
  *    one the whole time, which never fires a navigation focus event at all.
  */
-import { useCallback, useEffect } from 'react';
+import { useCallback, useEffect, useRef } from 'react';
 import { AppState, type AppStateStatus } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
 import { clampCheckInToFuture, defaultCheckOut } from './dates';
@@ -23,14 +23,23 @@ interface HasCheckInOut {
 }
 
 export function useCheckInFreshness<T extends HasCheckInOut>(setValues: (updater: (prev: T) => T) => void) {
+  // `setValues` isn't guaranteed stable across renders — a caller adapting this to a nested
+  // shape (e.g. `(updater) => setDraftFilters((prev) => ({...prev, stay: updater(prev.stay)}))`)
+  // creates a fresh closure every render. Reading it via a ref keeps `reclamp` itself stable,
+  // so `useFocusEffect` below doesn't re-fire on every render — otherwise, on a focused
+  // screen, that re-fire calls `reclamp` again, which (through such an adapter) always
+  // produces a new object even when nothing actually changed, triggering a re-render that
+  // recreates the closure again: an infinite "Maximum update depth exceeded" loop.
+  const setValuesRef = useRef(setValues);
+  setValuesRef.current = setValues;
+
   const reclamp = useCallback(() => {
-    setValues((prev) => {
+    setValuesRef.current((prev) => {
       const clamped = clampCheckInToFuture(prev.checkIn);
       if (clamped === prev.checkIn) return prev;
       return { ...prev, checkIn: clamped, checkOut: prev.checkOut && clamped <= prev.checkOut ? prev.checkOut : defaultCheckOut(clamped) };
     });
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [setValues]);
+  }, []);
 
   useFocusEffect(reclamp);
 

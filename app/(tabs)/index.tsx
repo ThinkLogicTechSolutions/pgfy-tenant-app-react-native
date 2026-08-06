@@ -26,7 +26,6 @@ import { dashboardApi, continueBrowsingApi, errorMessage, type LocalityMaster, t
 import { continueBrowsingToListing } from '@/lib/listingAdapter';
 import { defaultCheckIn, defaultCheckOut } from '@/lib/dates';
 import { useCheckInFreshness } from '@/lib/useCheckInFreshness';
-import { listingSupportsBookingMode } from '@/lib/listingDisplay';
 import { inr } from '@/lib/format';
 import { haptic } from '@/lib/haptics';
 import type { BookingMode, Gender, Listing } from '@/data/types';
@@ -403,7 +402,10 @@ export default function Home() {
   // `openFilters` refreshes the date on open, but if the sheet is left open while the app
   // gets backgrounded (or just sits idle) overnight, nothing re-triggers that reset — see
   // `useCheckInFreshness`. Adapts it to `draftFilters.stay`'s nested shape.
-  useCheckInFreshness<StayBookingValues>((updater) => setDraftFilters((prev) => ({ ...prev, stay: updater(prev.stay) })));
+  useCheckInFreshness<StayBookingValues>((updater) => setDraftFilters((prev) => {
+    const nextStay = updater(prev.stay);
+    return nextStay === prev.stay ? prev : { ...prev, stay: nextStay };
+  }));
 
   // "Near you" + "Popular areas" — location-scoped, from the tenant dashboard API.
   const [nearYou, setNearYou] = useState<Listing[]>([]);
@@ -446,11 +448,8 @@ export default function Home() {
     };
   }, [operational, geo?.cityId, geo?.lat, geo?.lng, geo?.source, stayType]);
 
-  // The dashboard call above is already scoped to `stayType` via `stay_duration`, so this is
-  // just a defensive client-side pass — a safety net, not the primary filter.
-  const nearby = useMemo(() => {
-    return nearYou.filter((l) => listingSupportsBookingMode(l, stayType)).slice(0, 6);
-  }, [nearYou, stayType]);
+  // The dashboard call above is already scoped to `stayType` via `stay_duration`.
+  const nearby = nearYou;
 
   // "Continue browsing" — the tenant's recently-viewed properties, from the backend.
   const [recentListings, setRecentListings] = useState<Listing[]>([]);

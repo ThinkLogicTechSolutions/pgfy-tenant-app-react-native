@@ -71,7 +71,7 @@ export default function Stay() {
         // The bed-selection effect below only re-fetches stay detail when the id itself
         // changes — on a pull-to-refresh it usually doesn't, so refetch it here too.
         if (match != null) {
-          stayApi.getMyStay(match).then(setStayDetail).catch(() => {});
+          stayApi.getMyStay(match).then(setStayDetail).catch(() => { });
         }
       })
       .catch((e) => setListError(errorMessage(e)))
@@ -115,7 +115,7 @@ export default function Stay() {
       const mapped = propertyDetailsToListing(data);
       setPropertyListing(mapped);
       cachePropertyDetails(propertyId, mapped);
-    }).catch(() => {});
+    }).catch(() => { });
     return () => { active = false; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedBed?.property.id]);
@@ -227,17 +227,18 @@ export default function Stay() {
   };
 
   const openDirections = async () => {
-    // [longitude, latitude] — property-details' own `lat`/`lng` aren't populated by that
-    // endpoint, but `coordinates` rides along on every tenant-stay response (beds list, my-stay).
-    const coordinates = b.property.coordinates;
+    // [longitude, latitude] — only `GET /tenant/my-stay` (booking.property.coordinates)
+    // actually returns this; the lighter beds-list endpoint that seeds `b` doesn't, so this
+    // must come from `detailForSelected`, not `b.property`.
+    const coordinates = detailForSelected?.booking.property.coordinates;
     if (!coordinates) {
       Alert.alert('Directions unavailable', 'This property has no location on file yet.');
       return;
     }
     const [lng, lat] = coordinates;
     const label = encodeURIComponent(`${b.property.name}, ${b.property.locality}, ${b.property.city}`);
-    const appleUrl = `http://maps.apple.com/?ll=${lat},${lng}&q=${label}`;
-    const googleUrl = `https://www.google.com/maps/search/?api=1&query=${lat},${lng}`;
+    const appleUrl = `http://maps.apple.com/?ll=${lat},${lng}&q=${label}&dirflg=d`;
+    const googleUrl = `https://www.google.com/maps/dir/?api=1&destination=${lat},${lng}&travelmode=driving`;
     const url = Platform.OS === 'ios' ? appleUrl : googleUrl;
     try {
       await Linking.openURL(url);

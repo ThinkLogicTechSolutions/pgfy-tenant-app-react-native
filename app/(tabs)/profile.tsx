@@ -15,10 +15,25 @@ import { LOGIN_ROUTE } from '@/lib/guestGuard';
 import { haptic } from '@/lib/haptics';
 import { isBankDetailsComplete, bankDetailsSummary } from '@/lib/bankDetails';
 import { useSaved } from '@/store/saved';
-import { rewardsApi, profileApi, errorMessage } from '@/lib/api';
+import { rewardsApi, profileApi, errorMessage, type RoommatePreferences } from '@/lib/api';
 
 const PRIVACY_URL = 'https://pgfy.in/privacyPolicy.html';
 const TERMS_URL = 'https://pgfy.in/termsCondtions.html';
+
+const SLEEP_LABEL: Record<string, string> = { EARLY_BIRD: 'Early sleeper', NIGHT_OWL: 'Night owl' };
+const DIET_LABEL: Record<string, string> = { VEGETARIAN: 'Vegetarian', VEGAN: 'Vegan', NON_VEGETARIAN: 'Non-vegetarian' };
+
+/** Short "sleep · diet" style summary for the room-preference row — falls back to a nudge to
+ * fill them in, or a generic "saved" note if the only things set are smoking/alcohol/about. */
+function roommatePrefsSummary(prefs: RoommatePreferences | null | undefined): string {
+  if (!prefs) return 'Add your preferences for room matching';
+  const parts = [
+    prefs.sleep_schedule ? SLEEP_LABEL[prefs.sleep_schedule] ?? prefs.sleep_schedule : null,
+    prefs.diet_preference ? DIET_LABEL[prefs.diet_preference] ?? prefs.diet_preference : null,
+  ].filter((p): p is string => !!p);
+  if (parts.length) return parts.join(' · ');
+  return 'Preferences saved';
+}
 
 function openLink(url: string) {
   Linking.openURL(url).catch(() => {});
@@ -199,6 +214,15 @@ export default function Profile() {
           title="Guardian & emergency"
           subtitle={guardianName ? `${guardianName}${guardianRelation ? ` (${guardianRelation})` : ''}` : 'Add guardian details'}
           onPress={() => router.push('/profile-edit')}
+        />
+        <Divider />
+        <ListRow
+          icon="people-circle-outline"
+          iconColor={palette.navy}
+          iconBg={palette.navyTint}
+          title="Update room preference"
+          subtitle={roommatePrefsSummary(user?.roommate_preferences)}
+          onPress={() => router.push('/roommate-preferences')}
         />
         <Divider />
         <ListRow icon="heart-outline" iconColor={palette.coral} iconBg={palette.coralTint} title="Saved properties" subtitle={`${saved.count} shortlisted`} onPress={() => router.push('/saved')} />

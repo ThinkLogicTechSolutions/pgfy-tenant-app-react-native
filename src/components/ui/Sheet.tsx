@@ -1,6 +1,6 @@
 /** Bottom sheet with slide-up animation, backdrop tap + drag-to-dismiss. */
 import { useEffect, useState } from 'react';
-import { Modal, View, useWindowDimensions } from 'react-native';
+import { Modal, View, useWindowDimensions, Keyboard, Platform, type KeyboardEvent } from 'react-native';
 // gesture-handler's ScrollView (not RN's) — it shares the same gesture-responder system as
 // GestureDetector, so nested gestures (e.g. the calendar's horizontal month swipe) can win
 // the arena instead of being eaten by a plain RN ScrollView's separate PanResponder.
@@ -15,6 +15,38 @@ import Animated, {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { palette, radius, spacing } from '@/theme';
 import { Text } from './Text';
+
+/**
+ * `KeyboardAvoidingView` doesn't reliably resize `Modal` content — on Android the Modal opens
+ * its own window that ignores the activity's `adjustResize`, and on iOS it can fight the sheet's
+ * own slide-up animation. Tracking the keyboard height directly and pushing the sheet up by that
+ * amount works the same way on both platforms.
+ */
+function useKeyboardOffset() {
+  const offset = useSharedValue(0);
+
+  useEffect(() => {
+    const showEvent = Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow';
+    const hideEvent = Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide';
+
+    const onShow = (e: KeyboardEvent) => {
+      offset.value = withTiming(e.endCoordinates.height, { duration: e.duration || 220 });
+    };
+    const onHide = (e: KeyboardEvent) => {
+      offset.value = withTiming(0, { duration: e.duration || 200 });
+    };
+
+    const showSub = Keyboard.addListener(showEvent, onShow);
+    const hideSub = Keyboard.addListener(hideEvent, onHide);
+    return () => {
+      showSub.remove();
+      hideSub.remove();
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  return offset;
+}
 
 interface Props {
   visible: boolean;
@@ -32,6 +64,7 @@ export function Sheet({ visible, onClose, title, titleRight, children, scroll }:
   const [mounted, setMounted] = useState(visible);
   const translateY = useSharedValue(height);
   const backdrop = useSharedValue(0);
+  const keyboardOffset = useKeyboardOffset();
 
   useEffect(() => {
     if (visible) {
@@ -64,13 +97,19 @@ export function Sheet({ visible, onClose, title, titleRight, children, scroll }:
       }
     });
 
-  const sheetStyle = useAnimatedStyle(() => ({ transform: [{ translateY: translateY.value }] }));
+  const sheetStyle = useAnimatedStyle(() => ({
+    transform: [{ translateY: translateY.value - keyboardOffset.value }],
+    maxHeight: Math.max(height * 0.4, height * 0.86 - keyboardOffset.value),
+  }));
   const backdropStyle = useAnimatedStyle(() => ({ opacity: backdrop.value }));
 
   if (!mounted) return null;
 
   return (
     <Modal visible transparent statusBarTranslucent onRequestClose={onClose} animationType="none">
+      {/* Keyboard offset is tracked manually (see `useKeyboardOffset`) and folded into
+          `sheetStyle` above — `KeyboardAvoidingView` doesn't reliably resize `Modal` content
+          on either platform. */}
       <View style={{ flex: 1, justifyContent: 'flex-end' }}>
         <Animated.View style={[{ position: 'absolute', inset: 0, backgroundColor: palette.overlay }, backdropStyle]}>
           <Animated.View style={{ flex: 1 }} onTouchEnd={onClose} />
@@ -82,8 +121,9 @@ export function Sheet({ visible, onClose, title, titleRight, children, scroll }:
                 backgroundColor: palette.surface,
                 borderTopLeftRadius: radius.sheet,
                 borderTopRightRadius: radius.sheet,
-                paddingBottom: insets.bottom + spacing.base,
-                maxHeight: height * 0.86,
+                // Cover the nav-bar inset OR the base padding, not both stacked — stacking is
+                // what produced the oversized dead band under sheets on Android.
+                paddingBottom: Math.max(insets.bottom, spacing.base),
               },
               sheetStyle,
             ]}

@@ -25,6 +25,7 @@ export * as groupBookingApi from './groupBooking';
 export * as propertyLeadApi from './propertyLead';
 export * as extendStayApi from './extendStay';
 export * as changeBedApi from './changeBed';
+export * as supportApi from './support';
 export * as continueBrowsingApi from './continueBrowsing';
 export * as dashboardApi from './dashboard';
 export * as searchApi from './search';
@@ -239,6 +240,14 @@ export type {
   ApiChangeBedRequest,
   CreateChangeBedInput,
   CancelChangeBedInput,
+  ApiFaq,
+  ApiFaqListResponse,
+  SupportQueryStatus,
+  ApiSupportQueryCategoryRef,
+  ApiSupportQueryAttachment,
+  ApiSupportQuery,
+  ApiSupportQueryListResponse,
+  CreateSupportQueryInput,
   ApiReferralBenefit,
   ApiReferralBenefits,
   ApiReferralStats,
