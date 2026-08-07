@@ -88,10 +88,18 @@ export function Button({
           ) : null}
         </Animated.View>
       ) : (
+        // No `exiting` here — unlike the loading spinner (an intra-button swap), this branch
+        // is what's on screen for every ordinary, never-loading button, so it unmounts
+        // constantly as part of unrelated screen transitions (e.g. a parent flipping from an
+        // empty state to real content). Reanimated keeps an `exiting` view rendered as a
+        // ghost overlay for its animation's duration even after React unmounts it — on
+        // Android that overlay can paint behind the freshly-mounted screen instead of on top,
+        // showing up as a stray label bleeding through new content. `entering` alone doesn't
+        // have this failure mode (it only affects how a view animates in, not what lingers
+        // after removal), so it's kept for the nice fade back from the loading state.
         <Animated.View
           key="content"
           entering={FadeIn.duration(160)}
-          exiting={FadeOut.duration(120)}
           style={{ flexDirection: 'row', alignItems: 'center', gap: spacing.sm }}
         >
           {icon ? <Ionicons name={icon} size={iconSize} color={p.fg} /> : null}
