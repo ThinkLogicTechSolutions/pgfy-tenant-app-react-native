@@ -11,6 +11,7 @@ import { formatDate } from '@/lib/format';
 import { haptic } from '@/lib/haptics';
 import { alert } from '@/lib/alertDialog';
 import { toast } from '@/lib/toast';
+import { useAuth } from '@/context/AuthContext';
 import type { TenantRating } from '@/data/types';
 
 export const RATING_CATEGORIES = [
@@ -34,6 +35,10 @@ interface Props {
   /** Pass the property-details response's `myRating` directly to skip the extra fetch — omit
    * (leave `undefined`) to have this component fetch it itself (My Stay has no other source). */
   initialMyRating?: TenantRating | null;
+  /** The active booking this rating is for — disambiguates when the tenant has rated this
+   * property from more than one stay (self-fetch path only; ignored when `initialMyRating`
+   * is passed). */
+  bookingId?: number;
   /** Whether the tenant is eligible to rate at all (property details' `can_rate`). Defaults to
    * true when omitted — the create call itself is the source of truth if that's ever wrong. */
   canRate?: boolean;
@@ -42,7 +47,8 @@ interface Props {
   onChanged?: (rating: TenantRating | null) => void;
 }
 
-export function PropertyRatingSection({ propertyId, propertyName, initialMyRating, canRate = true, onChanged }: Props) {
+export function PropertyRatingSection({ propertyId, propertyName, initialMyRating, bookingId, canRate = true, onChanged }: Props) {
+  const { user } = useAuth();
   const [myRating, setMyRating] = useState<TenantRating | null>(initialMyRating ?? null);
   const [loading, setLoading] = useState(initialMyRating === undefined);
   const [sheetOpen, setSheetOpen] = useState(false);
@@ -53,15 +59,17 @@ export function PropertyRatingSection({ propertyId, propertyName, initialMyRatin
 
   useEffect(() => {
     if (initialMyRating !== undefined) return;
+    // Need the signed-in tenant's own id to verify whatever the API hands back is actually
+    // theirs (see `getMyRating`) — wait for it rather than risk showing someone else's rating.
+    if (!user?.id) { setLoading(false); return; }
     let active = true;
-    ratingsApi.getMyRating(propertyId)
+    setLoading(true);
+    ratingsApi.getMyRating(propertyId, user.id, bookingId)
       .then((r) => { if (active) setMyRating(r ? toTenantRating(r) : null); })
       .catch(() => {})
       .finally(() => { if (active) setLoading(false); });
     return () => { active = false; };
-    // Only ever needs to run once per property — `initialMyRating` intentionally excluded.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [propertyId]);
+  }, [propertyId, bookingId, user?.id, initialMyRating]);
 
   const openCreate = () => {
     setScores(emptyScores());

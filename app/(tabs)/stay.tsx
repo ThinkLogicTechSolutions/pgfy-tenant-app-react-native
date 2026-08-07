@@ -489,6 +489,7 @@ export default function Stay() {
               key={`${user?.id ?? 'guest'}-${b.property.id}`}
               propertyId={b.property.id}
               propertyName={b.property.name}
+              bookingId={b.booking.id}
             />
           </View>
         </View>
