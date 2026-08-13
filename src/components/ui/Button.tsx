@@ -82,7 +82,7 @@ export function Button({
         >
           <ActivityIndicator color={p.fg} size="small" />
           {loadingLabel ? (
-            <Text variant="button" color={p.fg} style={labelStyle}>
+            <Text variant="button" color={p.fg} style={labelStyle} numberOfLines={1}>
               {loadingLabel}
             </Text>
           ) : null}
@@ -103,7 +103,7 @@ export function Button({
           style={{ flexDirection: 'row', alignItems: 'center', gap: spacing.sm }}
         >
           {icon ? <Ionicons name={icon} size={iconSize} color={p.fg} /> : null}
-          <Text variant="button" color={p.fg} style={labelStyle}>
+          <Text variant="button" color={p.fg} style={labelStyle} numberOfLines={1}>
             {label}
           </Text>
           {iconRight ? <Ionicons name={iconRight} size={iconSize} color={p.fg} /> : null}

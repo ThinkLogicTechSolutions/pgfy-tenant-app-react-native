@@ -7,7 +7,9 @@ import type { BedStatusKey } from '@/theme/colors';
 
 export type PropertyType = 'PG' | 'Hostel' | 'Co-living' | 'Flat' | 'Home stay';
 export type Gender = 'Male' | 'Female' | 'Co-ed';
-export type SharingType = 'Single' | 'Double' | 'Triple' | '4-sharing' | 'Dormitory';
+/** Open union: real dorm sizes (`Dorm 5`..`Dorm 9`, etc., via `formatLayoutFallback`) don't
+ * fit the coarse buckets below but are still valid — see `listingAdapter.ts`'s `layoutToSharing`. */
+export type SharingType = 'Single' | 'Double' | 'Triple' | '4-sharing' | 'Dormitory' | (string & {});
 export type KycStatus = 'Verified' | 'Pending' | 'Not Submitted';
 
 /* ── Booking type ────────────────────────────── */

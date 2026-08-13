@@ -1,10 +1,10 @@
-/** T-S1 — Boot splash. Navy brand frame, then routes by session. */
+/** T-S1 — Boot splash. Orange brand frame (matches the app icon's background), then routes
+ *  by session. */
 import { useEffect } from 'react';
 import { View } from 'react-native';
 import { useRouter } from 'expo-router';
 import { LinearGradient } from 'expo-linear-gradient';
 import Animated, { FadeIn, FadeInUp, useAnimatedStyle, useSharedValue, withTiming, withDelay, Easing } from 'react-native-reanimated';
-import { palette } from '@/theme';
 import { Text } from '@/components/ui';
 import { PgfyMark } from '@/components/illustrations';
 import { session } from '@/lib/session';
@@ -43,7 +43,10 @@ export default function Boot() {
 
   return (
     <View style={{ flex: 1 }}>
-      <LinearGradient colors={[palette.navy, palette.navyDark]} style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>
+      {/* #F9483E is the app icon's exact background color (assets/images/icon.png) — flat,
+          not a gradient, so this matches the native splash screen (app.json) with no color
+          shift when the JS bundle takes over. */}
+      <LinearGradient colors={['#F9483E', '#F9483E']} style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>
         <Animated.View style={markStyle}>
           <PgfyMark size={120} variant="white" />
         </Animated.View>

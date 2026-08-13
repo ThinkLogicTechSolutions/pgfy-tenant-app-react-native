@@ -25,6 +25,7 @@ import { useAuth } from '@/context/AuthContext';
 import { useMasterData } from '@/context/MasterDataContext';
 import { LOGIN_ROUTE } from '@/lib/guestGuard';
 import { session } from '@/lib/session';
+import { config } from '@/lib/config';
 import type { Listing } from '@/data/types';
 
 const QUICK = [
@@ -216,7 +217,7 @@ export default function Stay() {
       : tileW;
 
   const shareProperty = async () => {
-    const link = `https://share-dev.pgfy.in/property/${b.property.id}`;
+    const link = `${config.shareBaseUrl}/property/${b.property.id}`;
     try {
       await Share.share({
         message: `Check out ${b.property.name} on PGfy in ${b.property.locality} — find your next stay here: ${link}`,

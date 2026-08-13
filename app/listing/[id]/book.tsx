@@ -12,7 +12,7 @@ import { computeCheckout, platformFeeFromMasterConfig, isCouponUsable, couponDis
 import { computeMonthlyProration } from '@/lib/proration';
 import type { BookingMode } from '@/data/types';
 import { inr } from '@/lib/format';
-import { defaultCheckOut, clampCheckInToFuture } from '@/lib/dates';
+import { defaultCheckOut, clampCheckInToFuture, daysBetween } from '@/lib/dates';
 import { useCheckInFreshness } from '@/lib/useCheckInFreshness';
 import { haptic } from '@/lib/haptics';
 import { useAuth } from '@/context/AuthContext';
@@ -151,13 +151,23 @@ export default function BookConfig() {
   // check-in charges the full month regardless, so there's nothing to wait on in that case.
   const billPending = !!proration?.isProrated && dailyRateLoading;
 
+  // Daily/hourly bill for the FULL stay, not just one unit — `monthlyRent` here is really
+  // "the per-unit rate for whatever billingMode is active" (per-day or per-hour, despite the
+  // name), carried in via the `rent` route param from the occupancy/room picker.
+  const stayNights = billingMode === 'daily' ? daysBetween(stayDates.checkIn, stayDates.checkOut) : 0;
+  const totalBaseAmount = billingMode === 'monthly'
+    ? firstMonthRent
+    : billingMode === 'daily'
+      ? monthlyRent * stayNights
+      : monthlyRent * stayDates.hours;
+
   const { isGuest, user } = useAuth();
   const { config: masterConfig } = useMasterData();
   const kycVerified = user?.kyc_status === 'VERIFIED';
   const rentLabel = billingMode === 'hourly'
-    ? 'Hourly rate'
+    ? `Hourly rate (${stayDates.hours} hr${stayDates.hours === 1 ? '' : 's'})`
     : billingMode === 'daily'
-      ? 'Daily rate'
+      ? `Daily rate (${stayNights} night${stayNights === 1 ? '' : 's'})`
       : proration?.isProrated
         ? `First month rent (${proration.proratedDays} days)`
         : 'First month rent';
@@ -165,16 +175,23 @@ export default function BookConfig() {
   const modeLabel = billingMode === 'monthly' ? 'Monthly' : billingMode === 'daily' ? 'Daily' : 'Hourly';
   const apiBookingMode = billingMode === 'hourly' ? 'HOURLY' : billingMode === 'daily' ? 'DAILY' : 'MONTHLY';
   const canCreateBooking = !!(apiId && propertyId && (isUnitBooking || (roomId && bedId && layout)));
-  // Hourly bookings combine the date with the chosen start time; monthly/daily just use midnight.
-  const bookingCheckInDate = billingMode === 'hourly'
-    ? `${stayDates.checkIn}T${stayDates.startTime}:00.000Z`
-    : `${stayDates.checkIn}T00:00:00.000Z`;
+  // Hourly bookings send the date and start time as two separate fields (`check_in_date` is
+  // date-only, the start time rides on `hourly_start_slot` as minutes-since-midnight) — not a
+  // combined ISO datetime like daily/monthly. Sending the start time embedded in
+  // `check_in_date` (as an ISO datetime, UTC-tagged or not) doesn't match this contract at
+  // all, which is how a pick that's clearly inside the property's window (e.g. 8:00 AM within
+  // an 8:00–18:00 window) could still get rejected as outside it.
+  const bookingCheckInDate = billingMode === 'hourly' ? stayDates.checkIn : `${stayDates.checkIn}T00:00:00.000Z`;
+  const hourlyStartSlot = (() => {
+    const [h, m] = stayDates.startTime.split(':').map(Number);
+    return h * 60 + m;
+  })();
   const intent: CheckoutIntent = {
     kind: billingMode === 'hourly' ? 'booking-hourly' : billingMode === 'daily' ? 'booking-daily' : 'booking-monthly',
     title: `${listing?.name ?? 'Booking'} — ${modeLabel} booking`,
     subtitle: isUnitBooking ? `${guestList.length} guest${guestList.length > 1 ? 's' : ''}` : `${room} · Bed ${bed} · ${sharing}`,
     billingMode,
-    baseAmount: firstMonthRent,
+    baseAmount: totalBaseAmount,
     // GST classification uses the full monthly rate (matches the backend, which resolves the
     // GST rate from the property's config independent of proration).
     unitRate: monthlyRent,
@@ -188,7 +205,7 @@ export default function BookConfig() {
         bookingMode: apiBookingMode,
         checkInDate: bookingCheckInDate,
         ...(billingMode === 'daily' ? { checkOutDate: `${stayDates.checkOut}T00:00:00.000Z` } : {}),
-        ...(billingMode === 'hourly' ? { durationHours: stayDates.hours } : {}),
+        ...(billingMode === 'hourly' ? { durationHours: stayDates.hours, hourlyStartSlot } : {}),
         ...(isUnitBooking
           ? { guests: guestList, guestCount: guestList.length }
           : {

@@ -28,7 +28,11 @@ export default ({ config }: ConfigContext): ExpoConfig => {
     ...config,
     name: defaults.name,
     slug: config.slug ?? 'pgfy-tenant',
-    runtimeVersion: { policy: 'appVersion' },
+    // Runtime version *policies* (e.g. `{ policy: 'appVersion' }`) only work in the managed
+    // workflow — this project has committed native `ios`/`android` projects (bare workflow),
+    // where EAS requires an explicit string instead. Tying it to `config.version` keeps the
+    // same "bump together" behavior the policy was going for.
+    runtimeVersion: config.version ?? '1.0.0',
     updates: {
       url: `https://u.expo.dev/${projectId}`,
       fallbackToCacheTimeout: 0,

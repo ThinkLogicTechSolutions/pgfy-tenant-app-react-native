@@ -705,6 +705,20 @@ export interface ApiBooking {
 export interface ApiBookingDetail extends ApiBooking {
   check_in_pass: Record<string, unknown> | null;
   transaction?: ApiBookingTransaction | null;
+  /** Hosted booking receipt (PDF/web page) for a paid booking — opened in an external
+   * browser rather than rendered in-app. Absent until the payment has settled. */
+  receipt_url?: string | null;
+}
+
+/** `GET /tenant/booking-invoice?booking_id=` — the booking's move-in invoice PDF. */
+export interface ApiBookingInvoiceLink {
+  booking_id: number;
+  invoice_id: number;
+  invoice_number: string;
+  invoice_type: string;
+  /** Same URL as `pdf_attachment.link` — a direct, external-browser-openable S3 link. */
+  invoice_link: string;
+  pdf_attachment: ProfileAsset;
 }
 
 /** Hostel: room/bed/layout are required. Flat/Homestay: omit them and send `guests`/`guest_count`
@@ -723,11 +737,15 @@ export interface CreateBookingInput {
   /** Flat/Homestay only — named occupants (min 1, max the property's `max_occupancy`). */
   guests?: BookingGuestItem[];
   guest_count?: number;
+  /** Hourly: date only (`YYYY-MM-DD`), no time component — the start time is
+   * `hourly_start_slot` instead. Daily/Monthly: full ISO datetime. */
   check_in_date: string;
   /** Daily bookings only — the response already echoes this back per `ApiBookingCreateResponse`. */
   check_out_date?: string | null;
   /** Hourly bookings only — the response already echoes this back per `ApiBookingCreateResponse`. */
   duration_hours?: number | null;
+  /** Hourly bookings only — minutes since midnight (e.g. 840 = 14:00), local to the property. */
+  hourly_start_slot?: number | null;
   payment_method: PaymentMethod;
   payment_frequency: PaymentFrequency;
   coupon_code?: string | null;
@@ -861,6 +879,18 @@ export interface ApiBookingCreateResponse {
 export interface CancelBookingInput {
   booking_id: number;
   cancellation_reason: string;
+  /** Dry-run: return the refund breakdown without actually cancelling. */
+  preview?: boolean;
+}
+
+/** `POST /tenant/cancel-booking` with `preview: true` — returns the same
+ * amount-paid / charge / refund breakdown **without** cancelling anything, so the
+ * confirmation sheet can show the authoritative charge (derived from master config
+ * server-side) before the tenant commits. */
+export interface ApiBookingCancelPreview {
+  refund: ApiBookingRefund;
+  payment_action: string;
+  message: string;
 }
 
 export interface ApiBookingRefund {

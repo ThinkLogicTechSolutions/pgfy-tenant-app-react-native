@@ -87,9 +87,6 @@ export function PlatformSupport() {
     .sort((a, b) => a.priority - b.priority)
     .map((c) => ({ label: c.name, value: String(c.id) }));
 
-  const openTickets = tickets.filter((t) => t.status !== 'RESOLVED');
-  const resolvedTickets = tickets.filter((t) => t.status === 'RESOLVED');
-
   const submitQuery = () => {
     if (!catId) {
       alert('Select a category', 'Choose what your query is about.');
@@ -139,7 +136,7 @@ export function PlatformSupport() {
         </View>
       ) : (
         <FlatList
-          data={openTickets}
+          data={tickets}
           keyExtractor={(t) => String(t.id)}
           contentContainerStyle={{ paddingHorizontal: spacing.base, paddingBottom: spacing['3xl'], gap: spacing.base, paddingTop: spacing.sm }}
           showsVerticalScrollIndicator={false}
@@ -183,7 +180,12 @@ export function PlatformSupport() {
                 </View>
               </View>
 
-              <Text variant="overline" color={palette.inkTertiary} style={{ marginLeft: 4 }}>GENERATED SUPPORTS</Text>
+              {/* Pending and resolved queries together, one section — only when there's
+                  actually something to show; an empty result falls through to
+                  `ListEmptyComponent` instead of an empty heading. */}
+              {tickets.length > 0 ? (
+                <Text variant="overline" color={palette.inkTertiary} style={{ marginLeft: 4 }}>YOUR QUERIES</Text>
+              ) : null}
             </View>
           }
           renderItem={({ item, index }) => (
@@ -194,32 +196,18 @@ export function PlatformSupport() {
           ListEmptyComponent={
             <EmptyState
               illustration={<EmptyTickets />}
-              title={error ? "Couldn't load queries" : 'No active queries'}
-              message={error ?? "Raise a query and we'll get on it."}
-              actionLabel={error ? 'Retry' : 'Raise query'}
-              onAction={error ? () => loadPage(0) : () => setCreate(true)}
+              title={error ? "Couldn't load queries" : 'No support requests yet'}
+              message={error ?? "You haven't raised any queries — use Raise a query above if you need help."}
+              actionLabel={error ? 'Retry' : undefined}
+              onAction={error ? () => loadPage(0) : undefined}
             />
           }
           ListFooterComponent={
-            <View style={{ gap: spacing.base }}>
-              {loadingMore ? (
-                <View style={{ paddingVertical: spacing.md, alignItems: 'center' }}>
-                  <ActivityIndicator color={palette.coral} />
-                </View>
-              ) : null}
-              <View>
-                <Text variant="overline" color={palette.inkTertiary} style={{ marginBottom: spacing.sm, marginLeft: 4 }}>RESOLVED SUPPORTS</Text>
-                {resolvedTickets.length ? (
-                  <View style={{ gap: spacing.md }}>
-                    {resolvedTickets.map((item) => <SupportQueryRow key={item.id} query={item} onPress={() => openTicket(item)} />)}
-                  </View>
-                ) : (
-                  <View style={{ backgroundColor: palette.surface, borderRadius: radius.lg, borderWidth: 1, borderColor: palette.border, padding: spacing.base }}>
-                    <Text variant="bodySm" color={palette.inkSecondary}>No resolved supports yet.</Text>
-                  </View>
-                )}
+            loadingMore ? (
+              <View style={{ paddingVertical: spacing.md, alignItems: 'center' }}>
+                <ActivityIndicator color={palette.coral} />
               </View>
-            </View>
+            ) : null
           }
           onEndReachedThreshold={0.4}
           onEndReached={() => {

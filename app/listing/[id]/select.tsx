@@ -269,6 +269,13 @@ export default function SelectBed() {
                 Based on your preferences vs the roommates currently in this room.
               </Text>
             </View>
+            <View style={{ flexDirection: 'row', gap: spacing.sm, backgroundColor: palette.infoTint, borderRadius: radius.md, padding: spacing.md }}>
+              <Ionicons name="information-circle" size={18} color={palette.info} />
+              <Text variant="caption" color={palette.info} style={{ flex: 1, lineHeight: 18 }}>
+                This score is indicative, not a guarantee. Current roommates may move out or be
+                reassigned before your move-in, so the people you actually share with can differ.
+              </Text>
+            </View>
             {compatRoom.kind === 'mock' ? (
               <View style={{ gap: spacing.sm }}>
                 {compatRoom.result.breakdown.map((item) => (

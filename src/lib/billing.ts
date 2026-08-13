@@ -116,11 +116,15 @@ export interface CheckoutBookingPayload {
   /** Flat/Home stay only — named occupants (min 1, max the property's `max_occupancy`). */
   guests?: CheckoutBookingGuest[];
   guestCount?: number;
+  /** Hourly: date only (`YYYY-MM-DD`) — the start time rides on `hourlyStartSlot` instead.
+   *  Daily/Monthly: full ISO datetime. */
   checkInDate: string;
   /** Daily bookings only. */
   checkOutDate?: string;
   /** Hourly bookings only. */
   durationHours?: number;
+  /** Hourly bookings only — minutes since midnight, local to the property (e.g. 480 = 8:00 AM). */
+  hourlyStartSlot?: number;
 }
 
 /** Present only when this checkout should pay a real rent invoice via `POST /tenant/pay-rent`

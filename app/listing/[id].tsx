@@ -1,16 +1,17 @@
 /** T-S13 — Property details page with verification/trust surfaced. */
 import { useEffect, useState } from 'react';
-import { View, ScrollView, useWindowDimensions } from 'react-native';
+import { View, ScrollView, useWindowDimensions, Share, Platform } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
+import * as FileSystem from 'expo-file-system/legacy';
 import { palette, spacing, radius, shadows } from '@/theme';
 import { Text, Card, IconButton, Divider, Button, EmptyState, Sheet, PressableScale, Skeleton, SegmentedControl } from '@/components/ui';
 import { StayBookingFields, type StayBookingValues } from '@/components/search';
 import { PgfyScore, StatusPill, RatingPill, ReviewCard, WeeklyFoodMenuSheet, PropertyRatingSection, buildWeeklyMenu, buildWeeklyMenuFromApi, PropertyImageCarousel, PromotedBadge, type WeekDay } from '@/components/domain';
 import { listingCarouselImages, listingPhotoCount, PROPERTY_IMAGE_ASPECT } from '@/lib/media';
-import { getListing, LISTINGS } from '@/data';
+import { getListing, LISTINGS, APP_STORE_URL } from '@/data';
 import { inr, formatDate } from '@/lib/format';
 import { listingNearLandmarkTitle, isPromotedListing } from '@/lib/listingDisplay';
 import { defaultCheckOut, clampCheckInToFuture } from '@/lib/dates';
@@ -24,6 +25,7 @@ import { propertyDetailsToListing, parseApiPropertyId } from '@/lib/listingAdapt
 import { cachePropertyDetails } from '@/store/propertyDetailsCache';
 import { useAuth } from '@/context/AuthContext';
 import { alert } from '@/lib/alertDialog';
+import { config } from '@/lib/config';
 
 function formatTime12(t: string) {
   const [h, m] = t.split(':').map(Number);
@@ -274,6 +276,36 @@ export default function ListingDetail() {
     return <View style={{ flex: 1, paddingTop: insets.top + 60 }}><EmptyState title="Property not found" /></View>;
   }
   const l = listing;
+
+  const shareProperty = async () => {
+    haptic.light();
+    // Mock listings (browsed without a real API id) have nothing a shared link could open on
+    // the other end — fall back to a generic app-store invite instead of a dead link.
+    const link = apiId ? `${config.shareBaseUrl}/property/${apiId}` : APP_STORE_URL;
+    const message = apiId
+      ? `Check out ${l.name} in ${l.locality}, ${l.city} on PGfy — verified rooms, transparent pricing, zero brokerage. ${link}`
+      : `Check out ${l.name} on PGfy. Download the app: ${link}`;
+    try {
+      let imageUri: string | undefined;
+      // iOS's Share sheet needs a local file for an actual image attachment (a remote URL
+      // just becomes another text item, not a photo) — Android's Share API doesn't reliably
+      // attach a local file alongside `message` at all, so it stays text-only there, same
+      // convention already used for the referral/invoice share flows elsewhere in the app.
+      if (Platform.OS === 'ios' && l.coverImage) {
+        try {
+          const dest = `${FileSystem.cacheDirectory}pgfy-share-property-${apiId ?? l.id}.jpg`;
+          const { uri } = await FileSystem.downloadAsync(l.coverImage, dest);
+          imageUri = uri;
+        } catch {
+          // couldn't fetch the image in time — fall through to a text-only share
+        }
+      }
+      await Share.share(imageUri ? { url: imageUri, message } : { message });
+    } catch {
+      // user dismissed the share sheet
+    }
+  };
+
   /** Mock listings have no `canRate` field — default to allowed. */
   const canRate = l.canRate !== false;
   const weeklyMenu = l.weeklyFoodMenu ? buildWeeklyMenuFromApi(l.weeklyFoodMenu) : buildWeeklyMenu(l.foodMenu);
@@ -363,7 +395,7 @@ export default function ListingDetail() {
             </View>
             <View style={{ flexDirection: 'row', gap: spacing.sm }}>
               <IconButton icon={isFavorite ? 'heart' : 'heart-outline'} color={isFavorite ? palette.coral : palette.ink} bg="rgba(255,255,255,0.92)" onPress={toggleFavorite} />
-              <IconButton icon="share-social-outline" bg="rgba(255,255,255,0.92)" />
+              <IconButton icon="share-social-outline" bg="rgba(255,255,255,0.92)" onPress={shareProperty} />
             </View>
           </View>
           <PressableScale

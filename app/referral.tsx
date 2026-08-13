@@ -4,11 +4,12 @@
  *  they sign in. `referral_code` is `null` until the tenant has booked and checked in to
  *  their first property — that's what gates the invite link. */
 import { useEffect, useState } from 'react';
-import { View, ScrollView, Share, ActivityIndicator } from 'react-native';
+import { View, ScrollView, Share, ActivityIndicator, Platform } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
+import { Asset } from 'expo-asset';
 import { palette, spacing, radius } from '@/theme';
 import { Text, Card, Button, PressableScale, Badge, EmptyState, Skeleton, Avatar } from '@/components/ui';
 import { referralApi, errorMessage, type ApiReferralSummary, type ApiReferralItem, type ApiReferralBenefit } from '@/lib/api';
@@ -16,8 +17,10 @@ import { inr, formatDate } from '@/lib/format';
 import { haptic } from '@/lib/haptics';
 import { useAuth } from '@/context/AuthContext';
 import { savePendingReferralCode } from '@/lib/referral';
+import { config } from '@/lib/config';
 
-const REFERRAL_LINK_BASE = 'https://share-dev.pgfy.in/referral';
+const REFERRAL_LINK_BASE = `${config.shareBaseUrl}/referral`;
+const REFERRAL_SHARE_IMAGE = require('../assets/images/referral.png');
 
 function formatReferralBenefit(b: ApiReferralBenefit): string {
   return b.type === 'FLAT' ? inr(b.value) : `${b.value}%`;
@@ -64,10 +67,17 @@ export default function Referral() {
     if (!data?.referral_code) return;
     haptic.light();
     const link = `${REFERRAL_LINK_BASE}?code=${data.referral_code}`;
+    const message = `Join me on PGfy and find your next stay! Tap my invite link to get ${formatReferralBenefit(data.benefits.friend_gets)} off your first booking. ${link}`;
     try {
-      await Share.share({
-        message: `Join me on PGfy and find your next stay! Tap my invite link to get ${formatReferralBenefit(data.benefits.friend_gets)} off your first booking. ${link}`,
-      });
+      // `referral.png` ships bundled — resolve it to a real file:// URI (downloadAsync caches
+      // it locally on first call, then reuses the cache) since the native share sheet needs
+      // an actual file path, not a module reference. Android's Share API doesn't take a local
+      // `url` alongside `message` reliably, so it falls back to text-only there — same
+      // convention already used for sharing the booking invoice/receipt elsewhere in the app.
+      const asset = Asset.fromModule(REFERRAL_SHARE_IMAGE);
+      await asset.downloadAsync();
+      const imageUri = asset.localUri ?? asset.uri;
+      await Share.share(Platform.OS === 'ios' ? { url: imageUri, message } : { message });
     } catch {
       // user dismissed the share sheet
     }

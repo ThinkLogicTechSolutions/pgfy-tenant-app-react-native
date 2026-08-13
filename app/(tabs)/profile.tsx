@@ -14,8 +14,7 @@ import { alert } from '@/lib/alertDialog';
 import { LOGIN_ROUTE } from '@/lib/guestGuard';
 import { haptic } from '@/lib/haptics';
 import { isBankDetailsComplete, bankDetailsSummary } from '@/lib/bankDetails';
-import { useSaved } from '@/store/saved';
-import { rewardsApi, profileApi, errorMessage, type RoommatePreferences } from '@/lib/api';
+import { rewardsApi, favoritesApi, profileApi, errorMessage, type RoommatePreferences } from '@/lib/api';
 
 const PRIVACY_URL = 'https://pgfy.in/privacyPolicy.html';
 const TERMS_URL = 'https://pgfy.in/termsCondtions.html';
@@ -42,7 +41,7 @@ function openLink(url: string) {
 export default function Profile() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
-  const saved = useSaved();
+  const [savedCount, setSavedCount] = useState(0);
   const [rewardCounts, setRewardCounts] = useState({ locked: 0, scratched: 0 });
   const auth = useAuth();
   const { user, isGuest } = auth;
@@ -67,6 +66,14 @@ export default function Profile() {
         const scratched = page.data.filter((r) => r.status === 'SCRATCHED').length;
         setRewardCounts({ locked, scratched });
       })
+      .catch(() => {});
+  }, [isGuest]);
+
+  useEffect(() => {
+    if (isGuest) return;
+    // Just need the total count — a 1-row page is the cheapest way to read it.
+    favoritesApi.listFavoriteProperties({ limit: 1 })
+      .then((page) => setSavedCount(page.total))
       .catch(() => {});
   }, [isGuest]);
 
@@ -225,7 +232,7 @@ export default function Profile() {
           onPress={() => router.push('/roommate-preferences')}
         />
         <Divider />
-        <ListRow icon="heart-outline" iconColor={palette.coral} iconBg={palette.coralTint} title="Saved properties" subtitle={`${saved.count} shortlisted`} onPress={() => router.push('/saved')} />
+        <ListRow icon="heart-outline" iconColor={palette.coral} iconBg={palette.coralTint} title="Saved properties" subtitle={`${savedCount} shortlisted`} onPress={() => router.push('/saved')} />
       </Section>
 
       <Section title="REWARDS">

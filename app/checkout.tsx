@@ -172,6 +172,7 @@ export default function Checkout() {
           check_in_date: intent.booking.checkInDate,
           check_out_date: intent.booking.checkOutDate ?? null,
           duration_hours: intent.booking.durationHours ?? null,
+          hourly_start_slot: intent.booking.hourlyStartSlot ?? null,
           payment_method: (autopay ? 'UPI' : payMethod.toUpperCase()) as PaymentMethod,
           payment_frequency: autopay ? 'AUTOPAY' : 'PAY_ONCE',
           coupon_code: realCouponCode,
@@ -179,13 +180,13 @@ export default function Checkout() {
           ...(intent.booking.guests
             ? { guests: intent.booking.guests, guest_count: intent.booking.guestCount }
             : {
-                room_id: intent.booking.roomId,
-                bed_id: intent.booking.bedId,
-                floor_id: intent.booking.floorId,
-                is_ac: intent.booking.isAc,
-                has_food: intent.booking.hasFood,
-                room_layout: intent.booking.roomLayout,
-              }),
+              room_id: intent.booking.roomId,
+              bed_id: intent.booking.bedId,
+              floor_id: intent.booking.floorId,
+              is_ac: intent.booking.isAc,
+              has_food: intent.booking.hasFood,
+              room_layout: intent.booking.roomLayout,
+            }),
         });
 
         const tx = created.transaction;
@@ -212,6 +213,11 @@ export default function Checkout() {
         haptic.success();
         goToBookingSuccess(created);
       } catch (e) {
+        console.log(`ERROR    booking_mode: ${intent.booking.bookingMode},
+          check_in_date: ${intent.booking.checkInDate},
+          check_out_date: ${intent.booking.checkOutDate ?? null},
+          duration_hours: ${intent.booking.durationHours ?? null},
+          hourly_start_slot: ${intent.booking.hourlyStartSlot ?? null}`);
         haptic.error();
         alert('Could not complete booking', errorMessage(e));
       } finally {

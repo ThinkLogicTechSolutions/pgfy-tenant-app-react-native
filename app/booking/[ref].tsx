@@ -1,22 +1,23 @@
 /** Booking details — real `/tenant/booking/:id`. A cancellable booking can be cancelled
  *  here; the API's refund breakdown then carries through to the cancelled screen. */
 import { useEffect, useState } from 'react';
-import { View, ScrollView, ActivityIndicator, Linking } from 'react-native';
+import { View, ScrollView, ActivityIndicator, Linking, Share, Platform } from 'react-native';
 import { Image } from 'expo-image';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { palette, spacing, radius } from '@/theme';
-import { Text, ScreenHeader, Card, Button, Divider, EmptyState, Sheet, Input, Badge } from '@/components/ui';
+import { Text, ScreenHeader, Card, Button, Divider, EmptyState, Sheet, Input, Badge, Skeleton } from '@/components/ui';
 import { Ionicons } from '@expo/vector-icons';
-import { bookingApi, errorMessage, type ApiBookingDetail, type ApiStayExtension, type BookingStatusApi } from '@/lib/api';
+import { bookingApi, errorMessage, type ApiBookingDetail, type ApiBookingRefund, type ApiStayExtension, type BookingStatusApi } from '@/lib/api';
 import { bookingStatusLabel, bookingStatusTone, bookingModeLabel, bookingCoverImage, isCheckedIn, isUnitBooking, latestConfirmedExtension, extensionBannerMessage } from '@/lib/bookingDisplay';
 import { isUnitPropertyType } from '@/lib/listingAdapter';
 import { inr, formatDate } from '@/lib/format';
 import { haptic } from '@/lib/haptics';
 import { alert } from '@/lib/alertDialog';
 
-/** Statuses where the hold hasn't converted into an active stay yet — cancellable. */
-const CANCELLABLE_STATUSES = ['PENDING_PAYMENT', 'CONFIRMED'];
+/** Every status that precedes check-in — a booking stays cancellable right up until the
+ *  tenant actually checks in (`CHECKED_IN` and everything after it is not cancellable). */
+const CANCELLABLE_STATUSES = ['PENDING_PAYMENT',  "PENDING_APPROVAL",'CONFIRMED'];
 
 function minutesToTime(m: number | null): string | null {
   if (m == null) return null;
@@ -40,6 +41,12 @@ export default function BookingDetails() {
   const [reason, setReason] = useState('');
   const [cancelling, setCancelling] = useState(false);
   const [retrying, setRetrying] = useState(false);
+  const [downloadingInvoice, setDownloadingInvoice] = useState(false);
+  const [sharingInvoice, setSharingInvoice] = useState(false);
+  // Authoritative refund breakdown for the cancel sheet — fetched from the API's preview
+  // mode rather than estimated client-side, so the charge shown is the charge applied.
+  const [refundPreview, setRefundPreview] = useState<ApiBookingRefund | null>(null);
+  const [previewError, setPreviewError] = useState<string | null>(null);
 
   const load = () => {
     if (!Number.isFinite(id)) {
@@ -109,6 +116,46 @@ export default function BookingDetails() {
     } finally {
       setRetrying(false);
     }
+  };
+
+  const openInvoice = async () => {
+    if (downloadingInvoice) return;
+    setDownloadingInvoice(true);
+    try {
+      // Fetched on demand rather than trusted from `b.receipt_url` — the invoice is minted
+      // asynchronously post-payment, so this is the authoritative, always-fresh source.
+      const invoice = await bookingApi.getBookingInvoice(b.id);
+      await Linking.openURL(invoice.invoice_link);
+    } catch (e) {
+      alert('Unable to open invoice', errorMessage(e));
+    } finally {
+      setDownloadingInvoice(false);
+    }
+  };
+
+  const shareInvoice = async () => {
+    if (sharingInvoice) return;
+    setSharingInvoice(true);
+    try {
+      const invoice = await bookingApi.getBookingInvoice(b.id);
+      const message = `Booking invoice for ${b.property.name} — booking ${b.code}. ${invoice.invoice_link}`;
+      // iOS can carry the link separately from the message; Android folds it into the text.
+      await Share.share(Platform.OS === 'ios' ? { url: invoice.invoice_link, message } : { message });
+    } catch (e) {
+      alert('Could not share invoice', errorMessage(e));
+    } finally {
+      setSharingInvoice(false);
+    }
+  };
+
+  /** Opens the cancel sheet and pulls the real charge/refund breakdown for it. */
+  const openCancelSheet = () => {
+    setSheetOpen(true);
+    setRefundPreview(null);
+    setPreviewError(null);
+    bookingApi.previewCancellation(b.id)
+      .then((res) => setRefundPreview(res.refund))
+      .catch((e) => setPreviewError(errorMessage(e)));
   };
 
   const confirmCancel = async () => {
@@ -200,7 +247,8 @@ export default function BookingDetails() {
             <DetailRow label={`First month rent (${b.prorated_days} days)`} value={inr(b.move_in_rent ?? b.base_rent)} />
           ) : null}
           <DetailRow label={isHourly ? 'Hourly rate' : b.booking_mode === 'DAILY' ? 'Daily rate' : 'Monthly rent'} value={inr(b.base_rent)} />
-          <DetailRow label="Security deposit" value={inr(b.security_deposit)} />
+          {/* Daily/hourly stays don't collect a security deposit — only monthly does. */}
+          {b.booking_mode === 'MONTHLY' ? <DetailRow label="Security deposit" value={inr(b.security_deposit)} /> : null}
           {amount ? <DetailRow label="Amount paid now" value={inr(paidAmount)} bold /> : b.total_paid != null ? <DetailRow label="Total paid" value={inr(b.total_paid)} /> : null}
           {b.next_rent_due ? <DetailRow label="Next rent due" value={formatDate(b.next_rent_due)} last /> : null}
         </Card>
@@ -225,9 +273,49 @@ export default function BookingDetails() {
           />
         ) : null}
 
-        {cancellable ? (
-          <Button label="Cancel booking" icon="close-circle-outline" variant="danger" full onPress={() => setSheetOpen(true)} />
+        {/* Invoice — only once the booking has actually been paid for; fetched on demand
+            from `/tenant/booking-invoice` when tapped, not preloaded. */}
+        {!pendingPayment ? (
+          <View style={{ flexDirection: 'row', gap: spacing.md }}>
+            <Button
+              label="Download invoice"
+              icon="download-outline"
+              variant="outline"
+              style={{ flex: 1 }}
+              loading={downloadingInvoice}
+              onPress={openInvoice}
+            />
+            <Button
+              label="Share"
+              icon="share-social-outline"
+              variant="outline"
+              style={{ flex: 1 }}
+              loading={sharingInvoice}
+              onPress={shareInvoice}
+            />
+          </View>
         ) : null}
+
+        {cancellable ? (
+          <View style={{ flexDirection: 'row', gap: spacing.md }}>
+            <Button
+              label="Need help?"
+              icon="help-buoy-outline"
+              variant="outline"
+              style={{ flex: 1 }}
+              onPress={() => router.push({ pathname: '/support', params: { kind: 'platform' } })}
+            />
+            <Button label="Cancel booking" icon="close-circle-outline" variant="danger" style={{ flex: 1 }} onPress={openCancelSheet} />
+          </View>
+        ) : (
+          <Button
+            label="Need help?"
+            icon="help-buoy-outline"
+            variant="outline"
+            full
+            onPress={() => router.push({ pathname: '/support', params: { kind: 'platform' } })}
+          />
+        )}
 
         {/* Extension history — a booking can be extended more than once, most recent first */}
         {sortedExtensions.map((ext) => (
@@ -240,6 +328,35 @@ export default function BookingDetails() {
           <Text variant="bodySm" color={palette.inkSecondary}>
             Cancelling before check-in refunds your payment minus any applicable cancellation charge.
           </Text>
+
+          {/* Charge/refund breakdown straight from the API — the same numbers that will be
+              applied on confirm, so there's no gap between preview and outcome. */}
+          {previewError ? (
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: spacing.sm, backgroundColor: palette.warningTint, borderRadius: radius.md, padding: spacing.md }}>
+              <Ionicons name="alert-circle-outline" size={18} color={palette.warning} />
+              <Text variant="caption" color={palette.warning} style={{ flex: 1 }}>
+                Couldn&apos;t load the refund breakdown. You can still cancel — the exact charge will be confirmed on the next screen.
+              </Text>
+            </View>
+          ) : refundPreview ? (
+            <Card>
+              <DetailRow label="Amount paid" value={inr(refundPreview.amount_paid)} />
+              <DetailRow
+                label={
+                  refundPreview.cancellation_charge_type === 'PERCENTAGE' && refundPreview.cancellation_charge_value != null
+                    ? `${refundPreview.cancellation_charge_label} (${refundPreview.cancellation_charge_value}%)`
+                    : refundPreview.cancellation_charge_label
+                }
+                value={`− ${inr(refundPreview.cancellation_charge)}`}
+              />
+              <DetailRow label="Refund to you" value={inr(refundPreview.refund_to_tenant)} bold last />
+            </Card>
+          ) : (
+            <View style={{ gap: spacing.sm }}>
+              {[0, 1, 2].map((i) => <Skeleton key={i} width="100%" height={20} rounded={radius.sm} />)}
+            </View>
+          )}
+
           <Input
             label="Reason for cancellation"
             placeholder="Tell us why you're cancelling…"

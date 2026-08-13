@@ -49,6 +49,20 @@ export function isBefore(isoA: string, isoB: string): boolean {
   return new Date(`${isoA}T00:00:00`).getTime() < new Date(`${isoB}T00:00:00`).getTime();
 }
 
+/** Whole calendar days from `fromYmd` to `toYmd` (e.g. 11 Aug → 15 Aug = 4) — a daily
+ * booking's nights, priced at the per-day rate. Parsed as plain integers via `Date.UTC`
+ * rather than through local-time parsing, so DST transitions in between can't shift the
+ * count by an hour and round to the wrong day. Never negative — an inverted range clamps to 1
+ * night rather than billing zero or a negative amount. */
+export function daysBetween(fromYmd: string, toYmd: string): number {
+  const [fy, fm, fd] = fromYmd.split('-').map(Number);
+  const [ty, tm, td] = toYmd.split('-').map(Number);
+  const from = Date.UTC(fy, fm - 1, fd);
+  const to = Date.UTC(ty, tm - 1, td);
+  const nights = Math.round((to - from) / 86400000);
+  return Math.max(1, nights);
+}
+
 /** A check-in date can arrive stale from anywhere — a route param carried over from an
  * earlier day, a frozen default computed once and reused across a long-lived session, a
  * shared deep link. No matter the source, it must never resolve to before today: bump it

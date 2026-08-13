@@ -82,16 +82,18 @@ export function SelectableRoom({
           <Text variant="caption" color={palette.inkSecondary} style={{ marginTop: 2 }}>
             {subtitleOverride ?? `${room.sharingType} · ${hasAc ? 'AC' : 'Non-AC'} · ${available} available`}
           </Text>
-          {compat && compatibility ? (
+          {/* The match score/percentage itself is shown only inside the compatibility sheet
+              (opened below) — this tile just offers a plain, unscored way in. */}
+          {compat && compatibility && onCompatPress ? (
             <PressableScale
               onPress={onCompatPress}
               haptics={false}
-              scaleTo={onCompatPress ? 0.96 : 1}
+              scaleTo={0.96}
               style={{ flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 6, alignSelf: 'flex-start', backgroundColor: compat.bg, paddingHorizontal: 8, paddingVertical: 3, borderRadius: 999 }}
             >
               <Ionicons name="people" size={12} color={compat.fg} />
-              <Text variant="caption" weight="700" color={compat.fg}>{compatibility.score}% roommate match</Text>
-              {onCompatPress ? <Ionicons name="information-circle-outline" size={13} color={compat.fg} /> : null}
+              <Text variant="caption" weight="700" color={compat.fg}>Roommate compatibility</Text>
+              <Ionicons name="information-circle-outline" size={13} color={compat.fg} />
             </PressableScale>
           ) : null}
         </View>
