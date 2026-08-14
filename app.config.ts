@@ -13,9 +13,9 @@ loadEnv({ path: path.resolve(__dirname, '.env') });
 
 // Per-environment defaults used when the matching `.env.<APP_ENV>` value is absent.
 const DEFAULTS: Record<AppEnv, { name: string; apiUrl: string }> = {
-  development: { name: 'PGfy (Dev)', apiUrl: 'https://api-dev.pgfy.in' },
-  staging: { name: 'PGfy (Staging)', apiUrl: 'https://staging-api.pgfy.app' },
-  production: { name: 'PGfy', apiUrl: 'https://api.pgfy.app' },
+  development: { name: 'PGfy', apiUrl: 'https://api-dev.pgfy.in' },
+  staging: { name: 'PGfy', apiUrl: 'https://api-dev.pgfy.in' },
+  production: { name: 'PGfy', apiUrl: 'https://api.pgfy.in' },
 };
 
 export default ({ config }: ConfigContext): ExpoConfig => {
