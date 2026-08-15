@@ -11,6 +11,7 @@ export { PropertyRatingSection } from './PropertyRating';
 export { HoldBanner } from './HoldBanner';
 export { PastBookingCard } from './PastBookingCard';
 export { CraftedFooter } from './CraftedFooter';
+export { SnapKycSheet } from './SnapKycSheet';
 export {
   WeeklyFoodMenuSheet,
   buildWeeklyMenu,

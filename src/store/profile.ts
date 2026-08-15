@@ -1,7 +1,6 @@
 /**
  * Tenant profile store — occupation (captured in KYC step 2) and the optional
  * roommate-compatibility preferences (captured after booking, or later from My Stay).
- * Mirrors the lightweight subscribe/useReducer pattern in store/kyc.ts.
  */
 import { useEffect, useReducer } from 'react';
 

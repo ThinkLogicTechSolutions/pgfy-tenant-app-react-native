@@ -14,7 +14,7 @@ const appEnv: AppEnv = extra.appEnv ?? 'development';
 export const config = {
   appEnv,
   /** Base URL of the PGfy API for the active environment (no trailing `/v1`). */
-  apiUrl: extra.apiUrl ?? 'https://api-dev.pgfy.in',
+  apiUrl: extra.apiUrl ?? 'https://api.pgfy.in',
   /** Google Geocoding / Places API key, used for the location-permission and search-autocomplete flows. */
   googleMapsApiKey: extra.googleMapsApiKey ?? '',
   /** Base URL for outgoing share links (property, referral, ...) — `share.pgfy.in` in

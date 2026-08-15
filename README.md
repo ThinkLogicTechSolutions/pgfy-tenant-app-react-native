@@ -192,6 +192,7 @@ npx expo prebuild --platform ios
 
 # Android
 cd android
+./gradlew --stop
 ./gradlew bundleRelease      # AAB, for Play Store
 ./gradlew assembleRelease    # APK
 cd ..

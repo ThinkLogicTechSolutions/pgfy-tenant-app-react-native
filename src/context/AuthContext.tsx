@@ -18,6 +18,7 @@ import {
   type UpdateTenantProfileInput,
 } from '@/lib/api';
 import { session } from '@/lib/session';
+import { socketManager } from '@/lib/socket';
 
 export type AuthStatus = 'loading' | 'authenticated' | 'unauthenticated';
 
@@ -55,6 +56,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const applySession = useCallback(async (token: string, profile: ApiProfile) => {
     setAccessToken(token);
+    // Open (or re-authenticate) the shared realtime socket — idempotent, so calling it on
+    // every refresh just re-sends the freshest token. Powers KYC (SnapKycSheet) and future
+    // push features.
+    socketManager.connect(token);
     await session.saveAuth(token, profile);
     setUser(profile);
     setIsGuest(false);
@@ -63,6 +68,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const clearSession = useCallback(async () => {
     setAccessToken(null);
+    socketManager.disconnect();
     await session.logout();
     setUser(null);
     setIsGuest(false);
@@ -126,6 +132,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       // Guest tokens have no tenant profile to refresh — trust the cached token until a
       // request 401s, which routes through the same unauthorized handler as a real session.
       if (stored.isGuest) return;
+
+      socketManager.connect(stored.token);
 
       try {
         const { access_token, user: profile } = await authApi.refreshSession();

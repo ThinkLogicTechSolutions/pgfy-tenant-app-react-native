@@ -34,6 +34,7 @@ export { UploadFileType } from './upload';
 export * as referralApi from './referral';
 export * as ratingsApi from './ratings';
 export * as rewardsApi from './rewards';
+export * as snapKycApi from './snapkyc';
 
 export type {
   SendOtpInput,
@@ -72,6 +73,7 @@ export type { ListCouponsQuery } from './coupons';
 export type { ListMaintenanceQuery } from './maintenance';
 export type { ListVisitorLogsQuery } from './visitorLog';
 export type { MoveOutEstimateQuery, ListMoveOutsQuery } from './moveOut';
+export type { SnapKycFlow, SnapKycPlatform, CreateSnapKycSessionInput, SnapKycSession } from './snapkyc';
 
 export type {
   ApiProfile,

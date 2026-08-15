@@ -34,11 +34,13 @@ platform :android do
 
   desc "Build and deploy to the Play Store internal testing track"
   lane :deploy_android do
-    build_android
-
-    aab_path = lane_context[SharedValues::GRADLE_AAB_OUTPUT_PATH]
-    UI.user_error!("Gradle didn't report an AAB output path") unless aab_path && File.exist?(aab_path)
-    UI.success("AAB ready: #{aab_path}")
+    system('cd ..')
+    system('export APP_ENV=production')
+    system('export NODE_ENV=production')
+    system('npx expo prebuild --platform android')    
+    system('cd android')
+    system('./gradlew --stop')
+    system('./gradlew bundleRelease ')
 
     upload_to_play_store(
       track: 'internal',

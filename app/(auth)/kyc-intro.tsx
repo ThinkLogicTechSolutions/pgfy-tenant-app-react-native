@@ -1,10 +1,13 @@
 /** SnapKYC intro — verify identity before booking (owner-app identity-verification pattern). */
-import { View, Alert } from 'react-native';
+import { useState } from 'react';
+import { View } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { palette, spacing, radius } from '@/theme';
 import { Text, Button, Card, IconButton } from '@/components/ui';
+import { SnapKycSheet } from '@/components/domain';
+import { useAuth } from '@/context/AuthContext';
 
 const STEPS = [
   'Tap "Start verification" below.',
@@ -15,13 +18,20 @@ const STEPS = [
 export default function KycIntro() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
+  const { refresh } = useAuth();
+  const [kycOpen, setKycOpen] = useState(false);
 
-  const startVerification = () => {
-    Alert.alert(
-      'Aadhaar verification',
-      'For security, identity verification is completed via the official Aadhaar app and validated by SnapKYC.',
-      [{ text: 'Continue', onPress: () => router.push('/(auth)/kyc') }],
-    );
+  const startVerification = () => setKycOpen(true);
+
+  // KYC verified over the socket — pull the fresh profile, then move on to the (optional)
+  // occupation step.
+  const onKycVerified = async () => {
+    try {
+      await refresh();
+    } catch {
+      // Refresh failed (offline) but KYC just succeeded server-side — proceed anyway.
+    }
+    router.replace('/(auth)/kyc-occupation');
   };
 
   return (
@@ -92,6 +102,8 @@ export default function KycIntro() {
 
         <Button label="Start verification" icon="arrow-forward" full size="lg" onPress={startVerification} style={{ marginTop: spacing.md }} />
       </Card>
+
+      <SnapKycSheet visible={kycOpen} onClose={() => setKycOpen(false)} onVerified={onKycVerified} />
     </View>
   );
 }

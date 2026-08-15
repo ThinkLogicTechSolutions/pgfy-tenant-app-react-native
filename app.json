@@ -2,7 +2,7 @@
   "expo": {
     "name": "PGfy",
     "slug": "pgfy-tenant",
-    "version": "1.0.0",
+    "version": "1.0.3",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
     "scheme": "pgfytenant",
@@ -12,11 +12,14 @@
       "supportsTablet": true,
       "bundleIdentifier": "in.pgfy.tenant",
       "googleServicesFile": "./GoogleService-Info.plist",
-      "associatedDomains": ["applinks:share.pgfy.in","applinks:share-dev.pgfy.in" ]
+      "associatedDomains": [
+        "applinks:share.pgfy.in",
+        "applinks:share-dev.pgfy.in"
+      ]
     },
     "android": {
       "package": "in.pgfy.tenant",
-      "versionCode": 2,
+      "versionCode": 7,
       "edgeToEdgeEnabled": true,
       "googleServicesFile": "./google-services.json",
       "adaptiveIcon": {
@@ -54,7 +57,10 @@
               "pathPrefix": "/referral"
             }
           ],
-          "category": ["BROWSABLE", "DEFAULT"]
+          "category": [
+            "BROWSABLE",
+            "DEFAULT"
+          ]
         }
       ]
     },
