@@ -5,7 +5,8 @@ import { palette, radius, spacing } from '@/theme';
 import { Text, Avatar, PressableScale, Card, Badge } from '@/components/ui';
 import { StatusPill, statusTone } from './Badges';
 import { inr, formatDate, formatDayMonth, timeAgo } from '@/lib/format';
-import type { Review, Invoice, Visitor, Ticket, NotificationItem, NotificationType, TicketCategory } from '@/data/types';
+import type { Review, Invoice, Visitor, Ticket, TicketCategory } from '@/data/types';
+import type { ApiTenantNotification, TenantNotificationAction } from '@/lib/api';
 
 /* Review */
 export function ReviewCard({ review }: { review: Review }) {
@@ -120,29 +121,45 @@ export function TicketRow({ ticket, onPress }: { ticket: Ticket; onPress?: () =>
 }
 
 /* Notification */
-const NOTIF_ICON: Record<NotificationType, { icon: keyof typeof Ionicons.glyphMap; tint: string }> = {
-  'Rent Reminder': { icon: 'cash-outline', tint: palette.warning },
-  'Booking Update': { icon: 'calendar-outline', tint: palette.coral },
-  Announcement: { icon: 'megaphone-outline', tint: palette.info },
-  'Lease Expiry': { icon: 'document-text-outline', tint: palette.navy },
-  'Ticket Update': { icon: 'construct-outline', tint: palette.success },
-  'Visitor Alert': { icon: 'people-outline', tint: palette.info },
+const NOTIF_ICON: Record<string, { icon: keyof typeof Ionicons.glyphMap; tint: string }> = {
+  PROFILE: { icon: 'person-outline', tint: palette.navy },
+  SUPPORT: { icon: 'help-buoy-outline', tint: palette.success },
+  BOOKING: { icon: 'calendar-outline', tint: palette.coral },
+  INVOICE: { icon: 'receipt-outline', tint: palette.warning },
+  MAINTENANCE: { icon: 'construct-outline', tint: palette.success },
+  PAYOUT: { icon: 'cash-outline', tint: palette.success },
+  LEASE: { icon: 'document-text-outline', tint: palette.navy },
+  REWARD: { icon: 'gift-outline', tint: palette.coral },
+  KYC: { icon: 'shield-checkmark-outline', tint: palette.info },
+  ANNOUNCEMENT: { icon: 'megaphone-outline', tint: palette.info },
+  BROADCAST: { icon: 'megaphone-outline', tint: palette.info },
+  VISITOR: { icon: 'people-outline', tint: palette.info },
+  MOVE_OUT: { icon: 'exit-outline', tint: palette.danger },
+  BED_CHANGE: { icon: 'swap-horizontal-outline', tint: palette.navy },
+  TRANSACTION: { icon: 'card-outline', tint: palette.success },
+  SUBSCRIPTION: { icon: 'refresh-outline', tint: palette.navy },
 };
+const DEFAULT_NOTIF_ICON: { icon: keyof typeof Ionicons.glyphMap; tint: string } = { icon: 'notifications-outline', tint: palette.inkTertiary };
 
-export function NotificationRow({ item, onPress }: { item: NotificationItem; onPress?: () => void }) {
-  const meta = NOTIF_ICON[item.type];
+export function notificationIcon(action: TenantNotificationAction) {
+  return NOTIF_ICON[action] ?? DEFAULT_NOTIF_ICON;
+}
+
+export function NotificationRow({ item, onPress }: { item: ApiTenantNotification; onPress?: () => void }) {
+  const meta = notificationIcon(item.action);
+  const unread = item.status === 'UNSEEN';
   return (
-    <PressableScale onPress={onPress} scaleTo={0.99} style={{ flexDirection: 'row', gap: spacing.md, paddingVertical: spacing.md, paddingHorizontal: spacing.base, backgroundColor: item.read ? 'transparent' : palette.coralTint + '55', borderRadius: radius.md }}>
+    <PressableScale onPress={onPress} scaleTo={0.99} style={{ flexDirection: 'row', gap: spacing.md, paddingVertical: spacing.md, paddingHorizontal: spacing.base, backgroundColor: unread ? palette.coralTint + '55' : 'transparent', borderRadius: radius.md }}>
       <View style={{ width: 40, height: 40, borderRadius: 20, backgroundColor: meta.tint + '1A', alignItems: 'center', justifyContent: 'center' }}>
         <Ionicons name={meta.icon} size={19} color={meta.tint} />
       </View>
       <View style={{ flex: 1 }}>
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
           <Text variant="bodyMd" weight="600" numberOfLines={1} style={{ flex: 1 }}>{item.title}</Text>
-          {!item.read ? <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: palette.coral }} /> : null}
+          {unread ? <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: palette.coral }} /> : null}
         </View>
-        <Text variant="bodySm" color={palette.inkSecondary} numberOfLines={2} style={{ marginTop: 1 }}>{item.body}</Text>
-        <Text variant="caption" color={palette.inkTertiary} style={{ marginTop: 3 }}>{timeAgo(item.timestamp)}</Text>
+        <Text variant="bodySm" color={palette.inkSecondary} numberOfLines={2} style={{ marginTop: 1 }}>{item.message}</Text>
+        <Text variant="caption" color={palette.inkTertiary} style={{ marginTop: 3 }}>{timeAgo(item.created_at)}</Text>
       </View>
     </PressableScale>
   );

@@ -35,6 +35,7 @@ export * as referralApi from './referral';
 export * as ratingsApi from './ratings';
 export * as rewardsApi from './rewards';
 export * as snapKycApi from './snapkyc';
+export * as notificationsApi from './notifications';
 
 export type {
   SendOtpInput,
@@ -68,6 +69,7 @@ export type { UploadPurpose, UploadResult, UploadFileInput } from './upload';
 export type { ListBookingsQuery } from './booking';
 export type { ListFavoritePropertiesQuery } from './favorites';
 export type { ListRewardsQuery } from './rewards';
+export type { ListNotificationsQuery } from './notifications';
 export type { ListBillingRentQuery } from './billing';
 export type { ListCouponsQuery } from './coupons';
 export type { ListMaintenanceQuery } from './maintenance';
@@ -269,4 +271,8 @@ export type {
   ApiReward,
   ApiRewardDetail,
   RewardAction,
+  TenantNotificationAction,
+  TenantNotificationStatus,
+  TenantNotificationEntityType,
+  ApiTenantNotification,
 } from './types';

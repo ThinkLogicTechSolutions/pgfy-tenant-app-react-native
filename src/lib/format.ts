@@ -57,9 +57,12 @@ export function formatTime12h(date: Date): string {
  */
 export const NOW = new Date('2026-05-29T10:00:00+05:30');
 
+/** Real current time, not the frozen mock `NOW` above — real API timestamps (e.g.
+ * notifications) are newer than that frozen date, which would otherwise make every diff
+ * negative and every item silently show "just now" forever. */
 export function timeAgo(iso: string): string {
   const d = new Date(iso);
-  const diff = NOW.getTime() - d.getTime();
+  const diff = Date.now() - d.getTime();
   const mins = Math.round(diff / 60000);
   if (mins < 1) return 'just now';
   if (mins < 60) return `${mins}m ago`;

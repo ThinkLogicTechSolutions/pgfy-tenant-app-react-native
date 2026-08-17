@@ -20,9 +20,8 @@ import { locationPicker } from '@/store/locationPicker';
 import { useTenantLocation } from '@/store/location';
 import { recordView } from '@/store/recentlyViewed';
 import { useSaved } from '@/store/saved';
-import { unreadCount } from '@/data';
 import { useAuth } from '@/context/AuthContext';
-import { dashboardApi, continueBrowsingApi, errorMessage, type LocalityMaster, type DashboardStayDuration } from '@/lib/api';
+import { dashboardApi, continueBrowsingApi, notificationsApi, errorMessage, type LocalityMaster, type DashboardStayDuration } from '@/lib/api';
 import { continueBrowsingToListing } from '@/lib/listingAdapter';
 import { defaultCheckIn, defaultCheckOut } from '@/lib/dates';
 import { useCheckInFreshness } from '@/lib/useCheckInFreshness';
@@ -348,6 +347,15 @@ export default function Home() {
   const displayName = user?.name ?? '';
   const firstName = displayName.split(' ')[0] || displayName;
   const saved = useSaved();
+  const [hasUnreadNotifications, setHasUnreadNotifications] = useState(false);
+
+  useEffect(() => {
+    if (!user) return;
+    // Just need to know if *any* are unread for the badge dot — a small page is enough.
+    notificationsApi.listNotifications({ limit: 20 })
+      .then((page) => setHasUnreadNotifications(page.data.some((n) => n.status === 'UNSEEN')))
+      .catch(() => {});
+  }, [user]);
   const { location: geo, resolving: locating, attempted, detect, set: setLocation } = useTenantLocation();
   const operational = !!geo && geo.operational;
   const { popularDestinations } = useMasterData();
@@ -551,7 +559,7 @@ export default function Home() {
             <Text variant="h2" numberOfLines={1}>{firstName} 👋</Text>
           </View>
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: spacing.sm }}>
-            <IconButton icon="notifications-outline" badge={unreadCount > 0} onPress={() => router.push('/notifications')} />
+            <IconButton icon="notifications-outline" badge={hasUnreadNotifications} onPress={() => router.push('/notifications')} />
             <PressableScale onPress={() => router.push('/(tabs)/profile')} scaleTo={0.92}>
               <Avatar name={displayName} uri={user?.avatar?.thumbnail ?? user?.avatar?.link} size={42} ring />
             </PressableScale>

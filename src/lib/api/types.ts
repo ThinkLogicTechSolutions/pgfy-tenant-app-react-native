@@ -2006,3 +2006,68 @@ export interface ApiRewardDetail extends ApiReward {
 }
 
 export type RewardAction = 'scratch' | 'redeem';
+
+// ---------------------------------------------------------------------------
+// Tenant notifications (`GET/PATCH /notification-management/tenant-notification`)
+// ---------------------------------------------------------------------------
+
+export type TenantNotificationAction =
+  | 'PROFILE'
+  | 'SUPPORT'
+  | 'BOOKING'
+  | 'INVOICE'
+  | 'MAINTENANCE'
+  | 'PAYOUT'
+  | 'LEASE'
+  | 'REWARD'
+  | 'KYC'
+  | 'ANNOUNCEMENT'
+  | 'BROADCAST'
+  | 'VISITOR'
+  | 'MOVE_OUT'
+  | 'BED_CHANGE'
+  | 'TRANSACTION'
+  | 'SUBSCRIPTION'
+  | (string & {});
+
+export type TenantNotificationStatus = 'SEEN' | 'UNSEEN' | 'DELETED' | (string & {});
+
+export type TenantNotificationEntityType =
+  | 'adminProfile'
+  | 'ownerProfile'
+  | 'tenantProfile'
+  | 'supportQuery'
+  | 'booking'
+  | 'invoice'
+  | 'maintenanceTicket'
+  | 'ownerPayout'
+  | 'leaseAgreement'
+  | 'propertyAnnouncement'
+  | 'notificationBroadcast'
+  | 'moveOutRequest'
+  | 'bedChangeRequest'
+  | 'visitorLog'
+  | 'scratchCard'
+  | 'ownerSubscription'
+  | 'property'
+  | (string & {});
+
+export interface ApiTenantNotification {
+  id: number;
+  tenant_id: number;
+  title: string;
+  message: string;
+  icon: string | null;
+  action: TenantNotificationAction;
+  entity_type: TenantNotificationEntityType | null;
+  entity_id: number | null;
+  status: TenantNotificationStatus;
+  /** Backend-suggested in-app path — the authoritative target for `BROADCAST` (a broadcast
+   * isn't tied to any one entity type/id, so `action`+`entity_type` alone can't route it). */
+  target_location: string | null;
+  sound: string | null;
+  channel_id: string | null;
+  data: Record<string, unknown> | null;
+  created_at: string;
+  updated_at: string;
+}

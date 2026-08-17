@@ -2,7 +2,7 @@
   "expo": {
     "name": "PGfy",
     "slug": "pgfy-tenant",
-    "version": "1.0.3",
+    "version": "1.0.5",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
     "scheme": "pgfytenant",
@@ -19,7 +19,7 @@
     },
     "android": {
       "package": "in.pgfy.tenant",
-      "versionCode": 7,
+      "versionCode": 10,
       "edgeToEdgeEnabled": true,
       "googleServicesFile": "./google-services.json",
       "adaptiveIcon": {
