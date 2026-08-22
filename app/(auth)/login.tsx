@@ -1,6 +1,6 @@
 /** T-S4 — Mobile number entry. */
 import { useState } from 'react';
-import { View, KeyboardAvoidingView, Platform, ScrollView, Alert } from 'react-native';
+import { View, KeyboardAvoidingView, Platform, ScrollView, Alert, Linking } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
@@ -9,6 +9,9 @@ import { Text, Input, Button, PressableScale, IconButton } from '@/components/ui
 import { PgfyMark } from '@/components/illustrations';
 import { useAuth } from '@/context/AuthContext';
 import { errorMessage } from '@/lib/api';
+
+const TERMS_URL = 'https://pgfy.in/pages/terms-conditions.html';
+const PRIVACY_URL = 'https://pgfy.in/pages/privacy-policy.html';
 
 export default function Login() {
   const router = useRouter();
@@ -21,6 +24,14 @@ export default function Login() {
   const valid = digits.length === 10;
   const [loading, setLoading] = useState(false);
   const [guestLoading, setGuestLoading] = useState(false);
+
+  const openLink = async (url: string) => {
+    try {
+      await Linking.openURL(url);
+    } catch {
+      Alert.alert('Unable to open link', 'Please try again in a moment.');
+    }
+  };
 
   const getOtp = async () => {
     setLoading(true);
@@ -81,8 +92,8 @@ export default function Login() {
         <View style={{ flex: 1 }} />
         <Text variant="caption" color={palette.inkTertiary} align="center" style={{ marginTop: spacing['2xl'] }}>
           By continuing you agree to our{' '}
-          <Text variant="caption" color={palette.coralDark}>Terms</Text> &{' '}
-          <Text variant="caption" color={palette.coralDark}>Privacy Policy</Text>.
+          <Text variant="caption" color={palette.coralDark} onPress={() => openLink(TERMS_URL)}>Terms</Text> &{' '}
+          <Text variant="caption" color={palette.coralDark} onPress={() => openLink(PRIVACY_URL)}>Privacy Policy</Text>.
         </Text>
       </ScrollView>
     </KeyboardAvoidingView>
