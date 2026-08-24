@@ -128,22 +128,20 @@ export function ListingCard({
 
           <View style={{ flexDirection: 'row', alignItems: 'flex-end', justifyContent: 'space-between', marginTop: 6, paddingTop: spacing.sm, borderTopWidth: 1, borderTopColor: palette.border }}>
             <View>
-              {(bookingType === 'hourly' && l.hourlyPricing.length === 0 && l.priceFrom === 0) ||
-              (bookingType === 'daily' && l.dailyPricing.length === 0 && l.priceFrom === 0) ||
-              (bookingType === 'monthly' && l.priceFrom === 0) ? (
-                <Text variant="h3" mono color={palette.navy}>Contact for price</Text>
-              ) : (
+              {(bookingType === 'hourly' && l.hourlyPricing.length > 0) ||
+              (bookingType === 'daily' && l.dailyPricing.length > 0) ||
+              (bookingType === 'monthly' && l.priceFrom > 0) ? (
                 <Text variant="h3" mono color={palette.navy}>
-                  {bookingType === 'hourly' && l.hourlyPricing.length > 0
+                  {bookingType === 'hourly'
                     ? inr(Math.min(...l.hourlyPricing.map((t) => t.rentPerHour)))
-                    : bookingType === 'daily' && l.dailyPricing.length > 0
+                    : bookingType === 'daily'
                       ? inr(Math.min(...l.dailyPricing.map((t) => t.rentPerDay)))
                       : inr(l.priceFrom)}
                   <Text variant="caption" color={palette.inkTertiary}>
                     {bookingType === 'hourly' ? ' /hr onwards' : bookingType === 'daily' ? ' /day onwards' : ' /mo onwards'}
                   </Text>
                 </Text>
-              )}
+              ) : null}
               <Text variant="caption" color={l.vacantBeds <= 2 ? palette.coralDark : palette.success}>
                 {l.vacantBeds} {l.vacantBeds === 1 ? 'bed' : 'beds'} available
               </Text>
@@ -180,11 +178,13 @@ export function ListingRailCard({ listing, onPress }: { listing: Listing; onPres
       <View style={{ padding: spacing.md, gap: 3 }}>
         <Text variant="bodyMd" weight="600" numberOfLines={1}>{l.name}</Text>
         <Text variant="caption" color={palette.inkTertiary} numberOfLines={1}>{l.locality} · {l.type}</Text>
-        <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: 2 }}>
-          <Text variant="bodyMd" weight="700" mono color={palette.navy}>
-            {l.priceFrom === 0 ? 'Contact for price' : (<>{inr(l.priceFrom)}<Text variant="caption" color={palette.inkTertiary}>/mo</Text></>)}
-          </Text>
-        </View>
+        {l.priceFrom > 0 ? (
+          <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: 2 }}>
+            <Text variant="bodyMd" weight="700" mono color={palette.navy}>
+              {inr(l.priceFrom)}<Text variant="caption" color={palette.inkTertiary}>/mo</Text>
+            </Text>
+          </View>
+        ) : null}
       </View>
     </PressableScale>
   );

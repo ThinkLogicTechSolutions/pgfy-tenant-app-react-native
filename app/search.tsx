@@ -1,12 +1,14 @@
 /** T-S9 — Search & filters (modal). */
-import { useState } from 'react';
+import { useCallback, useState } from 'react';
 import { View, ScrollView, Pressable } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useFocusEffect } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
 import { palette, spacing, radius } from '@/theme';
 import { Text, Input, Button, Chip, IconButton, Divider } from '@/components/ui';
-import { FILTER_OPTIONS, RECENT_SEARCHES, LOCATIONS } from '@/data';
+import { FILTER_OPTIONS, LOCATIONS } from '@/data';
+import { getSearchHistory, addSearchHistory, clearSearchHistory } from '@/lib/searchHistory';
 import { inr } from '@/lib/format';
 import type { BookingMode } from '@/data/types';
 
@@ -20,6 +22,7 @@ export default function Search() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const [query, setQuery] = useState('');
+  const [history, setHistory] = useState<string[]>([]);
   const [budget, setBudget] = useState(15000);
   const [stay, setStay] = useState<string>('Any');
   const [sharing, setSharing] = useState<string[]>([]);
@@ -34,8 +37,21 @@ export default function Search() {
 
   const activeCount = sharing.length + food.length + amenities.length + (gender !== 'Any' ? 1 : 0) + (stay !== 'Any' ? 1 : 0) + (verifiedOnly ? 1 : 0) + (bookingType !== 'monthly' ? 1 : 0);
 
-  const apply = () => router.replace({ pathname: '/results', params: { title: query || 'Search results' } });
+  useFocusEffect(
+    useCallback(() => {
+      getSearchHistory().then(setHistory);
+    }, []),
+  );
+
+  const apply = async () => {
+    if (query.trim()) setHistory(await addSearchHistory(query));
+    router.replace({ pathname: '/results', params: { title: query || 'Search results' } });
+  };
   const reset = () => { setBudget(15000); setStay('Any'); setSharing([]); setGender('Any'); setFood([]); setAmenities([]); setVerifiedOnly(true); setBookingType('monthly'); };
+  const clearHistory = async () => {
+    setHistory([]);
+    await clearSearchHistory();
+  };
 
   return (
     <View style={{ flex: 1, paddingTop: insets.top + spacing.sm }}>
@@ -50,13 +66,20 @@ export default function Search() {
 
         {!query ? (
           <View style={{ marginTop: spacing.lg }}>
-            <Text variant="overline" color={palette.inkTertiary} style={{ marginBottom: spacing.sm }}>RECENT SEARCHES</Text>
-            {RECENT_SEARCHES.map((s) => (
-              <Pressable key={s} onPress={() => setQuery(s)} style={{ flexDirection: 'row', alignItems: 'center', gap: spacing.md, paddingVertical: spacing.sm }}>
-                <Ionicons name="time-outline" size={18} color={palette.inkTertiary} />
-                <Text variant="body" color={palette.inkSecondary}>{s}</Text>
-              </Pressable>
-            ))}
+            {history.length > 0 ? (
+              <>
+                <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: spacing.sm }}>
+                  <Text variant="overline" color={palette.inkTertiary}>RECENT SEARCHES</Text>
+                  <Pressable onPress={clearHistory}><Text variant="bodySm" weight="600" color={palette.coralDark}>Clear All</Text></Pressable>
+                </View>
+                {history.map((s) => (
+                  <Pressable key={s} onPress={() => setQuery(s)} style={{ flexDirection: 'row', alignItems: 'center', gap: spacing.md, paddingVertical: spacing.sm }}>
+                    <Ionicons name="time-outline" size={18} color={palette.inkTertiary} />
+                    <Text variant="body" color={palette.inkSecondary}>{s}</Text>
+                  </Pressable>
+                ))}
+              </>
+            ) : null}
             <Text variant="overline" color={palette.inkTertiary} style={{ marginTop: spacing.base, marginBottom: spacing.sm }}>POPULAR AREAS</Text>
             <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm }}>
               {LOCATIONS[0].areas.map((a) => <Chip key={a} label={a} onPress={() => setQuery(a)} />)}

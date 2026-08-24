@@ -173,7 +173,7 @@ export function searchPropertyToListing(p: SearchProperty): Listing {
     isUnitProperty,
     maxOccupancy: p.max_occupancy ?? undefined,
     gender: toGender(p.gender),
-    locality: p.locality.name,
+    locality: p.locality?.name ?? p.locality_name ?? '',
     city: p.city.name,
     addressLine: p.address_line_1,
     pincode: '',

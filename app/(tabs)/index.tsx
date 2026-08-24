@@ -196,9 +196,11 @@ function NearbyCard({
           <Text variant="caption" color={palette.inkTertiary} numberOfLines={1} style={{ flex: 1 }}>· {listing.locality}</Text>
         </View>
         <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: 2 }}>
-          <Text variant="bodySm" weight="700" mono color={palette.navy}>
-            {price.amount === 0 ? 'Contact for price' : (<>{inr(price.amount)}<Text variant="caption" color={palette.inkTertiary}> {price.unit}</Text></>)}
-          </Text>
+          {price.amount > 0 ? (
+            <Text variant="bodySm" weight="700" mono color={palette.navy}>
+              {inr(price.amount)}<Text variant="caption" color={palette.inkTertiary}> {price.unit}</Text>
+            </Text>
+          ) : <View />}
           <View style={{ backgroundColor: tag.bg, borderRadius: radius.pill, paddingHorizontal: 8, paddingVertical: 3 }}>
             <Text variant="caption" weight="700" color={tag.fg}>{tag.label}</Text>
           </View>
@@ -758,7 +760,7 @@ export default function Home() {
                       label={dest.name}
                       landmarkId={dest.landmarkId}
                       image={dest.image}
-                      onPress={() => { haptic.select(); setLocation(dest.name, 'manual'); router.push({ pathname: '/browse', params: searchParams({ city: dest.name }) }); }}
+                      onPress={() => { haptic.select(); goToSearch(dest.name); }}
                     />
                   ))}
                 </View>

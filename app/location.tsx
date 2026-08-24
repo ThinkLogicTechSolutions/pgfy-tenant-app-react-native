@@ -11,7 +11,7 @@ import { LOCATION_SEARCH_PLACEHOLDER } from '@/data/locationSearch';
 import { resolveNearMeLocation } from '@/lib/nearMe';
 import { autocompletePlaces, geocodePlaceId, newPlacesSessionToken, type PlaceAutocompletePrediction } from '@/lib/googleMaps';
 import { matchOperationalLocation } from '@/lib/operationalLocation';
-import { getSearchHistory, addSearchHistory } from '@/lib/searchHistory';
+import { getSearchHistory, addSearchHistory, clearSearchHistory } from '@/lib/searchHistory';
 import { showAlert } from '@/lib/alert';
 import { locationPicker } from '@/store/locationPicker';
 import { useMasterData } from '@/context/MasterDataContext';
@@ -45,6 +45,12 @@ export default function LocationScreen() {
   const loadHistory = useCallback(async () => {
     setHistory(await getSearchHistory());
   }, []);
+
+  const clearHistory = async () => {
+    haptic.light();
+    setHistory([]);
+    await clearSearchHistory();
+  };
 
   useFocusEffect(
     useCallback(() => {
@@ -211,9 +217,16 @@ export default function LocationScreen() {
 
         {history.length > 0 && !showSuggestions ? (
           <View style={{ marginBottom: spacing.xl }}>
-            <Text variant="overline" color={palette.inkTertiary} style={{ marginBottom: spacing.sm }}>
-              CONTINUE YOUR SEARCH
-            </Text>
+            <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: spacing.sm }}>
+              <Text variant="overline" color={palette.inkTertiary}>
+                CONTINUE YOUR SEARCH
+              </Text>
+              <PressableScale onPress={clearHistory} haptics={false}>
+                <Text variant="bodySm" weight="600" color={palette.coralDark}>
+                  Clear All
+                </Text>
+              </PressableScale>
+            </View>
             {history.map((item, i) => (
               <SuggestionRow key={`${item}-${i}`} icon="time-outline" label={item} onPress={() => selectHistoryOrCity(item)} />
             ))}

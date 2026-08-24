@@ -89,12 +89,14 @@ export default function Browse() {
     const fetchListings = searchQuery
       ? searchApi.searchProperties(searchQuery).then((res) => res.properties.map(searchPropertyToListing))
       : propertyApi.searchProperties({ cityId, localityId }).then((page) => {
-          const cityName = cities.find((c) => c.id === cityId)?.name ?? city;
-          const localityName = localities.find((l) => l.id === localityId)?.name ?? '';
-          return page.data.map((p) => apiPropertyToListing(p, { cityName, localityName }));
-        });
+        const cityName = cities.find((c) => c.id === cityId)?.name ?? city;
+        const localityName = localities.find((l) => l.id === localityId)?.name ?? '';
+        return page.data.map((p) => apiPropertyToListing(p, { cityName, localityName }));
+      });
     fetchListings
       .then((mapped) => {
+        console.log(`HEHE ${JSON.stringify(mapped, null, 2)}`);
+
         if (active) setLiveListings(mapped);
       })
       .catch((e) => {
@@ -116,13 +118,14 @@ export default function Browse() {
   const filtersActive = browseFiltersActiveCount(filters) > 0;
 
   const list = useMemo(() => {
-    return baseListings.filter((l) => {
-      const loc = `${l.city} ${l.locality} ${l.name}`.toLowerCase();
-      const cityMatch = liveListings ? true : !city || loc.includes(city.toLowerCase());
-      const bookingMatch = listingSupportsBookingMode(l, bookingType);
-      const filterMatch = matchesBrowseFilters(l, filters);
-      return cityMatch && bookingMatch && filterMatch;
-    });
+    return baseListings;
+    // .filter((l) => {
+    //   const loc = `${l.city} ${l.locality} ${l.name}`.toLowerCase();
+    //   const cityMatch = liveListings ? true : !city || loc.includes(city.toLowerCase());
+    //   const bookingMatch = listingSupportsBookingMode(l, bookingType);
+    //   const filterMatch = matchesBrowseFilters(l, filters);
+    //   return cityMatch && bookingMatch && filterMatch;
+    // });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [baseListings, liveListings, city, bookingType, filters]);
 

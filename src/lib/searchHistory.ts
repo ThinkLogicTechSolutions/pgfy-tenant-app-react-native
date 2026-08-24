@@ -1,6 +1,6 @@
-/** Persisted location / area search history for the tenant app. */
+/** Persisted location / area search history for the tenant app — purely what the tenant has
+ * actually searched, no seeded demo entries. */
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { RECENT_SEARCHES } from '@/data';
 
 const KEY = 'pgfy.tenant.searchHistory';
 const MAX = 8;
@@ -10,12 +10,12 @@ export async function getSearchHistory(): Promise<string[]> {
     const raw = await AsyncStorage.getItem(KEY);
     if (raw) {
       const parsed = JSON.parse(raw) as string[];
-      if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+      if (Array.isArray(parsed)) return parsed;
     }
   } catch {
     /* fall through */
   }
-  return [...RECENT_SEARCHES];
+  return [];
 }
 
 export async function addSearchHistory(query: string): Promise<string[]> {

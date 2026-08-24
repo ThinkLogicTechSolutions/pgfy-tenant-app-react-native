@@ -16,7 +16,10 @@
       "associatedDomains": [
         "applinks:share.pgfy.in",
         "applinks:share-dev.pgfy.in"
-      ]
+      ],
+      "infoPlist": {
+        "ITSAppUsesNonExemptEncryption": false
+      }
     },
     "android": {
       "package": "in.pgfy.tenant",

@@ -64,7 +64,10 @@ export interface SearchProperty {
   address_line_1: string;
   landmark: string | null;
   city_id: number;
-  locality_id: number;
+  locality_id: number | null;
+  /** Free-text locality name — always present even when `locality_id`/`locality` are null
+   * (property not yet linked to a master locality). */
+  locality_name?: string | null;
   /** [longitude, latitude]. */
   coordinates: [number, number] | null;
   /** Hostel only — null on Flat/Homestay properties. */
@@ -99,9 +102,9 @@ export interface SearchProperty {
   revenue_mtd?: number;
   created_at: string;
   updated_at: string;
-  locality: SearchPropertyLocality;
+  locality: SearchPropertyLocality | null;
   city: SearchPropertyCity;
-  property_type: SearchPropertyType;
+  property_type: SearchPropertyType | null;
   is_favorite: boolean;
   favorite_id: number | null;
 }
