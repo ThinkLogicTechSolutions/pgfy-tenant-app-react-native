@@ -1,0 +1,38 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuites>
+  <testsuite name="fastlane.lanes">
+    
+    
+    
+      
+      <testcase classname="fastlane.lanes" name="0: default_platform" time="0.000184">
+        
+      </testcase>
+    
+      
+      <testcase classname="fastlane.lanes" name="1: ./gradlew --stop" time="0.790497">
+        
+      </testcase>
+    
+      
+      <testcase classname="fastlane.lanes" name="2: Switch to android build_android lane" time="0.000193">
+        
+      </testcase>
+    
+      
+      <testcase classname="fastlane.lanes" name="3: npm ci" time="24.951764">
+        
+      </testcase>
+    
+      
+      <testcase classname="fastlane.lanes" name="4: npx expo prebuild --platform android" time="2.717001">
+        
+      </testcase>
+    
+      
+      <testcase classname="fastlane.lanes" name="5: bundleRelease" time="122.413852">
+        
+      </testcase>
+    
+  </testsuite>
+</testsuites>

@@ -397,6 +397,12 @@ export function propertyDetailsToListing(p: ApiPropertyDetails): Listing {
   const images = attachments.filter((a) => a.type === 1).map((a) => a.link);
   const coverImage = images[0] ?? '';
 
+  // Security deposit / lock-in / notice period now live on each MONTHLY rate card (one per
+  // room layout) rather than on the property record — the UI already shows a single
+  // "same for all room types" figure, so any MONTHLY tier is a representative source. Fall
+  // back to the property-level fields for properties whose pricing hasn't been re-saved since.
+  const monthlyTier = p.pricing.find((tier) => tier.booking_mode === 'MONTHLY');
+
   const pricingVariants: PricingVariant[] = p.pricing.map((tier) => ({
     sharingType: layoutToSharing(tier.layout),
     layout: tier.layout,
@@ -451,7 +457,7 @@ export function propertyDetailsToListing(p: ApiPropertyDetails): Listing {
     hasVideoTour: false,
     description: p.description ?? '',
     priceFrom: p.starting_rent,
-    securityDeposit: p.security_deposit,
+    securityDeposit: monthlyTier?.security_deposit ?? p.security_deposit,
     rating: p.rating?.overall ?? 0,
     reviewCount: p.rating?.count ?? p.reviews.length,
     pgfyScore,
@@ -480,8 +486,8 @@ export function propertyDetailsToListing(p: ApiPropertyDetails): Listing {
       { label: 'Staff', value: p.rating.categories.staff },
       { label: 'Price', value: p.rating.categories.price },
     ].filter((c): c is { label: string; value: number } => c.value != null) : [],
-    noticePeriodDays: p.notice_period_days,
-    lockInMonths: p.lock_in_period_months,
+    noticePeriodDays: monthlyTier?.notice_period_days ?? p.notice_period_days,
+    lockInMonths: monthlyTier?.lock_in_period_months ?? p.lock_in_period_months,
     addedOn: '',
     bookingConfig: {
       monthlyEnabled: p.stay_options.monthly?.enabled ?? false,

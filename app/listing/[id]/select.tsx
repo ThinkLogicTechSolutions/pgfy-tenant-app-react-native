@@ -13,7 +13,7 @@ import { listingNearLandmarkTitle } from '@/lib/listingDisplay';
 import { useProfile } from '@/store/profile';
 import { useAuth } from '@/context/AuthContext';
 import { computeCompatibility, compatibilityTone, type CompatResult } from '@/lib/compatibility';
-import { propertyApi, errorMessage, type ApiBookingMode, type RoommatePreferences } from '@/lib/api';
+import { propertyApi, errorMessage, type ApiBookingMode, type ApiSelectedOccupancy, type RoommatePreferences } from '@/lib/api';
 import { parseApiPropertyId, apiRoomAvailabilityToFloors } from '@/lib/listingAdapter';
 
 const SLEEP_LABEL: Record<string, string> = { EARLY_BIRD: 'Early sleeper', NIGHT_OWL: 'Night owl' };
@@ -62,6 +62,7 @@ export default function SelectBed() {
   const wantsAc = acLabel === 'AC';
   const apiBookingMode: ApiBookingMode = bookingType === 'hourly' ? 'HOURLY' : bookingType === 'daily' ? 'DAILY' : 'MONTHLY';
   const [apiFloors, setApiFloors] = useState<Floor[] | null>(null);
+  const [selectedOccupancy, setSelectedOccupancy] = useState<ApiSelectedOccupancy | null>(null);
   const [floorsLoading, setFloorsLoading] = useState(!!(apiId && layout));
   const [floorsError, setFloorsError] = useState<string | null>(null);
   const [retryTick, setRetryTick] = useState(0);
@@ -72,7 +73,11 @@ export default function SelectBed() {
     setFloorsLoading(true);
     setFloorsError(null);
     propertyApi.getRoomBedAvailability(apiId, { bookingMode: apiBookingMode, layout, isAc: wantsAc, withFood: withFood === 'true' })
-      .then((data) => { if (active) setApiFloors(apiRoomAvailabilityToFloors(data, mockListing?.gender ?? 'Co-ed')); })
+      .then((data) => {
+        if (!active) return;
+        setApiFloors(apiRoomAvailabilityToFloors(data, mockListing?.gender ?? 'Co-ed'));
+        setSelectedOccupancy(data.selected_occupancy);
+      })
       .catch((e) => { if (active) setFloorsError(errorMessage(e)); })
       .finally(() => { if (active) setFloorsLoading(false); });
     return () => { active = false; };
@@ -221,6 +226,13 @@ export default function SelectBed() {
               <Text variant="caption" color={palette.inkSecondary} numberOfLines={1}>
                 {sel.room.sharingType}{acLabel ? ` · ${acLabel}` : ''} · {inr(selectedOccupancyRent ?? sel.bed.rent)}{priceSuffix}
               </Text>
+              {selectedOccupancy?.booking_mode === 'MONTHLY' && selectedOccupancy.security_deposit != null ? (
+                <Text variant="caption" color={palette.inkTertiary} numberOfLines={1} style={{ marginTop: 2 }}>
+                  Deposit {inr(selectedOccupancy.security_deposit)}
+                  {selectedOccupancy.lock_in_period_months != null ? ` · Lock-in ${selectedOccupancy.lock_in_period_months}mo` : ''}
+                  {selectedOccupancy.notice_period_days != null ? ` · Notice ${selectedOccupancy.notice_period_days}d` : ''}
+                </Text>
+              ) : null}
             </View>
             <Button
               label="Continue"
@@ -248,6 +260,10 @@ export default function SelectBed() {
                     layout: layout ?? '',
                     isAc: String(wantsAc),
                     withFood: withFood ?? 'false',
+                    // The exact rate card for this layout/AC/food/mode combo — per-layout deposits
+                    // can differ (e.g. a dorm bed vs a single room), so this is more precise than
+                    // the property-level fallback `book.tsx` otherwise uses.
+                    ...(selectedOccupancy?.security_deposit != null ? { securityDeposit: String(selectedOccupancy.security_deposit) } : {}),
                   } : {}),
                 },
               })}

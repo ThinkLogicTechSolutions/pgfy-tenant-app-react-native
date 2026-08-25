@@ -29,7 +29,7 @@ const GUEST_GENDER_LABEL: Record<string, string> = { MALE: 'Male', FEMALE: 'Fema
 export default function BookConfig() {
   const {
     id, room, bed, rent, sharing, appliedCode, checkIn, checkOut, startTime, hours, bookingType,
-    propertyId, roomId, bedId, floorId, layout, isAc, withFood, guests,
+    propertyId, roomId, bedId, floorId, layout, isAc, withFood, guests, securityDeposit,
   } = useLocalSearchParams<{
     id: string;
     room: string;
@@ -51,6 +51,9 @@ export default function BookConfig() {
     withFood?: string;
     /** Flat/Home stay only — JSON-encoded `{name,gender,age}[]`, set by the guest-details step. */
     guests?: string;
+    /** Hostel only — the exact selected layout's MONTHLY deposit (set by the room/bed picker),
+     *  more precise than `listing.securityDeposit` since deposits can differ per layout. */
+    securityDeposit?: string;
   }>();
   /** Flat/Home stay: whole-property booking with named guests instead of a room/bed pick. */
   const guestList: { name: string; gender: string; age: number }[] = guests ? JSON.parse(guests) : [];
@@ -76,7 +79,7 @@ export default function BookConfig() {
   }, [apiId]);
   const listing = apiId ? apiListing : mockListing;
   const monthlyRent = Number(rent ?? 13000);
-  const dep = listing?.securityDeposit ?? 26000;
+  const dep = (securityDeposit != null ? Number(securityDeposit) : undefined) ?? listing?.securityDeposit ?? 26000;
   const [promo, setPromo] = useState('');
   const [promoError, setPromoError] = useState(false);
   const [appliedCoupon, setAppliedCoupon] = useState<AppliedCoupon | null>(null);

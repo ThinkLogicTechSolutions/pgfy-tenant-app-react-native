@@ -364,6 +364,11 @@ export interface ApiPropertyPricingTier {
   /** Flat/Homestay only. */
   rent?: number | null;
   available_beds: number;
+  /** MONTHLY only — null on DAILY/HOURLY tiers. Owner-side config now lives per rate card
+   * (one per room layout) rather than on the property record. */
+  security_deposit?: number | null;
+  lock_in_period_months?: number | null;
+  notice_period_days?: number | null;
 }
 
 export interface ApiFoodMenuSlot {
@@ -587,6 +592,10 @@ export interface ApiSelectedOccupancy {
   is_ac: boolean;
   with_food: boolean;
   booking_mode: ApiBookingMode;
+  /** MONTHLY only — absent/null on DAILY/HOURLY selections. */
+  security_deposit?: number | null;
+  lock_in_period_months?: number | null;
+  notice_period_days?: number | null;
 }
 
 /** `GET /tenant/properties/:id?is_ac=&booking_mode=&layout=&with_food=` — room/bed availability. */

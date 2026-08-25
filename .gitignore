@@ -23,6 +23,9 @@ expo-env.d.ts
 credentials/
 keystore.properties
 
+# fastlane credentials (Play Store / App Store service account keys — never commit)
+fastlane/*.json
+
 # Metro
 .metro-health-check*
 
