@@ -1,31 +1,50 @@
-/** T-S11 — Map view (stylized mock map with clustered pins + horizontal preview cards). */
+/** T-S11 — Map view (real Google Maps with pins from listing coordinates + horizontal preview cards). */
 import { useRef, useState } from 'react';
-import { View, ScrollView, useWindowDimensions } from 'react-native';
+import { View, ScrollView, useWindowDimensions, Platform } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Image } from 'expo-image';
 import { Ionicons } from '@expo/vector-icons';
+import RNMapView, { Marker, PROVIDER_GOOGLE, type Region } from 'react-native-maps';
 import { palette, spacing, radius, shadows } from '@/theme';
 import { Text, IconButton, PressableScale, EmptyState } from '@/components/ui';
 import { RatingPill } from '@/components/domain';
-import { MapBackdrop, EmptySearch } from '@/components/illustrations';
+import { EmptySearch } from '@/components/illustrations';
 import { useMapResults } from '@/store/mapResults';
+import { showAlert } from '@/lib/alert';
+import { haptic } from '@/lib/haptics';
 import type { Listing } from '@/data/types';
 import { inr } from '@/lib/format';
 
-const POS = [
-  { top: '22%', left: '18%' }, { top: '30%', left: '58%' }, { top: '44%', left: '32%' },
-  { top: '38%', left: '74%' }, { top: '56%', left: '50%' }, { top: '60%', left: '20%' },
-  { top: '50%', left: '82%' }, { top: '68%', left: '66%' }, { top: '26%', left: '40%' },
-  { top: '72%', left: '38%' },
-];
+const DEFAULT_DELTA = 0.02;
 
-export default function MapView() {
+function regionFor(lat: number, lng: number, delta = DEFAULT_DELTA): Region {
+  return { latitude: lat, longitude: lng, latitudeDelta: delta, longitudeDelta: delta };
+}
+
+function regionForListings(listings: Listing[]): Region {
+  const lats = listings.map((l) => l.lat);
+  const lngs = listings.map((l) => l.lng);
+  const minLat = Math.min(...lats);
+  const maxLat = Math.max(...lats);
+  const minLng = Math.min(...lngs);
+  const maxLng = Math.max(...lngs);
+  return {
+    latitude: (minLat + maxLat) / 2,
+    longitude: (minLng + maxLng) / 2,
+    latitudeDelta: Math.max(maxLat - minLat, DEFAULT_DELTA) * 1.6,
+    longitudeDelta: Math.max(maxLng - minLng, DEFAULT_DELTA) * 1.6,
+  };
+}
+
+export default function MapScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const { width } = useWindowDimensions();
   const scrollRef = useRef<ScrollView>(null);
+  const mapRef = useRef<RNMapView>(null);
   const [selected, setSelected] = useState(0);
+  const [locating, setLocating] = useState(false);
   const listings = useMapResults();
 
   const cardWidth = Math.min(300, width * 0.82);
@@ -36,6 +55,26 @@ export default function MapView() {
     const i = Math.max(0, Math.min(index, listings.length - 1));
     setSelected(i);
     scrollRef.current?.scrollTo({ x: i * cardStep, animated: true });
+    mapRef.current?.animateToRegion(regionFor(listings[i].lat, listings[i].lng), 350);
+  };
+
+  const goToMyLocation = async () => {
+    haptic.light();
+    setLocating(true);
+    try {
+      const Location = await import('expo-location');
+      const { status } = await Location.requestForegroundPermissionsAsync();
+      if (status !== 'granted') {
+        showAlert('Location permission needed', 'Allow location access to center the map on where you are.');
+        return;
+      }
+      const pos = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced });
+      mapRef.current?.animateToRegion(regionFor(pos.coords.latitude, pos.coords.longitude, 0.01), 500);
+    } catch {
+      showAlert('Could not get your location', 'Please try again.');
+    } finally {
+      setLocating(false);
+    }
   };
 
   if (listings.length === 0) {
@@ -51,16 +90,23 @@ export default function MapView() {
 
   return (
     <View style={{ flex: 1, backgroundColor: palette.navyTint }}>
-      <View style={{ position: 'absolute', inset: 0 }}>
-        <MapBackdrop />
+      <RNMapView
+        ref={mapRef}
+        style={{ position: 'absolute', inset: 0 }}
+        provider={Platform.OS === 'android' ? PROVIDER_GOOGLE : undefined}
+        initialRegion={regionForListings(listings)}
+        showsUserLocation
+        showsMyLocationButton={false}
+      >
         {listings.map((l, i) => {
           const active = i === selected;
           return (
-            <PressableScale
+            <Marker
               key={l.id}
+              coordinate={{ latitude: l.lat, longitude: l.lng }}
               onPress={() => selectListing(i)}
-              haptics
-              style={{ position: 'absolute', top: POS[i % POS.length].top as any, left: POS[i % POS.length].left as any }}
+              tracksViewChanges={false}
+              anchor={{ x: 0.5, y: 1 }}
             >
               <View
                 style={{
@@ -80,21 +126,21 @@ export default function MapView() {
                   {inr(l.priceFrom)}
                 </Text>
               </View>
-            </PressableScale>
+            </Marker>
           );
         })}
-      </View>
+      </RNMapView>
 
       <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingTop: insets.top + spacing.sm, paddingHorizontal: spacing.base }}>
         <IconButton icon="chevron-back" onPress={() => (router.canGoBack() ? router.back() : router.replace('/(tabs)'))} style={{ borderRadius: 21 }} />
-        <IconButton icon="locate" color={palette.navy} />
+        <IconButton icon={locating ? 'ellipsis-horizontal' : 'locate'} color={palette.navy} onPress={goToMyLocation} />
       </View>
 
       <PressableScale
         onPress={() => (router.canGoBack() ? router.back() : router.replace('/(tabs)'))}
         style={{
           position: 'absolute',
-          top: insets.top + 70,
+          bottom: insets.bottom + 150,
           alignSelf: 'center',
           flexDirection: 'row',
           alignItems: 'center',
@@ -128,7 +174,7 @@ export default function MapView() {
         style={{ position: 'absolute', left: 0, right: 0, bottom: 0 }}
         onMomentumScrollEnd={(e) => {
           const idx = Math.round(e.nativeEvent.contentOffset.x / cardStep);
-          setSelected(Math.max(0, Math.min(idx, listings.length - 1)));
+          selectListing(idx);
         }}
       >
         {listings.map((listing, i) => (
@@ -138,7 +184,7 @@ export default function MapView() {
             width={cardWidth}
             active={i === selected}
             onPress={() => router.push(`/listing/${listing.id}`)}
-            onFocus={() => setSelected(i)}
+            onFocus={() => selectListing(i)}
           />
         ))}
       </ScrollView>

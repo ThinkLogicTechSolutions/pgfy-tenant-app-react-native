@@ -180,9 +180,16 @@ PODS:
     - nanopb (~> 3.30910.0)
   - fmt (11.0.2)
   - glog (0.3.5)
+  - Google-Maps-iOS-Utils (5.0.0):
+    - GoogleMaps (~> 8.0)
   - GoogleDataTransport (10.1.0):
     - nanopb (~> 3.30910.0)
     - PromisesObjC (~> 2.4)
+  - GoogleMaps (8.4.0):
+    - GoogleMaps/Maps (= 8.4.0)
+  - GoogleMaps/Base (8.4.0)
+  - GoogleMaps/Maps (8.4.0):
+    - GoogleMaps/Base
   - GoogleUtilities/AppDelegateSwizzler (8.1.2):
     - GoogleUtilities/Environment
     - GoogleUtilities/Logger
@@ -1974,6 +1981,12 @@ PODS:
     - React-RCTFBReactNativeSpec
     - ReactCommon/turbomodule/core
     - SocketRocket
+  - react-native-google-maps (1.20.1):
+    - Google-Maps-iOS-Utils (= 5.0.0)
+    - GoogleMaps (= 8.4.0)
+    - React-Core
+  - react-native-maps (1.20.1):
+    - React-Core
   - react-native-safe-area-context (5.6.2):
     - boost
     - DoubleConversion
@@ -3149,6 +3162,8 @@ DEPENDENCIES:
   - React-logger (from `../node_modules/react-native/ReactCommon/logger`)
   - React-Mapbuffer (from `../node_modules/react-native/ReactCommon`)
   - React-microtasksnativemodule (from `../node_modules/react-native/ReactCommon/react/nativemodule/microtasks`)
+  - react-native-google-maps (from `/Volumes/Sunil_SSD/Projects/PGfy_dev/tenant-app/node_modules/react-native-maps`)
+  - react-native-maps (from `../node_modules/react-native-maps`)
   - react-native-safe-area-context (from `../node_modules/react-native-safe-area-context`)
   - react-native-view-shot (from `../node_modules/react-native-view-shot`)
   - react-native-webview (from `../node_modules/react-native-webview`)
@@ -3203,7 +3218,9 @@ SPEC REPOS:
     - FirebaseCoreInternal
     - FirebaseInstallations
     - FirebaseMessaging
+    - Google-Maps-iOS-Utils
     - GoogleDataTransport
+    - GoogleMaps
     - GoogleUtilities
     - libavif
     - libdav1d
@@ -3353,6 +3370,10 @@ EXTERNAL SOURCES:
     :path: "../node_modules/react-native/ReactCommon"
   React-microtasksnativemodule:
     :path: "../node_modules/react-native/ReactCommon/react/nativemodule/microtasks"
+  react-native-google-maps:
+    :path: "/Volumes/Sunil_SSD/Projects/PGfy_dev/tenant-app/node_modules/react-native-maps"
+  react-native-maps:
+    :path: "../node_modules/react-native-maps"
   react-native-safe-area-context:
     :path: "../node_modules/react-native-safe-area-context"
   react-native-view-shot:
@@ -3482,7 +3503,9 @@ SPEC CHECKSUMS:
   FirebaseMessaging: 40017d7bc8457ee295b0f41d480a80fdabc9994e
   fmt: a40bb5bd0294ea969aaaba240a927bd33d878cdd
   glog: 5683914934d5b6e4240e497e0f4a3b42d1854183
+  Google-Maps-iOS-Utils: 66d6de12be1ce6d3742a54661e7a79cb317a9321
   GoogleDataTransport: aae35b7ea0c09004c3797d53c8c41f66f219d6a7
+  GoogleMaps: 8939898920281c649150e0af74aa291c60f2e77d
   GoogleUtilities: 766ace00c6b10d8148408f329d10c4f051931850
   hermes-engine: 9f4dfe93326146a1c99eb535b1cb0b857a3cd172
   libavif: 5f8e715bea24debec477006f21ef9e95432e254d
@@ -3524,6 +3547,8 @@ SPEC CHECKSUMS:
   React-logger: 8bcfaf06f8c536fb9e9760526cf3d17ccd53e4ce
   React-Mapbuffer: 4649384414066eb77e30a3124dbb48732a3aa173
   React-microtasksnativemodule: e39f94cc96d61b8174a5cfb2d5862a73fa8c0d35
+  react-native-google-maps: 7cc1184afe41fbd15a3dffd53c924819f6587b69
+  react-native-maps: ee1e65647460c3d41e778071be5eda10e3da6225
   react-native-safe-area-context: fea29ae0275beaa22f72d0a8be1eb0ab09c3feae
   react-native-view-shot: a52222a76e68bf04449fd18a4efeb899a4ab21d7
   react-native-webview: 089e3d3bfeb754dff1e5920e6060e615757957f8
@@ -3574,6 +3599,6 @@ SPEC CHECKSUMS:
   SocketRocket: d4aabe649be1e368d1318fdf28a022d714d65748
   Yoga: 1e91d83a5286cfd3b725eade59274c92270540d4
 
-PODFILE CHECKSUM: 8681d47a680f5ca2861c160d2493a354e9165f9f
+PODFILE CHECKSUM: 417c1a92afc2157fd30dd8fcc2fdfc28b8f0119f
 
 COCOAPODS: 1.16.2

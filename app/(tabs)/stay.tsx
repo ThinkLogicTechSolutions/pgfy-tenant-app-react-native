@@ -37,6 +37,10 @@ const QUICK = [
   { icon: 'exit-outline', label: 'Move Out', route: '/move-out', tint: palette.danger },
 ];
 
+// Lease agreements only exist for monthly bookings — inserted into the grid ahead of Move Out
+// (rather than appended) so the destructive action stays last.
+const LEASE_ACTION = { icon: 'document-text-outline', label: 'Lease', route: 'lease', tint: palette.navy };
+
 const EXTEND_ACTION = { icon: 'time-outline', label: 'Extend Booking', route: 'extend-stay', tint: palette.coral };
 
 export default function Stay() {
@@ -203,8 +207,10 @@ export default function Stay() {
   // there's no other room/bed within the same property to swap into. Daily/Hourly stays
   // extend instead of changing beds or moving out — one Extend Booking tile replaces both.
   const isHostel = !isUnitPropertyType(b.property);
+  const monthlyBase = isHostel ? QUICK : QUICK.filter((q) => q.route !== '/room-swap');
   const quickActions = isMonthly
-    ? (isHostel ? QUICK : QUICK.filter((q) => q.route !== '/room-swap'))
+    // Move Out is always last in QUICK — slot Lease in just before it.
+    ? [...monthlyBase.slice(0, -1), LEASE_ACTION, monthlyBase[monthlyBase.length - 1]]
     : QUICK.filter((q) => q.route !== '/room-swap').map((q) => (q.route === '/move-out' ? EXTEND_ACTION : q));
   // When the last row isn't a full 3, stretch its tiles to fill the row instead of leaving
   // empty space (e.g. Room Swap hidden leaves Visitors + Extend Booking as a 2-tile row).
@@ -443,6 +449,10 @@ export default function Stay() {
                       }
                       if (q.route === 'extend-stay') {
                         router.push({ pathname: '/booking/extend', params: { bookingId: String(b.booking.id) } });
+                        return;
+                      }
+                      if (q.route === 'lease') {
+                        router.push({ pathname: '/lease', params: { bookingId: String(b.booking.id) } });
                         return;
                       }
                       if (q.route === '/room-swap') {

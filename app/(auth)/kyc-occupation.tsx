@@ -20,7 +20,8 @@ const SEGMENTS = [
   { key: 'WORKING_PROFESSIONAL', label: 'Working Professional' },
 ];
 
-const PRIVACY_URL = 'https://pgfy.in/privacyPolicy.html';
+const TERMS_URL = 'https://pgfy.in/pages/terms-conditions.html';
+const PRIVACY_URL = 'https://pgfy.in/pages/privacy-policy.html';
 
 export default function KycOccupation() {
   const router = useRouter();

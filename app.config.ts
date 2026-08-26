@@ -37,6 +37,22 @@ export default ({ config }: ConfigContext): ExpoConfig => {
       url: `https://u.expo.dev/${projectId}`,
       fallbackToCacheTimeout: 0,
     },
+    ios: {
+      ...config.ios,
+      config: {
+        ...config.ios?.config,
+        googleMapsApiKey,
+      },
+    },
+    android: {
+      ...config.android,
+      config: {
+        ...config.android?.config,
+        googleMaps: {
+          apiKey: googleMapsApiKey,
+        },
+      },
+    },
     extra: {
       ...config.extra,
       appEnv: APP_ENV,

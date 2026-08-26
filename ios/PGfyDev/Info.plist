@@ -19,7 +19,7 @@
     <key>CFBundlePackageType</key>
     <string>$(PRODUCT_BUNDLE_PACKAGE_TYPE)</string>
     <key>CFBundleShortVersionString</key>
-    <string>1.0.6</string>
+    <string>1.0.7</string>
     <key>CFBundleSignature</key>
     <string>????</string>
     <key>CFBundleURLTypes</key>
@@ -40,6 +40,8 @@
     </array>
     <key>CFBundleVersion</key>
     <string>2</string>
+    <key>GMSApiKey</key>
+    <string>AIzaSyCvIDqCu0m4v7sQwWIlpIMbKXOSh1uixNs</string>
     <key>ITSAppUsesNonExemptEncryption</key>
     <false/>
     <key>LSMinimumSystemVersion</key>

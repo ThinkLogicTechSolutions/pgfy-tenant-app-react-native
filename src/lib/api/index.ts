@@ -36,6 +36,16 @@ export * as ratingsApi from './ratings';
 export * as rewardsApi from './rewards';
 export * as snapKycApi from './snapkyc';
 export * as notificationsApi from './notifications';
+export * as leaseApi from './lease';
+
+export type {
+  LeaseAgreement,
+  LeaseAgreementStatus,
+  LeaseAgreementStatusFilter,
+  LeaseAgreementListResponse,
+  LeaseAgreementCounts,
+  ListLeaseAgreementsQuery,
+} from './lease';
 
 export type {
   SendOtpInput,

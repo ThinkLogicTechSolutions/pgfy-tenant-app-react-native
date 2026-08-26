@@ -33,6 +33,19 @@ Build and deploy to the Play Store internal testing track
 
 ----
 
+
+## iOS
+
+### ios archive_ios
+
+```sh
+[bundle exec] fastlane ios archive_ios
+```
+
+Install JS deps, regenerate the native ios/ project, and archive a signed Release build
+
+----
+
 This README.md is auto-generated and will be re-generated every time [_fastlane_](https://fastlane.tools) is run.
 
 More information about _fastlane_ can be found on [fastlane.tools](https://fastlane.tools).

@@ -16,8 +16,8 @@ import { haptic } from '@/lib/haptics';
 import { isBankDetailsComplete, bankDetailsSummary } from '@/lib/bankDetails';
 import { rewardsApi, favoritesApi, profileApi, errorMessage, type RoommatePreferences } from '@/lib/api';
 
-const PRIVACY_URL = 'https://pgfy.in/privacyPolicy.html';
-const TERMS_URL = 'https://pgfy.in/termsCondtions.html';
+const TERMS_URL = 'https://pgfy.in/pages/terms-conditions.html';
+const PRIVACY_URL = 'https://pgfy.in/pages/privacy-policy.html';
 
 const SLEEP_LABEL: Record<string, string> = { EARLY_BIRD: 'Early sleeper', NIGHT_OWL: 'Night owl' };
 const DIET_LABEL: Record<string, string> = { VEGETARIAN: 'Vegetarian', VEGAN: 'Vegan', NON_VEGETARIAN: 'Non-vegetarian' };
@@ -271,7 +271,7 @@ export default function Profile() {
       <Section title="MY STAY">
         <ListRow icon="time-outline" title="Booking history" subtitle="All your bookings" onPress={() => router.push('/bookings')} />
         <Divider />
-        <ListRow icon="document-text-outline" title="Lease agreement" onPress={() => router.push('/lease')} />
+        <ListRow icon="document-text-outline" title="Lease agreements" onPress={() => router.push('/lease-agreements')} />
         <Divider />
         <ListRow icon="receipt-outline" title="Billing & invoices" onPress={() => router.push('/billing')} />
         <Divider />

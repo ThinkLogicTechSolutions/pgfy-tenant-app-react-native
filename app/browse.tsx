@@ -246,7 +246,7 @@ export default function Browse() {
           scaleTo={0.94}
           style={{
             position: 'absolute',
-            top: spacing.md,
+            bottom: insets.bottom + spacing.xl,
             alignSelf: 'center',
             flexDirection: 'row',
             alignItems: 'center',

@@ -38,7 +38,7 @@ export function resolveNotificationRoute(item: ApiTenantNotification): Notificat
       return '/billing';
 
     case 'LEASE':
-      return '/lease';
+      return id != null ? { pathname: '/lease', params: { id: String(id) } } : '/lease-agreements';
 
     case 'REWARD':
       return '/rewards';
