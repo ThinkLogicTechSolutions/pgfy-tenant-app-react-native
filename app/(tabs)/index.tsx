@@ -707,7 +707,10 @@ export default function Home() {
                 title="Popular areas"
                 subtitle="Explore by popular neighbourhoods"
                 actionLabel="See all"
-                onAction={() => router.push('/popular-areas')}
+                onAction={() => router.push({
+                  pathname: '/popular-areas',
+                  params: { areas: JSON.stringify(popularAreas), cityId: String(geo?.cityId ?? ''), city: activeCity },
+                })}
               />
             </View>
             {popularAreas.length > 0 ? (
