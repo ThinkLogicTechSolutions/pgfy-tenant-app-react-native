@@ -95,7 +95,6 @@ export default function Browse() {
       });
     fetchListings
       .then((mapped) => {
-        console.log(`HEHE ${JSON.stringify(mapped, null, 2)}`);
 
         if (active) setLiveListings(mapped);
       })
