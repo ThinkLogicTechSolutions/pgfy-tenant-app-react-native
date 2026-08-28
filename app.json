@@ -11,7 +11,7 @@
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "in.pgfy.tenant",
-      "buildNumber": "10",
+      "buildNumber": "20",
       "googleServicesFile": "./GoogleService-Info.plist",
       "associatedDomains": [
         "applinks:share.pgfy.in",
@@ -23,7 +23,7 @@
     },
     "android": {
       "package": "in.pgfy.tenant",
-      "versionCode": 19,
+      "versionCode": 20,
       "edgeToEdgeEnabled": true,
       "googleServicesFile": "./google-services.json",
       "adaptiveIcon": {
