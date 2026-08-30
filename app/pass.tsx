@@ -9,7 +9,7 @@
  *  (check-out). That same string is printed under the QR as the manual fallback, since it's
  *  what the owner app expects typed in when a scan fails. */
 import { useEffect, useRef, useState } from 'react';
-import { View, ActivityIndicator, Platform, Share, Linking } from 'react-native';
+import { View, ActivityIndicator, Platform, Share } from 'react-native';
 import { Image } from 'expo-image';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -18,7 +18,6 @@ import { LinearGradient } from 'expo-linear-gradient';
 import QRCode from 'react-native-qrcode-svg';
 import { captureRef } from 'react-native-view-shot';
 import * as Sharing from 'expo-sharing';
-import { openWalletChooser, shareImageToPackage } from '../modules/pgfy-wallet';
 import { palette, spacing, radius } from '@/theme';
 import { Text, IconButton, Button, Divider, EmptyState } from '@/components/ui';
 import { bookingApi, stayApi, errorMessage, type BookingStatusApi, type ApiMyStayResponse } from '@/lib/api';
@@ -26,22 +25,6 @@ import { bookingStatusLabel, buildPassPayload, isUnitBooking } from '@/lib/booki
 import { isUnitPropertyType } from '@/lib/listingAdapter';
 import { formatDate } from '@/lib/format';
 import { alert } from '@/lib/alertDialog';
-
-const GOOGLE_WALLET_PACKAGE = 'com.google.android.apps.walletnfcrel';
-const GOOGLE_WALLET_PLAY_URL = `https://play.google.com/store/apps/details?id=${GOOGLE_WALLET_PACKAGE}`;
-
-/** Send the tenant to install/restore Google Wallet (Android-only entry point). */
-async function openGoogleWalletStore(): Promise<void> {
-  try {
-    const marketUrl = `market://details?id=${GOOGLE_WALLET_PACKAGE}`;
-    const canOpen = await Linking.canOpenURL(marketUrl);
-    if (canOpen) {
-      await Linking.openURL(marketUrl);
-      return;
-    }
-  } catch { }
-  await Linking.openURL(GOOGLE_WALLET_PLAY_URL);
-}
 
 
 interface PassView {
@@ -106,7 +89,6 @@ export default function Pass() {
   const [loading, setLoading] = useState(!preloaded);
   const [error, setError] = useState<string | null>(null);
   const [sharing, setSharing] = useState(false);
-  const [addingToWallet, setAddingToWallet] = useState(false);
   const ticketRef = useRef<View>(null);
 
   const load = () => {
@@ -207,27 +189,6 @@ export default function Pass() {
       alert('Could not share pass', errorMessage(e));
     } finally {
       setSharing(false);
-    }
-  };
-
-  /** Adds the pass to a digital wallet (Google Wallet, Samsung Wallet, etc.) by opening
-   *  a tailored chooser targeting installed wallet apps. */
-  const onAddToWallet = async () => {
-    if (addingToWallet) return;
-    setAddingToWallet(true);
-    try {
-      const uri = await captureRef(ticketRef, { format: 'png', quality: 0.95 });
-      const launched = await openWalletChooser(uri, 'Add pass to wallet');
-      if (launched === false) {
-        // No supported wallet app installed — take them to the store instead.
-        await openGoogleWalletStore();
-      } else if (launched === null && (await Sharing.isAvailableAsync())) {
-        await Sharing.shareAsync(uri, { mimeType: 'image/png', dialogTitle: 'Add pass to wallet' });
-      }
-    } catch (e) {
-      alert('Could not add to wallet', errorMessage(e));
-    } finally {
-      setAddingToWallet(false);
     }
   };
 

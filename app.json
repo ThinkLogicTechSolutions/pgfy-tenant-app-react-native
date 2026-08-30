@@ -104,8 +104,7 @@
         }
       ],
       "./plugins/withAndroidSigning",
-      "./plugins/withAadhaarQueries",
-      "./plugins/withWalletQueries"
+      "./plugins/withAadhaarQueries"
     ],
     "extra": {
       "router": {},
