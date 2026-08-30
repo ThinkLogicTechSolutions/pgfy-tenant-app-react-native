@@ -12,6 +12,7 @@
 import { request } from './client';
 import { unwrapList } from './types';
 import type {
+  AmenityMaster,
   CityMaster,
   ListResponse,
   LocalityMaster,
@@ -38,6 +39,12 @@ export async function listCities(): Promise<CityMaster[]> {
 /** All localities; filter by `city_id` client-side. */
 export async function listLocalities(): Promise<LocalityMaster[]> {
   return unwrapList(await request<ListResponse<LocalityMaster>>('/master-data/locality-master', { query: ALL }));
+}
+
+/** The amenity catalogue (WiFi, AC, Power Backup, …) — drives the search filter sheet's
+ * "Amenities" section (previously a hardcoded mock list). */
+export async function listAmenities(): Promise<AmenityMaster[]> {
+  return unwrapList(await request<ListResponse<AmenityMaster>>('/master-data/amenity-master', { query: ALL }));
 }
 
 /** Maintenance/complaint categories (loaded ahead of time; used by the tickets flow). */

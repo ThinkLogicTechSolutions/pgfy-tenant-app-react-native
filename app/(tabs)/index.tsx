@@ -15,16 +15,14 @@ import { Ionicons } from '@expo/vector-icons';
 import { palette, spacing, radius, shadows, fontFamily } from '@/theme';
 import { Text, IconButton, PressableScale, Avatar, Button, EmptyState, Skeleton } from '@/components/ui';
 import { CityTile, SectionHeader, CraftedFooter, PromotedBadge } from '@/components/domain';
-import { BrowseFiltersSheet, getDefaultBrowseFilters, browseFiltersToParams, type BrowseFilters, type StayBookingValues } from '@/components/search';
 import { locationPicker } from '@/store/locationPicker';
 import { useTenantLocation } from '@/store/location';
 import { recordView } from '@/store/recentlyViewed';
 import { useSaved } from '@/store/saved';
 import { useAuth } from '@/context/AuthContext';
-import { dashboardApi, continueBrowsingApi, notificationsApi, errorMessage, type LocalityMaster, type DashboardStayDuration } from '@/lib/api';
+import { dashboardApi, continueBrowsingApi, notificationsApi, errorMessage, type LocalityMaster, type DashboardPropertyCategory } from '@/lib/api';
 import { continueBrowsingToListing } from '@/lib/listingAdapter';
 import { defaultCheckIn, defaultCheckOut } from '@/lib/dates';
-import { useCheckInFreshness } from '@/lib/useCheckInFreshness';
 import { inr } from '@/lib/format';
 import { haptic } from '@/lib/haptics';
 import type { BookingMode, Gender, Listing } from '@/data/types';
@@ -34,6 +32,10 @@ import { useMasterData } from '@/context/MasterDataContext';
 const AREA_TILE_ACCENTS = ['#3B82F6', '#1FB573', '#7C5CFC', '#F5A623', '#FF4B3E', '#01264E'];
 
 const FALLBACK_CITY = 'Bengaluru';
+
+/** Home no longer selects a booking mode (it's chosen inside property details), so navigation
+ * params that still expect one get this constant default instead of a user selection. */
+const DEFAULT_BOOKING_TYPE: BookingMode = 'monthly';
 
 /** Built-in landmark art for well-known cities; anything else falls back to a generic skyline. */
 const CITY_LANDMARKS: Record<string, LandmarkId> = {
@@ -61,27 +63,17 @@ function genderTag(gender: Gender): { label: string; bg: string; fg: string } {
   return { label: 'Co-living', bg: palette.infoTint, fg: palette.info };
 }
 
-function priceForMode(l: Listing, mode: BookingMode): { amount: number; unit: string } {
-  if (mode === 'hourly' && l.hourlyPricing.length > 0) {
-    return { amount: Math.min(...l.hourlyPricing.map((t) => t.rentPerHour)), unit: '/hr' };
-  }
-  if (mode === 'daily' && l.dailyPricing.length > 0) {
-    return { amount: Math.min(...l.dailyPricing.map((t) => t.rentPerDay)), unit: '/day' };
-  }
-  return { amount: l.priceFrom, unit: '/month' };
-}
+/** Home's "near you" category tabs — booking mode (monthly/daily/hourly) is chosen inside
+ * property details instead, so it's no longer a Home-level filter. `'ALL'` (the default) sends
+ * no category filter to the dashboard API; the other two map to `DashboardPropertyCategory`. */
+type CategoryTab = 'ALL' | DashboardPropertyCategory;
 
-const STAY_TYPES: { key: BookingMode; label: string; subtitle: string; icon: keyof typeof Ionicons.glyphMap; accent: string; tint: string }[] = [
-  { key: 'monthly', label: 'Monthly', subtitle: 'Long term', icon: 'calendar-clear', accent: palette.navy, tint: palette.navyTint },
-  { key: 'daily', label: 'Daily', subtitle: 'Short term', icon: 'partly-sunny', accent: palette.coral, tint: palette.coralTint },
-  { key: 'hourly', label: 'Hourly', subtitle: 'By the hour', icon: 'hourglass', accent: palette.info, tint: palette.infoTint },
+const CATEGORY_TABS: { key: CategoryTab; label: string; icon: keyof typeof Ionicons.glyphMap; accent: string }[] = [
+  { key: 'ALL', label: 'All', icon: 'grid', accent: palette.navy },
+  { key: 'HOSTEL', label: 'PGs / Hostels', icon: 'bed', accent: palette.navy },
+  { key: 'FLAT', label: 'Flats', icon: 'business', accent: palette.success },
+  { key: 'HOMESTAY', label: 'HomeStays', icon: 'home', accent: '#7C5CFC' },
 ];
-
-const STAY_DURATION_BY_MODE: Record<BookingMode, DashboardStayDuration> = {
-  monthly: 'MONTHLY',
-  daily: 'DAILY',
-  hourly: 'HOURLY',
-};
 
 /** Split items into N-row columns for a 2-row horizontal rail. */
 function intoColumns<T>(items: T[], rows = 2): T[][] {
@@ -106,41 +98,27 @@ const QUICK_SERVICES: QuickService[] = [
   { key: 'refer', label: 'Refer App', subtitle: 'Invite & save', icon: 'gift', gradient: [palette.coral, palette.coralDark], wash: palette.coralTint },
 ];
 
-function StayTypeCard({ item, active, onPress }: { item: (typeof STAY_TYPES)[number]; active: boolean; onPress: () => void }) {
+function CategoryTabCard({ item, active, onPress }: { item: (typeof CATEGORY_TABS)[number]; active: boolean; onPress: () => void }) {
   return (
     <PressableScale
       onPress={onPress}
       scaleTo={0.96}
       style={{
-        flex: 1,
-        borderRadius: radius.lg,
-        borderWidth: 1.5,
-        borderColor: active ? palette.navy : palette.border,
-        backgroundColor: active ? palette.navyTint : palette.surface,
-        paddingVertical: spacing.md,
-        paddingHorizontal: spacing.xs,
+        flexDirection: 'row',
         alignItems: 'center',
-        ...(active ? {} : shadows.card),
+        gap: 8,
+        borderRadius: radius.pill,
+        borderWidth: active ? 1.5 : 1,
+        borderColor: active ? palette.navy : palette.border,
+        backgroundColor: palette.surface,
+        paddingVertical: spacing.sm,
+        paddingHorizontal: spacing.md,
+        ...shadows.card,
       }}
     >
-      <View
-        style={{
-          width: 38,
-          height: 38,
-          borderRadius: radius.md,
-          backgroundColor: active ? palette.surface : item.tint,
-          alignItems: 'center',
-          justifyContent: 'center',
-          marginBottom: 6,
-        }}
-      >
-        <Ionicons name={item.icon} size={18} color={item.accent} />
-      </View>
-      <Text variant="bodySm" weight="700" color={active ? palette.navy : palette.ink} numberOfLines={1}>
+      <Ionicons name={item.icon} size={18} color={item.accent} />
+      <Text variant="bodySm" weight="700" color={palette.ink} numberOfLines={1}>
         {item.label}
-      </Text>
-      <Text variant="caption" color={palette.inkTertiary} align="center" numberOfLines={1} style={{ marginTop: 1, fontSize: 11 }}>
-        {item.subtitle}
       </Text>
     </PressableScale>
   );
@@ -148,21 +126,21 @@ function StayTypeCard({ item, active, onPress }: { item: (typeof STAY_TYPES)[num
 
 function NearbyCard({
   listing,
-  bookingType,
   promoted,
   saved,
   onToggleSave,
   onPress,
 }: {
   listing: Listing;
-  bookingType: BookingMode;
   promoted?: boolean;
   saved: boolean;
   onToggleSave: () => void;
   onPress: () => void;
 }) {
   const tag = genderTag(listing.gender);
-  const price = priceForMode(listing, bookingType);
+  // Near-you cards never carry per-mode pricing (see `continueBrowsingToListing`), so this was
+  // always effectively `priceFrom` + "/month" regardless of any stay-type selection.
+  const price = { amount: listing.priceFrom, unit: '/month' };
   return (
     <PressableScale
       onPress={onPress}
@@ -378,7 +356,10 @@ export default function Home() {
     [popularDestinations],
   );
 
-  const [stayType, setStayType] = useState<BookingMode>('monthly');
+  // Home's own "near you" category filter — booking mode (monthly/daily/hourly) is chosen
+  // inside property details instead, via `BrowseFiltersSheet`'s own `bookingType` (defaulted
+  // below, unrelated to this).
+  const [categoryFilter, setCategoryFilter] = useState<CategoryTab>('ALL');
   // Free-text "property or PGID" search — submits to /tenant/search.
   const [searchQuery, setSearchQuery] = useState('');
 
@@ -399,23 +380,6 @@ export default function Home() {
     return { checkIn, checkOut: defaultCheckOut(checkIn), startTime: '10:00', hours: 4 };
   })();
 
-  // Filter sheet opens directly on Home — it's a standalone picker, not tied to navigating
-  // into /browse first. Applying it is what triggers the navigation, with the picks in tow.
-  const [filtersOpen, setFiltersOpen] = useState(false);
-  const [draftFilters, setDraftFilters] = useState<BrowseFilters>(() => ({ ...getDefaultBrowseFilters(), bookingType: stayType, stay: stayDates }));
-
-  const openFilters = () => {
-    setDraftFilters({ ...getDefaultBrowseFilters(), bookingType: stayType, stay: stayDates });
-    setFiltersOpen(true);
-  };
-
-  // `openFilters` refreshes the date on open, but if the sheet is left open while the app
-  // gets backgrounded (or just sits idle) overnight, nothing re-triggers that reset — see
-  // `useCheckInFreshness`. Adapts it to `draftFilters.stay`'s nested shape.
-  useCheckInFreshness<StayBookingValues>((updater) => setDraftFilters((prev) => {
-    const nextStay = updater(prev.stay);
-    return nextStay === prev.stay ? prev : { ...prev, stay: nextStay };
-  }));
 
   // "Near you" + "Popular areas" — location-scoped, from the tenant dashboard API.
   const [nearYou, setNearYou] = useState<Listing[]>([]);
@@ -437,7 +401,11 @@ export default function Home() {
     const coordinates: [number, number] | undefined =
       geo.source === 'gps' && geo.lat != null && geo.lng != null ? [geo.lat, geo.lng] : undefined;
     dashboardApi
-      .getDashboard({ cityId: geo.cityId, coordinates, stayDuration: STAY_DURATION_BY_MODE[stayType] })
+      .getDashboard({
+        cityId: geo.cityId,
+        coordinates,
+        ...(categoryFilter === 'ALL' ? {} : { propertyCategory: categoryFilter }),
+      })
       .then((res) => {
         if (!active) return;
         setNearYou(res.near_you.map(continueBrowsingToListing));
@@ -456,9 +424,9 @@ export default function Home() {
     return () => {
       active = false;
     };
-  }, [operational, geo?.cityId, geo?.lat, geo?.lng, geo?.source, stayType]);
+  }, [operational, geo?.cityId, geo?.lat, geo?.lng, geo?.source, categoryFilter]);
 
-  // The dashboard call above is already scoped to `stayType` via `stay_duration`.
+  // The dashboard call above is already scoped to `categoryFilter` via `property_category`.
   const nearby = nearYou;
 
   // "Continue browsing" — the tenant's recently-viewed properties, from the backend.
@@ -479,11 +447,13 @@ export default function Home() {
     };
   }, []);
 
+  // Booking mode is now picked inside property details (or inside the filter sheet), not on
+  // Home — these just seed a sensible default for screens that still expect the param.
   const searchParams = (extra?: Record<string, string>) => ({
     city: searchCity,
     checkIn: stayDates.checkIn,
     checkOut: stayDates.checkOut,
-    bookingType: stayType,
+    bookingType: DEFAULT_BOOKING_TYPE,
     startTime: stayDates.startTime,
     hours: String(stayDates.hours),
     ...(geo?.cityId ? { cityId: String(geo.cityId) } : {}),
@@ -494,7 +464,7 @@ export default function Home() {
   const listingParams = () => ({
     checkIn: stayDates.checkIn,
     checkOut: stayDates.checkOut,
-    bookingType: stayType,
+    bookingType: DEFAULT_BOOKING_TYPE,
     startTime: stayDates.startTime,
     hours: String(stayDates.hours),
   });
@@ -604,7 +574,7 @@ export default function Home() {
               ...shadows.card,
             }}
           >
-            <View style={{ flex: 1, height: '100%', flexDirection: 'row', alignItems: 'center', gap: spacing.sm, paddingLeft: spacing.base, paddingRight: spacing.sm }}>
+            <View style={{ flex: 1, height: '100%', flexDirection: 'row', alignItems: 'center', gap: spacing.sm, paddingHorizontal: spacing.base }}>
               <Ionicons name="search" size={18} color={palette.inkTertiary} />
               <TextInput
                 value={searchQuery}
@@ -621,14 +591,6 @@ export default function Home() {
                 </PressableScale>
               ) : null}
             </View>
-            <View style={{ width: 1, height: 22, backgroundColor: palette.border }} />
-            <PressableScale
-              onPress={openFilters}
-              scaleTo={0.9}
-              style={{ height: '100%', justifyContent: 'center', paddingHorizontal: spacing.base }}
-            >
-              <Ionicons name="options-outline" size={19} color={palette.inkSecondary} />
-            </PressableScale>
           </View>
         ) : geo ? (
           <NotOperationalSection label={geo.label} onPress={openLocationPicker} />
@@ -636,18 +598,24 @@ export default function Home() {
           <LocationPromptBanner onPress={openLocationPicker} />
         )}
 
-        {/* Stay type — only once an operational location is set */}
+        {/* Property category — only once an operational location is set. Filters "Near you";
+         * booking mode (monthly/daily/hourly) is chosen inside property details instead. */}
         {operational ? (
-          <View style={{ marginTop: spacing.base, marginHorizontal: spacing.base, flexDirection: 'row', gap: spacing.sm }}>
-            {STAY_TYPES.map((item) => (
-              <StayTypeCard
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            style={{ marginTop: spacing.base }}
+            contentContainerStyle={{ gap: spacing.sm, paddingHorizontal: spacing.base }}
+          >
+            {CATEGORY_TABS.map((item) => (
+              <CategoryTabCard
                 key={item.key}
                 item={item}
-                active={stayType === item.key}
-                onPress={() => { haptic.select(); setStayType(item.key); }}
+                active={categoryFilter === item.key}
+                onPress={() => { haptic.select(); setCategoryFilter(item.key); }}
               />
             ))}
-          </View>
+          </ScrollView>
         ) : null}
 
         {/* Near you — only when we know where the tenant is and it's operational */}
@@ -680,7 +648,6 @@ export default function Home() {
                   <NearbyCard
                     key={listing.id}
                     listing={listing}
-                    bookingType={stayType}
                     promoted={nearYouPromotedIds.has(listing.id)}
                     saved={saved.isSaved(listing.id)}
                     onToggleSave={() => saved.toggle(listing.id)}
@@ -812,19 +779,6 @@ export default function Home() {
           <CraftedFooter />
         </View>
       </ScrollView>
-
-      <BrowseFiltersSheet
-        visible={filtersOpen}
-        onClose={() => setFiltersOpen(false)}
-        filters={draftFilters}
-        draft={draftFilters}
-        onDraftChange={setDraftFilters}
-        onApply={() => {
-          setFiltersOpen(false);
-          goToResults(browseFiltersToParams(draftFilters));
-        }}
-        onClear={() => setDraftFilters({ ...getDefaultBrowseFilters(), bookingType: stayType, stay: stayDates })}
-      />
     </View>
   );
 }

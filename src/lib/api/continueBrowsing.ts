@@ -1,6 +1,6 @@
 /** Recently viewed properties (auth_api.md — View all continue browsing API). */
 import { request } from './client';
-import type { MediaAttachment, PropertyCategory, PropertyGender, PropertySubCategory } from './types';
+import type { AllowedTenantType, Furnishing, MediaAttachment, PropertyCategory, PropertyGender, PropertySubCategory } from './types';
 
 export interface ContinueBrowsingMediaSection {
   section_name: string;
@@ -21,6 +21,10 @@ export interface ContinueBrowsingProperty {
   property_category?: PropertyCategory;
   /** Flat only. */
   property_sub_category?: PropertySubCategory | null;
+  /** Flat/Homestay only. */
+  furnishing?: Furnishing | null;
+  /** Flat/Homestay only — replaces `gender` for these categories. */
+  allowed_tenant_type?: AllowedTenantType | null;
   /** Flat/Homestay only — max occupants per booking. */
   max_occupancy?: number | null;
   locality: string;
@@ -31,6 +35,7 @@ export interface ContinueBrowsingProperty {
   starting_rent_type: string;
   available_beds: number;
   rating: number | null;
+  rating_count: number;
 }
 
 export interface ContinueBrowsingPage {

@@ -180,6 +180,18 @@ export interface LocalityMaster {
   updated_at: string;
 }
 
+export interface AmenityMaster {
+  id: number;
+  name: string;
+  /** Optional grouping label (e.g. "Safety", "Connectivity"); null when ungrouped. */
+  group: string | null;
+  avatar?: MasterMediaAsset | null;
+  priority: number;
+  status: MasterStatus;
+  created_at: string;
+  updated_at: string;
+}
+
 export type MaintenancePriority = 'LOW' | 'MEDIUM' | 'HIGH' | 'URGENT' | (string & {});
 
 export interface MaintenanceCategoryMaster {

@@ -1,6 +1,6 @@
 /** T-S13 — Property details page with verification/trust surfaced. */
 import { useEffect, useState } from 'react';
-import { View, ScrollView, useWindowDimensions, Share, Platform } from 'react-native';
+import { View, ScrollView, useWindowDimensions, Share, Platform, ActivityIndicator } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
@@ -319,6 +319,9 @@ export default function ListingDetail() {
         : l.bookingConfig.hourlyEnabled
   ));
 
+  // True while an API-backed re-fetch is in flight *and* stale tiers are still on screen —
+  // i.e. right after a monthly/daily/hourly switch. Mock listings never re-fetch.
+  const pricingLoading = !!apiId && detailsLoading;
   const occupancyPriceSuffix = selectedBookingMode === 'hourly' ? '/hr' : selectedBookingMode === 'daily' ? '/day' : '/mo';
   type OccupancyOption = { key: string; title: string; hasAc: boolean; acLabel: 'AC' | 'Non-AC'; withFood: boolean; rent: number };
   type OccupancyTier = { sharingType: string; layout?: string; available: number; rent: number; options: OccupancyOption[] };
@@ -475,8 +478,21 @@ export default function ListingDetail() {
             ) : null}
           </Card>
 
-          {/* Price — Flat/Home stay only: a single whole-property price, no room/bed tiers. */}
-          {l.isUnitProperty ? (
+          {/* Switching monthly/daily/hourly re-fetches the property for that mode, but the
+              listing already in state still holds the *previous* mode's tiers until it lands —
+              so show a loader here rather than briefly rendering the wrong prices. */}
+          {pricingLoading ? (
+            <Card>
+              <Text variant="h3" style={{ marginBottom: spacing.xs }}>{l.isUnitProperty ? 'Price' : 'Occupancy'}</Text>
+              <View style={{ paddingVertical: spacing.xl, alignItems: 'center', gap: spacing.sm }}>
+                <ActivityIndicator color={palette.coral} />
+                <Text variant="caption" color={palette.inkTertiary}>
+                  Updating {selectedBookingMode} prices…
+                </Text>
+              </View>
+            </Card>
+          ) : /* Price — Flat/Home stay only: a single whole-property price, no room/bed tiers. */
+          l.isUnitProperty ? (
             <Card>
               <Text variant="h3" style={{ marginBottom: spacing.xs }}>Price</Text>
               <Text variant="caption" color={palette.inkTertiary} style={{ marginBottom: spacing.md }}>

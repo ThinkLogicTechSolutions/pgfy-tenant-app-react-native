@@ -64,6 +64,18 @@ export function buildCheckInPassPayload(code: string, otp: string): string {
   return `PGFY|${code}|${otp}`;
 }
 
+/** Check-out uses its own prefix so the owner app can't mistake a check-out scan for a
+ * check-in one: `PGFYOUT|<booking code>|<6-digit OTP>`. */
+export function buildCheckOutPassPayload(code: string, otp: string): string {
+  return `PGFYOUT|${code}|${otp}`;
+}
+
+/** The exact string the owner app expects — both encoded into the QR and shown verbatim as
+ * the manual fallback, so a tenant can type it in when scanning fails. */
+export function buildPassPayload(code: string, otp: string, checkingOut: boolean): string {
+  return checkingOut ? buildCheckOutPassPayload(code, otp) : buildCheckInPassPayload(code, otp);
+}
+
 /** Most recently confirmed extension for a booking, if any — `extensions` isn't guaranteed
  * to arrive sorted, so pick by `confirmed_at` (falling back to `created_at`). */
 export function latestConfirmedExtension(extensions?: ApiStayExtension[] | null): ApiStayExtension | null {

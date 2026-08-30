@@ -13,6 +13,7 @@
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
 import { masterDataApi } from '@/lib/api';
 import type {
+  AmenityMaster,
   CityMaster,
   LocalityMaster,
   MaintenanceCategoryMaster,
@@ -31,6 +32,7 @@ interface MasterDataValue {
   states: StateMaster[];
   cities: CityMaster[];
   localities: LocalityMaster[];
+  amenities: AmenityMaster[];
   maintenanceCategories: MaintenanceCategoryMaster[];
   supportCategories: PlatformSupportCategoryMaster[];
   popularDestinations: PopularDestinationMaster[];
@@ -41,6 +43,7 @@ interface MasterDataValue {
 
   // Derived, display-ready selectors (ACTIVE only, sorted by priority) ------
   activeStates: StateMaster[];
+  activeAmenities: AmenityMaster[];
   /** ACTIVE cities within a state. */
   citiesForState: (stateId: number | null | undefined) => CityMaster[];
   /** ACTIVE localities within a city. */
@@ -60,6 +63,7 @@ export function MasterDataProvider({ children }: { children: React.ReactNode }) 
   const [states, setStates] = useState<StateMaster[]>([]);
   const [cities, setCities] = useState<CityMaster[]>([]);
   const [localities, setLocalities] = useState<LocalityMaster[]>([]);
+  const [amenities, setAmenities] = useState<AmenityMaster[]>([]);
   const [maintenanceCategories, setMaintenanceCategories] = useState<MaintenanceCategoryMaster[]>([]);
   const [supportCategories, setSupportCategories] = useState<PlatformSupportCategoryMaster[]>([]);
   const [popularDestinations, setPopularDestinations] = useState<PopularDestinationMaster[]>([]);
@@ -68,10 +72,11 @@ export function MasterDataProvider({ children }: { children: React.ReactNode }) 
   const load = useCallback(async () => {
     setLoading(true);
     setError(null);
-    const [statesR, citiesR, localitiesR, maintenanceR, supportR, destinationsR, configR] = await Promise.allSettled([
+    const [statesR, citiesR, localitiesR, amenitiesR, maintenanceR, supportR, destinationsR, configR] = await Promise.allSettled([
       masterDataApi.listStates(),
       masterDataApi.listCities(),
       masterDataApi.listLocalities(),
+      masterDataApi.listAmenities(),
       masterDataApi.listMaintenanceCategories(),
       masterDataApi.listPlatformSupportCategories(),
       masterDataApi.listPopularDestinations(),
@@ -81,12 +86,13 @@ export function MasterDataProvider({ children }: { children: React.ReactNode }) 
     if (statesR.status === 'fulfilled') setStates(statesR.value);
     if (citiesR.status === 'fulfilled') setCities(citiesR.value);
     if (localitiesR.status === 'fulfilled') setLocalities(localitiesR.value);
+    if (amenitiesR.status === 'fulfilled') setAmenities(amenitiesR.value);
     if (maintenanceR.status === 'fulfilled') setMaintenanceCategories(maintenanceR.value);
     if (supportR.status === 'fulfilled') setSupportCategories(supportR.value);
     if (destinationsR.status === 'fulfilled') setPopularDestinations(destinationsR.value);
     if (configR.status === 'fulfilled') setConfig(configR.value);
 
-    const allFailed = [statesR, citiesR, localitiesR, maintenanceR, supportR, destinationsR, configR].every(
+    const allFailed = [statesR, citiesR, localitiesR, amenitiesR, maintenanceR, supportR, destinationsR, configR].every(
       (r) => r.status === 'rejected',
     );
     if (allFailed) setError('Could not load reference data. Pull to retry.');
@@ -102,6 +108,7 @@ export function MasterDataProvider({ children }: { children: React.ReactNode }) 
       setStates([]);
       setCities([]);
       setLocalities([]);
+      setAmenities([]);
       setMaintenanceCategories([]);
       setSupportCategories([]);
       setPopularDestinations([]);
@@ -111,6 +118,7 @@ export function MasterDataProvider({ children }: { children: React.ReactNode }) 
   }, [status, load]);
 
   const activeStates = useMemo(() => states.filter(isActive).sort(byPriority), [states]);
+  const activeAmenities = useMemo(() => amenities.filter(isActive).sort(byPriority), [amenities]);
 
   const citiesForState = useCallback(
     (stateId: number | null | undefined) =>
@@ -131,12 +139,14 @@ export function MasterDataProvider({ children }: { children: React.ReactNode }) 
       states,
       cities,
       localities,
+      amenities,
       maintenanceCategories,
       supportCategories,
       popularDestinations,
       config,
       reload: load,
       activeStates,
+      activeAmenities,
       citiesForState,
       localitiesForCity,
     }),
@@ -146,12 +156,14 @@ export function MasterDataProvider({ children }: { children: React.ReactNode }) 
       states,
       cities,
       localities,
+      amenities,
       maintenanceCategories,
       supportCategories,
       popularDestinations,
       config,
       load,
       activeStates,
+      activeAmenities,
       citiesForState,
       localitiesForCity,
     ],

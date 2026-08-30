@@ -1,7 +1,6 @@
 /** Two-thumb (or single-thumb radius) range slider for numeric filters. */
-import { useRef, useState } from 'react';
-import { View, LayoutChangeEvent } from 'react-native';
-import { Gesture, GestureDetector } from 'react-native-gesture-handler';
+import { useMemo, useRef, useState } from 'react';
+import { View, LayoutChangeEvent, PanResponder } from 'react-native';
 import { palette, spacing } from '@/theme';
 import { Text } from './Text';
 
@@ -37,27 +36,60 @@ export function RangeSlider({ min, max, step, low, high, onChange, single, forma
     return Math.min(max, Math.max(min, stepped));
   };
 
-  const lowPan = Gesture.Pan()
-    .activeOffsetX([-6, 6])
-    .onStart(() => {
-      startLow.current = low;
-    })
-    .onUpdate((e) => {
-      const next = Math.min(high, fromX(toX(startLow.current) + e.translationX));
-      if (next !== low) onChange(next, high);
-    })
-    .runOnJS(true);
+  // Live props/geometry, read inside the responder callbacks below. The PanResponders are
+  // created once (they must be, or a mid-drag re-render would swap the handler out), so they
+  // can't close over `low`/`high` directly.
+  const latest = useRef({ min, max, low, high, single, onChange, toX, fromX });
+  latest.current = { min, max, low, high, single, onChange, toX, fromX };
 
-  const highPan = Gesture.Pan()
-    .activeOffsetX([-6, 6])
-    .onStart(() => {
-      startHigh.current = high;
-    })
-    .onUpdate((e) => {
-      const next = Math.max(single ? min : low, fromX(toX(startHigh.current) + e.translationX));
-      if (next !== high) onChange(single ? min : low, next);
-    })
-    .runOnJS(true);
+  // Deliberately RN's responder system rather than gesture-handler's `Gesture.Pan`: these
+  // thumbs live inside the sheet's gesture-handler ScrollView, which wins the RNGH arena and
+  // leaves a Pan child dead. Granting the responder on touch-down — and refusing to hand it
+  // back (`onPanResponderTerminationRequest: false`) — keeps the whole drag here instead.
+  const makeResponder = (
+    onGrant: () => void,
+    onMove: (dx: number) => void,
+  ) =>
+    PanResponder.create({
+      onStartShouldSetPanResponder: () => true,
+      onStartShouldSetPanResponderCapture: () => true,
+      onMoveShouldSetPanResponder: () => true,
+      onMoveShouldSetPanResponderCapture: () => true,
+      onPanResponderTerminationRequest: () => false,
+      onShouldBlockNativeResponder: () => true,
+      onPanResponderGrant: onGrant,
+      onPanResponderMove: (_e, g) => onMove(g.dx),
+    });
+
+  const lowResponder = useMemo(
+    () =>
+      makeResponder(
+        () => {
+          startLow.current = latest.current.low;
+        },
+        (dx) => {
+          const s = latest.current;
+          const next = Math.min(s.high, s.fromX(s.toX(startLow.current) + dx));
+          if (next !== s.low) s.onChange(next, s.high);
+        },
+      ),
+    [],
+  );
+
+  const highResponder = useMemo(
+    () =>
+      makeResponder(
+        () => {
+          startHigh.current = latest.current.high;
+        },
+        (dx) => {
+          const s = latest.current;
+          const next = Math.max(s.single ? s.min : s.low, s.fromX(s.toX(startHigh.current) + dx));
+          if (next !== s.high) s.onChange(s.single ? s.min : s.low, next);
+        },
+      ),
+    [],
+  );
 
   const lowX = toX(single ? min : low);
   const highX = toX(high);
@@ -114,18 +146,20 @@ export function RangeSlider({ min, max, step, low, high, onChange, single, forma
         ) : null}
         {/* thumbs */}
         {trackW > 0 && !single ? (
-          <GestureDetector gesture={lowPan}>
-            <View style={{ position: 'absolute', left: lowX, width: HIT, height: HIT, alignItems: 'center', justifyContent: 'center' }}>
-              <Thumb />
-            </View>
-          </GestureDetector>
+          <View
+            {...lowResponder.panHandlers}
+            style={{ position: 'absolute', left: lowX, width: HIT, height: HIT, alignItems: 'center', justifyContent: 'center' }}
+          >
+            <Thumb />
+          </View>
         ) : null}
         {trackW > 0 ? (
-          <GestureDetector gesture={highPan}>
-            <View style={{ position: 'absolute', left: highX, width: HIT, height: HIT, alignItems: 'center', justifyContent: 'center' }}>
-              <Thumb />
-            </View>
-          </GestureDetector>
+          <View
+            {...highResponder.panHandlers}
+            style={{ position: 'absolute', left: highX, width: HIT, height: HIT, alignItems: 'center', justifyContent: 'center' }}
+          >
+            <Thumb />
+          </View>
         ) : null}
       </View>
     </View>

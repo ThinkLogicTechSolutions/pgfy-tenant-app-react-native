@@ -6,6 +6,9 @@ import { inrCompact } from '@/lib/format';
 import { FILTER_OPTIONS } from '@/data';
 import { defaultCheckIn, defaultCheckOut, clampCheckInToFuture } from '@/lib/dates';
 import { PRICE_BOUNDS, listingPriceFrom } from '@/lib/listingDisplay';
+import { useMasterData } from '@/context/MasterDataContext';
+import type { SearchPropertiesQuery } from '@/lib/api';
+import type { PropertyCategory, PropertyGender } from '@/lib/api';
 import { StayBookingFields, type StayBookingValues } from './StayBookingFields';
 import type { BookingMode, Listing } from '@/data/types';
 
@@ -13,7 +16,6 @@ export interface BrowseFilters {
   bookingType: BookingMode;
   stay: StayBookingValues;
   gender: string;
-  food: string[];
   acType: string;
   amenities: string[];
   minRating: number | null;
@@ -56,7 +58,6 @@ export function getDefaultBrowseFilters(): BrowseFilters {
     bookingType: 'monthly',
     stay: defaultStayValues(),
     gender: 'Any',
-    food: [],
     acType: 'Any',
     amenities: [],
     minRating: null,
@@ -79,7 +80,6 @@ export interface BrowseFiltersParams {
   startTime?: string;
   hours?: string;
   gender?: string;
-  food?: string;
   acType?: string;
   amenities?: string;
   minRating?: string;
@@ -108,7 +108,6 @@ export function browseFiltersFromParams(params: BrowseFiltersParams): BrowseFilt
     ...defaults,
     bookingType,
     gender: params.gender || defaults.gender,
-    food: params.food ? params.food.split(',').filter(Boolean) : defaults.food,
     acType: params.acType || defaults.acType,
     amenities: params.amenities ? params.amenities.split(',').filter(Boolean) : defaults.amenities,
     minRating: params.minRating ? Number(params.minRating) : defaults.minRating,
@@ -140,7 +139,6 @@ export function browseFiltersToParams(filters: BrowseFilters): Record<string, st
     startTime: filters.stay.startTime,
     hours: String(filters.stay.hours),
     gender: filters.gender,
-    food: filters.food.join(','),
     acType: filters.acType,
     amenities: filters.amenities.join(','),
     minRating: filters.minRating != null ? String(filters.minRating) : '',
@@ -169,13 +167,17 @@ const RATING_OPTIONS = [
   { key: 4, label: '4★ & above' },
   { key: 5, label: '5★ only' },
 ] as const;
-const PROPERTY_TYPES = ['PG', 'Co-living', 'Hostel', 'Flat', 'Home stay'] as const;
-const FOOD_OPTIONS = ['Veg', 'Non-Veg', 'With meals', 'No meals'] as const;
+// Mirrors the backend's property categories (HOSTEL / FLAT / HOMESTAY). 'PG' and 'Co-living'
+// are legacy mock-only sub-types that no API-backed listing ever reports, so filtering on them
+// only ever matched nothing.
+const PROPERTY_TYPES = ['Hostel', 'Flat', 'Home stay'] as const;
 const ROOMMATE_TYPE_OPTIONS = ['Any', 'Working professional', 'Student'] as const;
 const SMOKING_OPTIONS = ['Any', 'Non-smoking'] as const;
 const ALCOHOL_OPTIONS = ['Any', 'No alcohol'] as const;
 const SLEEP_OPTIONS = ['Any', 'Early sleep', 'Late sleep'] as const;
-const DIET_OPTIONS = ['Any', 'Veg', 'Vegan', 'Non-veg'] as const;
+// Mirrors the backend's DietaryPreferenceEnum (VEGETARIAN / NON_VEGETARIAN / EGGITARIAN) — no
+// "Vegan" value exists server-side, so that option never actually filtered anything.
+const DIET_OPTIONS = ['Any', 'Vegetarian', 'Eggitarian', 'Non-vegetarian'] as const;
 
 function toggle(arr: string[], value: string) {
   return arr.includes(value) ? arr.filter((x) => x !== value) : [...arr, value];
@@ -200,6 +202,7 @@ export function BrowseFiltersSheet({
   onClear,
 }: Props) {
   const set = (patch: Partial<BrowseFilters>) => onDraftChange({ ...draft, ...patch });
+  const { activeAmenities } = useMasterData();
 
   return (
     <Sheet visible={visible} onClose={onClose} title="Filters" scroll>
@@ -281,21 +284,6 @@ export function BrowseFiltersSheet({
 
         <Divider />
 
-        <FilterSection label="Food preference">
-          <ChipRow>
-            {FOOD_OPTIONS.map((f) => (
-              <Chip
-                key={f}
-                label={f}
-                active={draft.food.includes(f)}
-                onPress={() => set({ food: toggle(draft.food, f) })}
-              />
-            ))}
-          </ChipRow>
-        </FilterSection>
-
-        <Divider />
-
         <FilterSection label="Roommate type">
           <ChipRow>
             {ROOMMATE_TYPE_OPTIONS.map((t) => (
@@ -355,12 +343,12 @@ export function BrowseFiltersSheet({
 
         <FilterSection label="Amenities">
           <ChipRow>
-            {FILTER_OPTIONS.amenities.map((a) => (
+            {activeAmenities.map((a) => (
               <Chip
-                key={a}
-                label={a}
-                active={draft.amenities.includes(a)}
-                onPress={() => set({ amenities: toggle(draft.amenities, a) })}
+                key={a.id}
+                label={a.name}
+                active={draft.amenities.includes(a.name)}
+                onPress={() => set({ amenities: toggle(draft.amenities, a.name) })}
               />
             ))}
           </ChipRow>
@@ -391,21 +379,10 @@ export function matchesBrowseFilters(listing: Listing, filters: BrowseFilters): 
   if (filters.sleep === 'Late sleep' && (!rs || rs.sleep !== 'late')) return false;
   if (filters.diet !== 'Any') {
     if (!rs) return false;
-    if (filters.diet === 'Veg' && rs.diet === 'nonveg') return false;
-    if (filters.diet === 'Vegan' && rs.diet !== 'vegan') return false;
-    if (filters.diet === 'Non-veg' && rs.diet !== 'nonveg') return false;
-  }
-
-  if (filters.food.length > 0) {
-    const hasPureVeg = listing.amenities.includes('Pure Veg');
-    const matchesFood = filters.food.some((f) => {
-      if (f === 'Veg') return hasPureVeg || listing.foodIncluded;
-      if (f === 'Non-Veg') return listing.foodIncluded && !hasPureVeg;
-      if (f === 'With meals') return listing.foodIncluded;
-      if (f === 'No meals') return !listing.foodIncluded;
-      return false;
-    });
-    if (!matchesFood) return false;
+    // 'Eggitarian' has no mock roommate-diet equivalent — only narrows the real, API-backed
+    // search (see `browseFiltersToSearchQuery`'s `diet_preference` mapping).
+    if (filters.diet === 'Vegetarian' && rs.diet === 'nonveg') return false;
+    if (filters.diet === 'Non-vegetarian' && rs.diet !== 'nonveg') return false;
   }
 
   if (filters.acType === 'AC' && !listing.amenities.includes('AC')) return false;
@@ -429,7 +406,6 @@ export function browseFiltersActiveCount(filters: BrowseFilters): number {
   let n = 0;
   if (filters.bookingType !== 'monthly') n += 1;
   if (filters.gender !== 'Any') n += 1;
-  if (filters.food.length) n += filters.food.length;
   if (filters.acType !== 'Any') n += 1;
   if (filters.minRating !== null) n += 1;
   const priceBounds = PRICE_BOUNDS[filters.bookingType];
@@ -443,6 +419,64 @@ export function browseFiltersActiveCount(filters: BrowseFilters): number {
   if (filters.sleep !== 'Any') n += 1;
   if (filters.diet !== 'Any') n += 1;
   return n;
+}
+
+const GENDER_TO_API: Record<string, PropertyGender | undefined> = {
+  Male: 'MALE',
+  Female: 'FEMALE',
+  'Co-ed': 'UNISEX',
+};
+// Mirrors the backend's PropertyCategoryEnum.
+const PROPERTY_TYPE_TO_CATEGORY: Record<string, PropertyCategory> = {
+  Hostel: 'HOSTEL',
+  Flat: 'FLAT',
+  'Home stay': 'HOMESTAY',
+};
+// Mirrors the backend's OccupationEnum.
+const ROOMMATE_TYPE_TO_OCCUPATION: Record<string, string> = {
+  'Working professional': 'WORKING_PROFESSIONAL',
+  Student: 'STUDENT',
+};
+// Mirrors the backend's SleepScheduleEnum (FLEXIBLE has no UI option).
+const SLEEP_TO_API: Record<string, string> = {
+  'Early sleep': 'EARLY_BIRD',
+  'Late sleep': 'NIGHT_OWL',
+};
+// Mirrors the backend's DietaryPreferenceEnum (see the `DIET_OPTIONS` comment above).
+const DIET_TO_API: Record<string, string> = {
+  Vegetarian: 'VEGETARIAN',
+  Eggitarian: 'EGGITARIAN',
+  'Non-vegetarian': 'NON_VEGETARIAN',
+};
+
+/**
+ * Maps a `BrowseFilters` set to `GET /v1/tenant/properties`'s real query params
+ * (`SearchPropertiesQuery`) — every filter the sheet exposes that the backend can actually act
+ * on. `stay`/`checkIn`/`checkOut` aren't sent — they're for the booking flow, not property
+ * search, and never were.
+ */
+export function browseFiltersToSearchQuery(filters: BrowseFilters): Partial<SearchPropertiesQuery> {
+  const bounds = PRICE_BOUNDS[filters.bookingType];
+  const categories = filters.propertyTypes
+    .map((t) => PROPERTY_TYPE_TO_CATEGORY[t])
+    .filter((c): c is PropertyCategory => !!c);
+
+  return {
+    stayDuration: filters.bookingType.toUpperCase() as SearchPropertiesQuery['stayDuration'],
+    gender: filters.gender !== 'Any' ? GENDER_TO_API[filters.gender] : undefined,
+    propertyCategory: categories.length ? categories : undefined,
+    priceMin: filters.priceMin > bounds.min ? filters.priceMin : undefined,
+    priceMax: filters.priceMax < bounds.max ? filters.priceMax : undefined,
+    ratingMin: filters.minRating ?? undefined,
+    distanceMax: filters.distanceMax < DISTANCE_MAX ? filters.distanceMax : undefined,
+    isAc: filters.acType === 'AC' ? true : filters.acType === 'Non-AC' ? false : undefined,
+    amenities: filters.amenities.length ? filters.amenities : undefined,
+    occupation: filters.roommateType !== 'Any' ? ROOMMATE_TYPE_TO_OCCUPATION[filters.roommateType] : undefined,
+    smokingPref: filters.smoking === 'Non-smoking' ? false : undefined,
+    alcoholPref: filters.alcohol === 'No alcohol' ? false : undefined,
+    sleepSchedule: filters.sleep !== 'Any' ? SLEEP_TO_API[filters.sleep] : undefined,
+    dietPreference: filters.diet !== 'Any' ? DIET_TO_API[filters.diet] : undefined,
+  };
 }
 
 function FilterSection({ label, children }: { label: string; children: React.ReactNode }) {

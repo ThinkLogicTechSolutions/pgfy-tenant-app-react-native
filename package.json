@@ -13,7 +13,7 @@
     "web": "NODE_ENV=development APP_ENV=development expo start --web",
     "typecheck": "tsc --noEmit",
     "prebuild": "expo prebuild",
-    "prebuild:android": "expo prebuild --platform android --clean",
+    "prebuild:android": "expo prebuild --platform android",
     "build:apk:local": "bash scripts/build-android-local.sh release",
     "build:apk:local:release": "bash scripts/build-android-local.sh release",
     "build:apk:gradle:debug": "cd android && ./gradlew assembleDebug",

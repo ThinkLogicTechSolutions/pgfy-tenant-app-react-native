@@ -19,6 +19,10 @@
       <action android:name="in.gov.uidai.pehchaan.WEB_INTENT_REQUEST"/>
     </intent>
     <package android:name="in.gov.uidai.pehchaan"/>
+    <package android:name="com.google.android.apps.walletnfcrel"/>
+    <package android:name="com.samsung.android.spay"/>
+    <package android:name="com.samsung.android.samsungpass"/>
+    <package android:name="com.samsung.android.raja.snfc"/>
   </queries>
   <application android:name=".MainApplication" android:label="@string/app_name" android:icon="@mipmap/ic_launcher" android:roundIcon="@mipmap/ic_launcher_round" android:allowBackup="true" android:theme="@style/AppTheme" android:supportsRtl="true" android:enableOnBackInvokedCallback="false">
     <meta-data android:name="com.google.android.geo.API_KEY" android:value="AIzaSyCvIDqCu0m4v7sQwWIlpIMbKXOSh1uixNs"/>

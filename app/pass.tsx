@@ -5,9 +5,11 @@
  *  starts returning `check_out_otp`/`check_out_qr` alongside the check-in ones — at that
  *  point the pass switches to a "check-out pass" instead. When a pre-rendered QR image is
  *  present, that's shown instead of a client-generated QR; otherwise the QR encodes
- *  `PGFY|<booking code>|<6-digit OTP>`. */
+ *  `PGFY|<booking code>|<6-digit OTP>` (check-in) or `PGFYOUT|<booking code>|<6-digit OTP>`
+ *  (check-out). That same string is printed under the QR as the manual fallback, since it's
+ *  what the owner app expects typed in when a scan fails. */
 import { useEffect, useRef, useState } from 'react';
-import { View, ActivityIndicator, Platform, Share } from 'react-native';
+import { View, ActivityIndicator, Platform, Share, Linking } from 'react-native';
 import { Image } from 'expo-image';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -16,13 +18,31 @@ import { LinearGradient } from 'expo-linear-gradient';
 import QRCode from 'react-native-qrcode-svg';
 import { captureRef } from 'react-native-view-shot';
 import * as Sharing from 'expo-sharing';
+import { openWalletChooser, shareImageToPackage } from '../modules/pgfy-wallet';
 import { palette, spacing, radius } from '@/theme';
 import { Text, IconButton, Button, Divider, EmptyState } from '@/components/ui';
 import { bookingApi, stayApi, errorMessage, type BookingStatusApi, type ApiMyStayResponse } from '@/lib/api';
-import { bookingStatusLabel, buildCheckInPassPayload, isUnitBooking } from '@/lib/bookingDisplay';
+import { bookingStatusLabel, buildPassPayload, isUnitBooking } from '@/lib/bookingDisplay';
 import { isUnitPropertyType } from '@/lib/listingAdapter';
 import { formatDate } from '@/lib/format';
 import { alert } from '@/lib/alertDialog';
+
+const GOOGLE_WALLET_PACKAGE = 'com.google.android.apps.walletnfcrel';
+const GOOGLE_WALLET_PLAY_URL = `https://play.google.com/store/apps/details?id=${GOOGLE_WALLET_PACKAGE}`;
+
+/** Send the tenant to install/restore Google Wallet (Android-only entry point). */
+async function openGoogleWalletStore(): Promise<void> {
+  try {
+    const marketUrl = `market://details?id=${GOOGLE_WALLET_PACKAGE}`;
+    const canOpen = await Linking.canOpenURL(marketUrl);
+    if (canOpen) {
+      await Linking.openURL(marketUrl);
+      return;
+    }
+  } catch { }
+  await Linking.openURL(GOOGLE_WALLET_PLAY_URL);
+}
+
 
 interface PassView {
   code: string;
@@ -86,6 +106,7 @@ export default function Pass() {
   const [loading, setLoading] = useState(!preloaded);
   const [error, setError] = useState<string | null>(null);
   const [sharing, setSharing] = useState(false);
+  const [addingToWallet, setAddingToWallet] = useState(false);
   const ticketRef = useRef<View>(null);
 
   const load = () => {
@@ -162,7 +183,7 @@ export default function Pass() {
   const readyForCheckout = !!(b.checkOutOtp || b.checkOutQrUri);
   const qrUri = readyForCheckout ? b.checkOutQrUri : b.checkInQrUri;
   const otp = readyForCheckout ? b.checkOutOtp : b.checkInOtp;
-  const qrPayload = otp ? buildCheckInPassPayload(b.code, otp) : null;
+  const qrPayload = otp ? buildPassPayload(b.code, otp, readyForCheckout) : null;
   const passTitle = readyForCheckout ? 'Check-out pass' : checkedIn ? 'PG pass' : 'Check-in pass';
 
   const shareCaption = `My ${passTitle.toLowerCase()} for ${b.propertyName} (${b.propertyLocality}) — booking ${b.code}. PGfy.`;
@@ -178,7 +199,7 @@ export default function Pass() {
       } else if (await Sharing.isAvailableAsync()) {
         // Android's Share module can't attach a local image file directly — expo-sharing
         // hands it to the OS chooser via a proper content URI instead.
-        await Sharing.shareAsync(uri, { mimeType: 'image/png', dialogTitle: shareCaption });
+        await Sharing.shareAsync(uri, { mimeType: 'image/png', dialogTitle: shareCaption,  });
       } else {
         await Share.share({ message: shareCaption });
       }
@@ -186,6 +207,27 @@ export default function Pass() {
       alert('Could not share pass', errorMessage(e));
     } finally {
       setSharing(false);
+    }
+  };
+
+  /** Adds the pass to a digital wallet (Google Wallet, Samsung Wallet, etc.) by opening
+   *  a tailored chooser targeting installed wallet apps. */
+  const onAddToWallet = async () => {
+    if (addingToWallet) return;
+    setAddingToWallet(true);
+    try {
+      const uri = await captureRef(ticketRef, { format: 'png', quality: 0.95 });
+      const launched = await openWalletChooser(uri, 'Add pass to wallet');
+      if (launched === false) {
+        // No supported wallet app installed — take them to the store instead.
+        await openGoogleWalletStore();
+      } else if (launched === null && (await Sharing.isAvailableAsync())) {
+        await Sharing.shareAsync(uri, { mimeType: 'image/png', dialogTitle: 'Add pass to wallet' });
+      }
+    } catch (e) {
+      alert('Could not add to wallet', errorMessage(e));
+    } finally {
+      setAddingToWallet(false);
     }
   };
 
@@ -250,15 +292,32 @@ export default function Pass() {
             </View>
 
             {otp ? (
-              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: spacing.lg, backgroundColor: palette.surfaceRaised, paddingHorizontal: 14, paddingVertical: 8, borderRadius: radius.pill }}>
-                <Ionicons name="key-outline" size={14} color={palette.inkSecondary} />
-                <Text variant="caption" color={palette.inkSecondary}>Fallback code: {otp}</Text>
+              <View style={{ width: '100%', alignItems: 'center', gap: 4, marginTop: spacing.lg, backgroundColor: palette.surfaceRaised, paddingHorizontal: 14, paddingVertical: 10, borderRadius: radius.md }}>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                  <Ionicons name="key-outline" size={14} color={palette.inkSecondary} />
+                  <Text variant="caption" color={palette.inkSecondary}>Fallback code</Text>
+                </View>
+                {/* The literal string the owner app expects, not just the OTP, so it can be
+                    typed in verbatim when the QR won't scan. */}
+                <Text variant="bodySm" weight="700" mono align="center" selectable>{qrPayload}</Text>
               </View>
             ) : null}
           </View>
         </View>
 
-        <Button label="Add to wallet" variant="ghost" icon="wallet-outline" onPress={() => {}} full style={{ marginTop: spacing.lg, backgroundColor: 'rgba(255,255,255,0.14)' }} />
+        {/* Direct-to-Google-Wallet is Android-only (the native module targets Wallet's
+            package); iOS has no equivalent hand-off without a signed .pkpass, so hide it. */}
+        {Platform.OS === 'android' ? (
+          <Button
+            label="Add to wallet"
+            variant="ghost"
+            icon="wallet-outline"
+            onPress={onShare}
+            loading={sharing}
+            full
+            style={{ marginTop: spacing.lg, backgroundColor: 'rgba(255,255,255,0.14)' }}
+          />
+        ) : null}
       </View>
     </View>
   );

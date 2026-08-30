@@ -7,6 +7,7 @@ export {
   getDefaultBrowseFilters,
   browseFiltersFromParams,
   browseFiltersToParams,
+  browseFiltersToSearchQuery,
   defaultStayValues,
   matchesBrowseFilters,
   browseFiltersActiveCount,

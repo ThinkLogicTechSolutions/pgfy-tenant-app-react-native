@@ -66,7 +66,7 @@ export type {
   RoomBedAvailabilityQuery,
 } from './property';
 export type { ContinueBrowsingProperty, ContinueBrowsingPage, ContinueBrowsingMediaSection } from './continueBrowsing';
-export type { DashboardQuery, DashboardResponse, DashboardStayDuration } from './dashboard';
+export type { DashboardQuery, DashboardResponse, DashboardStayDuration, DashboardPropertyCategory } from './dashboard';
 export type {
   SearchProperty,
   SearchResponse,
@@ -112,6 +112,7 @@ export type {
   StateMaster,
   CityMaster,
   LocalityMaster,
+  AmenityMaster,
   MaintenancePriority,
   MaintenanceCategoryMaster,
   SupportPanel,

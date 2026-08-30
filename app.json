@@ -2,7 +2,7 @@
   "expo": {
     "name": "PGfy",
     "slug": "pgfy-tenant",
-    "version": "1.0.9",
+    "version": "1.0.10",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
     "scheme": "pgfytenant",
@@ -11,7 +11,7 @@
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "in.pgfy.tenant",
-      "buildNumber": "20",
+      "buildNumber": "22",
       "googleServicesFile": "./GoogleService-Info.plist",
       "associatedDomains": [
         "applinks:share.pgfy.in",
@@ -23,7 +23,7 @@
     },
     "android": {
       "package": "in.pgfy.tenant",
-      "versionCode": 20,
+      "versionCode": 22,
       "edgeToEdgeEnabled": true,
       "googleServicesFile": "./google-services.json",
       "adaptiveIcon": {
@@ -104,7 +104,8 @@
         }
       ],
       "./plugins/withAndroidSigning",
-      "./plugins/withAadhaarQueries"
+      "./plugins/withAadhaarQueries",
+      "./plugins/withWalletQueries"
     ],
     "extra": {
       "router": {},

@@ -4,7 +4,7 @@ import { Modal, View, useWindowDimensions, Keyboard, Platform, type KeyboardEven
 // gesture-handler's ScrollView (not RN's) — it shares the same gesture-responder system as
 // GestureDetector, so nested gestures (e.g. the calendar's horizontal month swipe) can win
 // the arena instead of being eaten by a plain RN ScrollView's separate PanResponder.
-import { Gesture, GestureDetector, ScrollView } from 'react-native-gesture-handler';
+import { Gesture, GestureDetector, GestureHandlerRootView, ScrollView } from 'react-native-gesture-handler';
 import Animated, {
   useAnimatedStyle,
   useSharedValue,
@@ -110,7 +110,11 @@ export function Sheet({ visible, onClose, title, titleRight, children, scroll }:
       {/* Keyboard offset is tracked manually (see `useKeyboardOffset`) and folded into
           `sheetStyle` above — `KeyboardAvoidingView` doesn't reliably resize `Modal` content
           on either platform. */}
-      <View style={{ flex: 1, justifyContent: 'flex-end' }}>
+      {/* A RN `Modal` renders into its own native window, outside the app-root
+          `GestureHandlerRootView` in `app/_layout.tsx` — so every gesture-handler gesture inside
+          a sheet (this sheet's own drag-to-dismiss, RangeSlider thumbs, the calendar's month
+          swipe) silently does nothing without a root of its own here. */}
+      <GestureHandlerRootView style={{ flex: 1, justifyContent: 'flex-end' }}>
         <Animated.View style={[{ position: 'absolute', inset: 0, backgroundColor: palette.overlay }, backdropStyle]}>
           <Animated.View style={{ flex: 1 }} onTouchEnd={onClose} />
         </Animated.View>
@@ -152,7 +156,7 @@ export function Sheet({ visible, onClose, title, titleRight, children, scroll }:
             )}
           </Animated.View>
         </GestureDetector>
-      </View>
+      </GestureHandlerRootView>
     </Modal>
   );
 }

@@ -11,7 +11,7 @@ import {
   BrowseFiltersSheet,
   getDefaultBrowseFilters,
   browseFiltersFromParams,
-  matchesBrowseFilters,
+  browseFiltersToSearchQuery,
   browseFiltersActiveCount,
   type BrowseFilters,
 } from '@/components/search';
@@ -20,10 +20,10 @@ import { Skeleton } from '@/components/ui';
 import { LISTINGS } from '@/data';
 import type { Listing } from '@/data/types';
 import { formatDayMonth } from '@/lib/format';
-import { listingSupportsBookingMode, getPromotedPgListingId } from '@/lib/listingDisplay';
-import { apiPropertyToListing, searchPropertyToListing } from '@/lib/listingAdapter';
-import { propertyApi, searchApi, errorMessage } from '@/lib/api';
-import { useMasterData } from '@/context/MasterDataContext';
+import { getPromotedPgListingId } from '@/lib/listingDisplay';
+import { continueBrowsingToListing } from '@/lib/listingAdapter';
+import { propertyApi, errorMessage } from '@/lib/api';
+import { useTenantLocation } from '@/store/location';
 import { useSaved } from '@/store/saved';
 import { setMapResults } from '@/store/mapResults';
 
@@ -41,7 +41,6 @@ export default function Browse() {
     hours?: string;
     search?: string;
     gender?: string;
-    food?: string;
     acType?: string;
     amenities?: string;
     minRating?: string;
@@ -56,7 +55,7 @@ export default function Browse() {
     diet?: string;
   }>();
   const saved = useSaved();
-  const { cities, localities } = useMasterData();
+  const { location: geo } = useTenantLocation();
 
   const city = params.city?.trim() || 'Bengaluru';
   const cityId = params.cityId ? Number(params.cityId) : undefined;
@@ -78,6 +77,13 @@ export default function Browse() {
   const [liveLoading, setLiveLoading] = useState(false);
   const [liveError, setLiveError] = useState<string | null>(null);
 
+  // Coordinates (GPS-resolved location only) — needed for `distanceMax` to filter/sort by
+  // anything. Destructured to primitives so the effect below doesn't re-fire on every render
+  // over a fresh `[lat, lng]` array identity.
+  const geoSource = geo?.source;
+  const geoLat = geo?.lat;
+  const geoLng = geo?.lng;
+
   useEffect(() => {
     if (!cityId && !searchQuery) {
       setLiveListings(null);
@@ -86,17 +92,18 @@ export default function Browse() {
     let active = true;
     setLiveLoading(true);
     setLiveError(null);
-    const fetchListings = searchQuery
-      ? searchApi.searchProperties(searchQuery).then((res) => res.properties.map(searchPropertyToListing))
-      : propertyApi.searchProperties({ cityId, localityId }).then((page) => {
-        const cityName = cities.find((c) => c.id === cityId)?.name ?? city;
-        const localityName = localities.find((l) => l.id === localityId)?.name ?? '';
-        return page.data.map((p) => apiPropertyToListing(p, { cityName, localityName }));
-      });
-    fetchListings
-      .then((mapped) => {
-
-        if (active) setLiveListings(mapped);
+    const coordinates: [number, number] | undefined =
+      geoSource === 'gps' && geoLat != null && geoLng != null ? [geoLat, geoLng] : undefined;
+    propertyApi
+      .searchProperties({
+        cityId,
+        localityId,
+        coordinates,
+        search: searchQuery,
+        ...browseFiltersToSearchQuery(filters),
+      })
+      .then((page) => {
+        if (active) setLiveListings(page.data.map(continueBrowsingToListing));
       })
       .catch((e) => {
         if (!active) return;
@@ -109,24 +116,16 @@ export default function Browse() {
     return () => {
       active = false;
     };
-  }, [cityId, localityId, cities, localities, city, searchQuery]);
+  }, [cityId, localityId, geoSource, geoLat, geoLng, searchQuery, filters]);
 
+  // Filtering now happens server-side (`browseFiltersToSearchQuery`), so the live path is
+  // already scoped correctly; only the mock fallback (no city/search context yet) is unfiltered.
   const baseListings = liveListings ?? LISTINGS;
 
   const promotedPgId = useMemo(() => getPromotedPgListingId(baseListings), [baseListings]);
   const filtersActive = browseFiltersActiveCount(filters) > 0;
 
-  const list = useMemo(() => {
-    return baseListings;
-    // .filter((l) => {
-    //   const loc = `${l.city} ${l.locality} ${l.name}`.toLowerCase();
-    //   const cityMatch = liveListings ? true : !city || loc.includes(city.toLowerCase());
-    //   const bookingMatch = listingSupportsBookingMode(l, bookingType);
-    //   const filterMatch = matchesBrowseFilters(l, filters);
-    //   return cityMatch && bookingMatch && filterMatch;
-    // });
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [baseListings, liveListings, city, bookingType, filters]);
+  const list = baseListings;
 
   useEffect(() => {
     setMapResults(list);
