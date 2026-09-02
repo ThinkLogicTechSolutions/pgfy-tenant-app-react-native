@@ -20,6 +20,8 @@ export { Skeleton } from './Skeleton';
 export { ScreenHeader } from './ScreenHeader';
 export { EmptyState } from './EmptyState';
 export { Sheet } from './Sheet';
+export { VoiceWaveIcon } from './VoiceWaveIcon';
+export { VoiceSearchSheet } from './VoiceSearchSheet';
 export { AlertDialog } from './AlertDialog';
 export { AlertDialogHost } from './AlertDialogHost';
 export { ToastHost } from './ToastHost';

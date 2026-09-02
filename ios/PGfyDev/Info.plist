@@ -19,7 +19,7 @@
     <key>CFBundlePackageType</key>
     <string>$(PRODUCT_BUNDLE_PACKAGE_TYPE)</string>
     <key>CFBundleShortVersionString</key>
-    <string>1.0.7</string>
+    <string>1.0.10</string>
     <key>CFBundleSignature</key>
     <string>????</string>
     <key>CFBundleURLTypes</key>
@@ -39,7 +39,7 @@
       </dict>
     </array>
     <key>CFBundleVersion</key>
-    <string>2</string>
+    <string>22</string>
     <key>GMSApiKey</key>
     <string>AIzaSyCvIDqCu0m4v7sQwWIlpIMbKXOSh1uixNs</string>
     <key>ITSAppUsesNonExemptEncryption</key>
@@ -64,9 +64,11 @@
     <key>NSLocationWhenInUseUsageDescription</key>
     <string>Allow PGfy to find PGs near your current location.</string>
     <key>NSMicrophoneUsageDescription</key>
-    <string>Allow $(PRODUCT_NAME) to access your microphone</string>
+    <string>Allow PGfy to use the microphone for voice search.</string>
     <key>NSPhotoLibraryUsageDescription</key>
     <string>Allow $(PRODUCT_NAME) to access your photos</string>
+    <key>NSSpeechRecognitionUsageDescription</key>
+    <string>Allow PGfy to use speech recognition for voice search.</string>
     <key>NSUserActivityTypes</key>
     <array>
       <string>$(PRODUCT_BUNDLE_IDENTIFIER).expo.index_route</string>

@@ -20,6 +20,12 @@
     </intent>
     <package android:name="in.gov.uidai.pehchaan"/>
   </queries>
+  <queries>
+    <package android:name="com.google.android.googlequicksearchbox"/>
+    <intent>
+      <action android:name="android.speech.RecognitionService"/>
+    </intent>
+  </queries>
   <application android:name=".MainApplication" android:label="@string/app_name" android:icon="@mipmap/ic_launcher" android:roundIcon="@mipmap/ic_launcher_round" android:allowBackup="true" android:theme="@style/AppTheme" android:supportsRtl="true" android:enableOnBackInvokedCallback="false">
     <meta-data android:name="com.google.android.geo.API_KEY" android:value="AIzaSyCvIDqCu0m4v7sQwWIlpIMbKXOSh1uixNs"/>
     <meta-data android:name="expo.modules.updates.ENABLED" android:value="true"/>
@@ -42,8 +48,10 @@
         <action android:name="android.intent.action.VIEW"/>
         <data android:scheme="https" android:host="share.pgfy.in" android:pathPrefix="/property"/>
         <data android:scheme="https" android:host="share.pgfy.in" android:pathPrefix="/referral"/>
+        <data android:scheme="https" android:host="share.pgfy.in" android:pathPrefix="/group-booking"/>
         <data android:scheme="https" android:host="share-dev.pgfy.in" android:pathPrefix="/property"/>
         <data android:scheme="https" android:host="share-dev.pgfy.in" android:pathPrefix="/referral"/>
+        <data android:scheme="https" android:host="share-dev.pgfy.in" android:pathPrefix="/group-booking"/>
         <category android:name="android.intent.category.BROWSABLE"/>
         <category android:name="android.intent.category.DEFAULT"/>
       </intent-filter>

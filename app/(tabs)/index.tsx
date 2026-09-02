@@ -13,7 +13,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import { palette, spacing, radius, shadows, fontFamily } from '@/theme';
-import { Text, IconButton, PressableScale, Avatar, Button, EmptyState, Skeleton } from '@/components/ui';
+import { Text, IconButton, PressableScale, Avatar, Button, EmptyState, Skeleton, VoiceWaveIcon, VoiceSearchSheet } from '@/components/ui';
 import { CityTile, SectionHeader, CraftedFooter, PromotedBadge } from '@/components/domain';
 import { locationPicker } from '@/store/locationPicker';
 import { useTenantLocation } from '@/store/location';
@@ -482,6 +482,12 @@ export default function Home() {
 
   const submitSearch = () => goToSearch(searchQuery);
 
+  const [voiceSearchOpen, setVoiceSearchOpen] = useState(false);
+  const onVoiceResult = (text: string) => {
+    setSearchQuery(text);
+    goToSearch(text);
+  };
+
   const openListing = (id: string) => {
     recordView(id);
     router.push({ pathname: `/listing/${id}`, params: listingParams() });
@@ -559,38 +565,56 @@ export default function Home() {
 
         {/* Search + filter (operational) / not-operational notice / location prompt banner (no location) */}
         {operational ? (
-          <View
-            style={{
-              marginTop: spacing.base,
-              marginHorizontal: spacing.base,
-              flexDirection: 'row',
-              alignItems: 'center',
-              height: 50,
-              backgroundColor: palette.surface,
-              borderRadius: radius.md,
-              borderWidth: 1,
-              borderColor: palette.border,
-              overflow: 'hidden',
-              ...shadows.card,
-            }}
-          >
-            <View style={{ flex: 1, height: '100%', flexDirection: 'row', alignItems: 'center', gap: spacing.sm, paddingHorizontal: spacing.base }}>
-              <Ionicons name="search" size={18} color={palette.inkTertiary} />
-              <TextInput
-                value={searchQuery}
-                onChangeText={setSearchQuery}
-                placeholder="Search for any property or PGID"
-                placeholderTextColor={palette.inkTertiary}
-                returnKeyType="search"
-                onSubmitEditing={submitSearch}
-                style={{ flex: 1, fontFamily: fontFamily.medium, fontSize: 14, color: palette.ink, paddingVertical: 0 }}
-              />
-              {searchQuery ? (
-                <PressableScale onPress={() => setSearchQuery('')} haptics={false} hitSlop={8} style={{ padding: 2 }}>
-                  <Ionicons name="close-circle" size={18} color={palette.inkTertiary} />
-                </PressableScale>
-              ) : null}
+          <View style={{ marginTop: spacing.base, marginHorizontal: spacing.base, flexDirection: 'row', alignItems: 'center', gap: spacing.sm }}>
+            <View
+              style={{
+                flex: 1,
+                flexDirection: 'row',
+                alignItems: 'center',
+                height: 50,
+                backgroundColor: palette.surface,
+                borderRadius: radius.md,
+                borderWidth: 1,
+                borderColor: palette.border,
+                overflow: 'hidden',
+                ...shadows.card,
+              }}
+            >
+              <View style={{ flex: 1, height: '100%', flexDirection: 'row', alignItems: 'center', gap: spacing.sm, paddingHorizontal: spacing.base }}>
+                <Ionicons name="search" size={18} color={palette.inkTertiary} />
+                <TextInput
+                  value={searchQuery}
+                  onChangeText={setSearchQuery}
+                  placeholder="Search for any property or PGID"
+                  placeholderTextColor={palette.inkTertiary}
+                  returnKeyType="search"
+                  onSubmitEditing={submitSearch}
+                  style={{ flex: 1, fontFamily: fontFamily.medium, fontSize: 14, color: palette.ink, paddingVertical: 0 }}
+                />
+                {searchQuery ? (
+                  <PressableScale onPress={() => setSearchQuery('')} haptics={false} hitSlop={8} style={{ padding: 2 }}>
+                    <Ionicons name="close-circle" size={18} color={palette.inkTertiary} />
+                  </PressableScale>
+                ) : null}
+              </View>
             </View>
+            <PressableScale
+              onPress={() => { haptic.select(); setVoiceSearchOpen(true); }}
+              scaleTo={0.9}
+              style={{
+                width: 50,
+                height: 50,
+                borderRadius: radius.md,
+                backgroundColor: palette.surface,
+                borderWidth: 1,
+                borderColor: palette.border,
+                alignItems: 'center',
+                justifyContent: 'center',
+                ...shadows.card,
+              }}
+            >
+              <VoiceWaveIcon size="sm" />
+            </PressableScale>
           </View>
         ) : geo ? (
           <NotOperationalSection label={geo.label} onPress={openLocationPicker} />
@@ -668,46 +692,44 @@ export default function Home() {
 
         {/* Popular areas (operational) / Popular destinations (no location or not operational) */}
         {operational ? (
-          <>
-            <View style={{ marginTop: spacing.xl, paddingHorizontal: spacing.base }}>
-              <SectionHeader
-                title="Popular areas"
-                subtitle="Explore by popular neighbourhoods"
-                actionLabel="See all"
-                onAction={() => router.push({
-                  pathname: '/popular-areas',
-                  params: { areas: JSON.stringify(popularAreas), cityId: String(geo?.cityId ?? ''), city: activeCity },
-                })}
-              />
-            </View>
-            {popularAreas.length > 0 ? (
-              <ScrollView
-                horizontal
-                showsHorizontalScrollIndicator={false}
-                contentContainerStyle={{ gap: spacing.md, paddingHorizontal: spacing.base }}
-                nestedScrollEnabled
-              >
-                {intoColumns(popularAreas).map((column, columnIndex) => (
-                  <View key={`area-col-${columnIndex}`} style={{ gap: spacing.md }}>
-                    {column.map((locality, i) => (
-                      <CityTile
-                        key={locality.id}
-                        label={locality.name}
-                        landmarkId="cityscape"
-                        accent={AREA_TILE_ACCENTS[(columnIndex * 2 + i) % AREA_TILE_ACCENTS.length]}
-                        image={locality.avatar?.link}
-                        onPress={() => goToSearch(locality.name)}
-                      />
-                    ))}
-                  </View>
-                ))}
-              </ScrollView>
-            ) : !dashboardLoading ? (
-              <Text variant="bodySm" color={palette.inkSecondary} style={{ marginHorizontal: spacing.base }}>
-                No popular areas yet.
-              </Text>
-            ) : null}
-          </>
+          popularAreas.length > 0 || dashboardLoading ? (
+            <>
+              <View style={{ marginTop: spacing.xl, paddingHorizontal: spacing.base }}>
+                <SectionHeader
+                  title="Popular areas"
+                  subtitle="Explore by popular neighbourhoods"
+                  actionLabel="See all"
+                  onAction={() => router.push({
+                    pathname: '/popular-areas',
+                    params: { areas: JSON.stringify(popularAreas), cityId: String(geo?.cityId ?? ''), city: activeCity },
+                  })}
+                />
+              </View>
+              {popularAreas.length > 0 ? (
+                <ScrollView
+                  horizontal
+                  showsHorizontalScrollIndicator={false}
+                  contentContainerStyle={{ gap: spacing.md, paddingHorizontal: spacing.base }}
+                  nestedScrollEnabled
+                >
+                  {intoColumns(popularAreas).map((column, columnIndex) => (
+                    <View key={`area-col-${columnIndex}`} style={{ gap: spacing.md }}>
+                      {column.map((locality, i) => (
+                        <CityTile
+                          key={locality.id}
+                          label={locality.name}
+                          landmarkId="cityscape"
+                          accent={AREA_TILE_ACCENTS[(columnIndex * 2 + i) % AREA_TILE_ACCENTS.length]}
+                          image={locality.avatar?.link}
+                          onPress={() => goToSearch(locality.name)}
+                        />
+                      ))}
+                    </View>
+                  ))}
+                </ScrollView>
+              ) : null}
+            </>
+          ) : null
         ) : (
           <>
             <View style={{ marginTop: spacing.xl, paddingHorizontal: spacing.base }}>
@@ -779,6 +801,15 @@ export default function Home() {
           <CraftedFooter />
         </View>
       </ScrollView>
+
+      <VoiceSearchSheet
+        visible={voiceSearchOpen}
+        onClose={() => setVoiceSearchOpen(false)}
+        onResult={(text) => {
+          setVoiceSearchOpen(false);
+          onVoiceResult(text);
+        }}
+      />
     </View>
   );
 }

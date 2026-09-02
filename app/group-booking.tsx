@@ -6,12 +6,12 @@ import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { palette, spacing } from '@/theme';
 import { Text, ScreenHeader, Card, Button, Input, SegmentedControl, Dropdown, IconButton } from '@/components/ui';
-import { APP_STORE_URL } from '@/data';
 import { StayDateRangeField } from '@/components/search';
 import { SuccessBurst } from '@/components/illustrations';
 import { haptic } from '@/lib/haptics';
 import { isBefore } from '@/lib/dates';
 import { alert } from '@/lib/alertDialog';
+import { config } from '@/lib/config';
 import { useMasterData } from '@/context/MasterDataContext';
 import { groupBookingApi, errorMessage, type GroupBookingArrangement, type GroupBookingMeals, type GroupBookingFoodType } from '@/lib/api';
 
@@ -75,9 +75,10 @@ export default function GroupBooking() {
   const datesValid = checkIn.length > 0 && checkOut.length > 0 && isBefore(checkIn, checkOut);
 
   const shareGroupBooking = async () => {
+    const link = `${config.shareBaseUrl}/group-booking`;
     try {
       await Share.share({
-        message: `Planning a stay for a team, college batch or event? Do a group booking on PGfy and get a custom group quote. Download the app: ${APP_STORE_URL}`,
+        message: `Planning a stay for a team, college batch or event? Do a group booking on PGfy and get a custom group quote. ${link}`,
       });
     } catch {
       // user dismissed the share sheet

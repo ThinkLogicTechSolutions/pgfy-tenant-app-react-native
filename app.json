@@ -52,6 +52,11 @@
             },
             {
               "scheme": "https",
+              "host": "share.pgfy.in",
+              "pathPrefix": "/group-booking"
+            },
+            {
+              "scheme": "https",
               "host": "share-dev.pgfy.in",
               "pathPrefix": "/property"
             },
@@ -59,6 +64,11 @@
               "scheme": "https",
               "host": "share-dev.pgfy.in",
               "pathPrefix": "/referral"
+            },
+            {
+              "scheme": "https",
+              "host": "share-dev.pgfy.in",
+              "pathPrefix": "/group-booking"
             }
           ],
           "category": [
@@ -90,6 +100,13 @@
         "expo-location",
         {
           "locationWhenInUsePermission": "Allow PGfy to find PGs near your current location."
+        }
+      ],
+      [
+        "expo-speech-recognition",
+        {
+          "microphonePermission": "Allow PGfy to use the microphone for voice search.",
+          "speechRecognitionPermission": "Allow PGfy to use speech recognition for voice search."
         }
       ],
       "@react-native-community/datetimepicker",

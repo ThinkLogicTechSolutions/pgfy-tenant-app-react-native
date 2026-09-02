@@ -5,37 +5,37 @@
     
     
       
-      <testcase classname="fastlane.lanes" name="0: default_platform" time="0.000227">
+      <testcase classname="fastlane.lanes" name="0: default_platform" time="0.000217">
         
       </testcase>
     
       
-      <testcase classname="fastlane.lanes" name="1: ./gradlew --stop" time="0.82686">
+      <testcase classname="fastlane.lanes" name="1: ./gradlew --stop" time="0.576315">
         
       </testcase>
     
       
-      <testcase classname="fastlane.lanes" name="2: Switch to android build_android lane" time="0.000272">
+      <testcase classname="fastlane.lanes" name="2: Switch to android build_android lane" time="0.000186">
         
       </testcase>
     
       
-      <testcase classname="fastlane.lanes" name="3: npm ci" time="14.660175">
+      <testcase classname="fastlane.lanes" name="3: npm ci" time="20.197786">
         
       </testcase>
     
       
-      <testcase classname="fastlane.lanes" name="4: npx expo prebuild --platform android" time="3.409658">
+      <testcase classname="fastlane.lanes" name="4: npx expo prebuild --platform android" time="2.888139">
         
       </testcase>
     
       
-      <testcase classname="fastlane.lanes" name="5: bundleRelease" time="1398.321102">
+      <testcase classname="fastlane.lanes" name="5: bundleRelease" time="679.417825">
         
       </testcase>
     
       
-      <testcase classname="fastlane.lanes" name="6: upload_to_play_store" time="80.010934">
+      <testcase classname="fastlane.lanes" name="6: upload_to_play_store" time="66.04205">
         
       </testcase>
     
