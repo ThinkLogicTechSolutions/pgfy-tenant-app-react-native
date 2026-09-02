@@ -1,43 +1,69 @@
 /** PG browse results — list after home search (city + stay dates). */
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { View, FlatList } from 'react-native';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { palette, spacing, radius, shadows } from '@/theme';
-import { Text, EmptyState, IconButton, Sheet, PressableScale } from '@/components/ui';
+import { Text, EmptyState, IconButton, PressableScale } from '@/components/ui';
 import { ListingCard, CraftedFooter } from '@/components/domain';
 import {
   BrowseFiltersSheet,
-  DEFAULT_BROWSE_FILTERS,
+  getDefaultBrowseFilters,
   browseFiltersFromParams,
-  matchesBrowseFilters,
+  browseFiltersToSearchQuery,
   browseFiltersActiveCount,
   type BrowseFilters,
 } from '@/components/search';
 import { EmptySearch } from '@/components/illustrations';
-import { LISTINGS, SORT_OPTIONS } from '@/data';
+import { Skeleton } from '@/components/ui';
+import { LISTINGS } from '@/data';
+import type { Listing } from '@/data/types';
 import { formatDayMonth } from '@/lib/format';
-import { listingSupportsBookingMode, getPromotedPgListingId } from '@/lib/listingDisplay';
+import { getPromotedPgListingId } from '@/lib/listingDisplay';
+import { continueBrowsingToListing } from '@/lib/listingAdapter';
+import { propertyApi, errorMessage } from '@/lib/api';
+import { useTenantLocation } from '@/store/location';
 import { useSaved } from '@/store/saved';
+import { setMapResults } from '@/store/mapResults';
 
 export default function Browse() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const params = useLocalSearchParams<{
     city?: string;
+    cityId?: string;
+    localityId?: string;
     checkIn?: string;
     checkOut?: string;
     bookingType?: string;
     startTime?: string;
     hours?: string;
+    search?: string;
+    gender?: string;
+    acType?: string;
+    amenities?: string;
+    minRating?: string;
+    priceMin?: string;
+    priceMax?: string;
+    distanceMax?: string;
+    propertyTypes?: string;
+    roommateType?: string;
+    smoking?: string;
+    alcohol?: string;
+    sleep?: string;
+    diet?: string;
   }>();
   const saved = useSaved();
+  const { location: geo } = useTenantLocation();
 
   const city = params.city?.trim() || 'Bengaluru';
+  const cityId = params.cityId ? Number(params.cityId) : undefined;
+  const localityId = params.localityId ? Number(params.localityId) : undefined;
+  const searchQuery = params.search?.trim() || undefined;
 
-  const [sort, setSort] = useState('Relevance');
-  const [sortOpen, setSortOpen] = useState(false);
+  // The filter sheet is applied on Home (or here) before landing on this list — never
+  // auto-opened by a route param, so arriving here always shows results first.
   const [filtersOpen, setFiltersOpen] = useState(false);
   const [filters, setFilters] = useState<BrowseFilters>(() => browseFiltersFromParams(params));
   const [draftFilters, setDraftFilters] = useState<BrowseFilters>(() => browseFiltersFromParams(params));
@@ -45,25 +71,65 @@ export default function Browse() {
   const { bookingType, stay } = filters;
   const { checkIn, checkOut } = stay;
 
-  const promotedPgId = useMemo(() => getPromotedPgListingId(LISTINGS), []);
+  // A resolved operational location fetches real listings; otherwise fall back to the mock
+  // catalogue (curated destination tiles / exploratory browsing without a matched location).
+  const [liveListings, setLiveListings] = useState<Listing[] | null>(null);
+  const [liveLoading, setLiveLoading] = useState(false);
+  const [liveError, setLiveError] = useState<string | null>(null);
+
+  // Coordinates (GPS-resolved location only) — needed for `distanceMax` to filter/sort by
+  // anything. Destructured to primitives so the effect below doesn't re-fire on every render
+  // over a fresh `[lat, lng]` array identity.
+  const geoSource = geo?.source;
+  const geoLat = geo?.lat;
+  const geoLng = geo?.lng;
+
+  useEffect(() => {
+    if (!cityId && !searchQuery) {
+      setLiveListings(null);
+      return;
+    }
+    let active = true;
+    setLiveLoading(true);
+    setLiveError(null);
+    const coordinates: [number, number] | undefined =
+      geoSource === 'gps' && geoLat != null && geoLng != null ? [geoLat, geoLng] : undefined;
+    propertyApi
+      .searchProperties({
+        cityId,
+        localityId,
+        coordinates,
+        search: searchQuery,
+        ...browseFiltersToSearchQuery(filters),
+      })
+      .then((page) => {
+        if (active) setLiveListings(page.data.map(continueBrowsingToListing));
+      })
+      .catch((e) => {
+        if (!active) return;
+        setLiveError(errorMessage(e));
+        setLiveListings([]);
+      })
+      .finally(() => {
+        if (active) setLiveLoading(false);
+      });
+    return () => {
+      active = false;
+    };
+  }, [cityId, localityId, geoSource, geoLat, geoLng, searchQuery, filters]);
+
+  // Filtering now happens server-side (`browseFiltersToSearchQuery`), so the live path is
+  // already scoped correctly; only the mock fallback (no city/search context yet) is unfiltered.
+  const baseListings = liveListings ?? LISTINGS;
+
+  const promotedPgId = useMemo(() => getPromotedPgListingId(baseListings), [baseListings]);
   const filtersActive = browseFiltersActiveCount(filters) > 0;
 
-  const list = useMemo(() => {
-    const filtered = LISTINGS.filter((l) => {
-      const loc = `${l.city} ${l.locality} ${l.name}`.toLowerCase();
-      const cityMatch = !city || loc.includes(city.toLowerCase());
-      const bookingMatch = listingSupportsBookingMode(l, bookingType);
-      const filterMatch = matchesBrowseFilters(l, filters);
-      return cityMatch && bookingMatch && filterMatch;
-    });
-    const arr = [...filtered];
-    if (sort === 'Price: Low to High') arr.sort((a, b) => a.priceFrom - b.priceFrom);
-    else if (sort === 'Price: High to Low') arr.sort((a, b) => b.priceFrom - a.priceFrom);
-    else if (sort === 'Rating') arr.sort((a, b) => b.rating - a.rating);
-    else if (sort === 'Distance') arr.sort((a, b) => a.distanceKm - b.distanceKm);
-    return arr;
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [city, sort, bookingType, filters]);
+  const list = baseListings;
+
+  useEffect(() => {
+    setMapResults(list);
+  }, [list]);
 
   const dateSubtitle = bookingType === 'monthly'
     ? (checkIn ? `Monthly · from ${formatDayMonth(checkIn)}` : undefined)
@@ -91,9 +157,13 @@ export default function Browse() {
           <IconButton icon="chevron-back" onPress={() => router.back()} style={{ borderRadius: 21 }} />
           <View style={{ flex: 1 }}>
             <Text variant="h2" numberOfLines={1}>
-              {city}
+              {searchQuery ? `Results for "${searchQuery}"` : city}
             </Text>
-            {dateSubtitle ? (
+            {searchQuery ? (
+              <Text variant="bodySm" color={palette.inkSecondary} numberOfLines={1}>
+                {liveLoading ? 'Searching…' : `${list.length} ${list.length === 1 ? 'match' : 'matches'}`}
+              </Text>
+            ) : dateSubtitle ? (
               <Text variant="bodySm" color={palette.inkSecondary} numberOfLines={1}>
                 {dateSubtitle}
               </Text>
@@ -103,126 +173,95 @@ export default function Browse() {
         </View>
       </View>
 
-      <FlatList
-        data={list}
-        keyExtractor={(l) => l.id}
-        contentContainerStyle={{ paddingHorizontal: spacing.base, paddingBottom: spacing['3xl'] + 48, gap: spacing.md, paddingTop: spacing.sm }}
-        showsVerticalScrollIndicator={false}
-        ListHeaderComponent={
-          <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: spacing.sm, gap: spacing.sm }}>
-            <Text variant="bodySm" color={palette.inkSecondary} style={{ flex: 1 }}>
-              {list.length} properties found
-            </Text>
-            <PressableScale
-              onPress={openFilters}
-              haptics={false}
-              style={{
-                flexDirection: 'row',
-                alignItems: 'center',
-                gap: 5,
-                backgroundColor: filtersActive ? palette.navyTint : palette.surface,
-                borderWidth: 1,
-                borderColor: filtersActive ? palette.navy : palette.border,
-                borderRadius: radius.pill,
-                paddingVertical: 7,
-                paddingHorizontal: 12,
-              }}
-            >
-              <Ionicons name="options-outline" size={15} color={filtersActive ? palette.navy : palette.navy} />
-              <Text variant="bodySm" weight="600" color={filtersActive ? palette.navy : palette.ink}>
-                Filters{filtersActive ? ` · ${browseFiltersActiveCount(filters)}` : ''}
-              </Text>
-            </PressableScale>
-            <PressableScale
-              onPress={() => setSortOpen(true)}
-              haptics={false}
-              style={{
-                flexDirection: 'row',
-                alignItems: 'center',
-                gap: 5,
-                backgroundColor: palette.surface,
-                borderWidth: 1,
-                borderColor: palette.border,
-                borderRadius: radius.pill,
-                paddingVertical: 7,
-                paddingHorizontal: 12,
-              }}
-            >
-              <Ionicons name="swap-vertical" size={15} color={palette.navy} />
-              <Text variant="bodySm" weight="600">
-                {sort}
-              </Text>
-            </PressableScale>
-          </View>
-        }
-        renderItem={({ item }) => (
-          <ListingCard
-            listing={item}
-            titleFormat="nearLandmark"
-            showLocalityInMeta={false}
-            promoted={item.id === promotedPgId}
-            bookingType={bookingType}
-            onPress={() => router.push({
-              pathname: `/listing/${item.id}`,
-              params: listingParams,
-            })}
-            saved={saved.isSaved(item.id)}
-            onToggleSave={() => saved.toggle(item.id)}
-          />
-        )}
-        ListEmptyComponent={
-          <EmptyState
-            illustration={<EmptySearch />}
-            title="No properties found"
-            message="Try adjusting your filters."
-          />
-        }
-        ListFooterComponent={<CraftedFooter />}
-      />
-
-      <PressableScale
-        onPress={() => router.push('/map')}
-        scaleTo={0.94}
-        style={{
-          position: 'absolute',
-          bottom: spacing.md,
-          alignSelf: 'center',
-          flexDirection: 'row',
-          alignItems: 'center',
-          gap: 6,
-          backgroundColor: palette.navy,
-          paddingVertical: 10,
-          paddingHorizontal: 14,
-          borderRadius: radius.pill,
-          ...shadows.fab,
-        }}
-      >
-        <Ionicons name="map" size={16} color={palette.white} />
-        <Text variant="caption" weight="700" color={palette.white}>
-          Map
-        </Text>
-      </PressableScale>
-
-      <Sheet visible={sortOpen} onClose={() => setSortOpen(false)} title="Sort by">
-        <View>
-          {SORT_OPTIONS.map((s) => (
-            <PressableScale
-              key={s}
-              onPress={() => {
-                setSort(s);
-                setSortOpen(false);
-              }}
-              scaleTo={0.98}
-              style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingVertical: spacing.md }}
-            >
-              <Text variant="bodyMd" color={sort === s ? palette.coralDark : palette.ink} weight={sort === s ? '600' : '400'}>
-                {s}
-              </Text>
-              {sort === s ? <Ionicons name="checkmark-circle" size={22} color={palette.coral} /> : null}
-            </PressableScale>
+      {liveLoading ? (
+        <View style={{ paddingHorizontal: spacing.base, paddingTop: spacing.sm, gap: spacing.md }}>
+          {[0, 1, 2].map((i) => (
+            <ResultCardSkeleton key={i} />
           ))}
         </View>
-      </Sheet>
+      ) : (
+        <FlatList
+          data={list}
+          keyExtractor={(l) => l.id}
+          contentContainerStyle={{ paddingHorizontal: spacing.base, paddingBottom: spacing['3xl'] + 48, gap: spacing.md, paddingTop: spacing.sm }}
+          showsVerticalScrollIndicator={false}
+          ListHeaderComponent={
+            <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: spacing.sm, gap: spacing.sm }}>
+              <Text variant="bodySm" color={palette.inkSecondary} style={{ flex: 1 }}>
+                {list.length} properties found
+              </Text>
+              <PressableScale
+                onPress={openFilters}
+                haptics={false}
+                style={{
+                  flexDirection: 'row',
+                  alignItems: 'center',
+                  gap: 5,
+                  backgroundColor: filtersActive ? palette.navyTint : palette.surface,
+                  borderWidth: 1,
+                  borderColor: filtersActive ? palette.navy : palette.border,
+                  borderRadius: radius.pill,
+                  paddingVertical: 7,
+                  paddingHorizontal: 12,
+                }}
+              >
+                <Ionicons name="options-outline" size={15} color={filtersActive ? palette.navy : palette.navy} />
+                <Text variant="bodySm" weight="600" color={filtersActive ? palette.navy : palette.ink}>
+                  Filters{filtersActive ? ` · ${browseFiltersActiveCount(filters)}` : ''}
+                </Text>
+              </PressableScale>
+            </View>
+          }
+          renderItem={({ item }) => (
+            <ListingCard
+              listing={item}
+              titleFormat="nearLandmark"
+              showLocalityInMeta={false}
+              promoted={item.id === promotedPgId}
+              bookingType={bookingType}
+              onPress={() => router.push({
+                pathname: `/listing/${item.id}`,
+                params: listingParams,
+              })}
+              saved={saved.isSaved(item.id)}
+              onToggleSave={() => saved.toggle(item.id)}
+            />
+          )}
+          ListEmptyComponent={
+            <EmptyState
+              illustration={<EmptySearch />}
+              title="No properties found"
+              message={liveError ?? 'Try adjusting your filters.'}
+            />
+          }
+          ListFooterComponent={<CraftedFooter />}
+        />
+      )}
+
+      {!liveLoading && list.length > 0 ? (
+        <PressableScale
+          onPress={() => router.push('/map')}
+          scaleTo={0.94}
+          style={{
+            position: 'absolute',
+            bottom: insets.bottom + spacing.xl,
+            alignSelf: 'center',
+            flexDirection: 'row',
+            alignItems: 'center',
+            gap: 6,
+            backgroundColor: palette.navy,
+            paddingVertical: 10,
+            paddingHorizontal: 14,
+            borderRadius: radius.pill,
+            ...shadows.fab,
+          }}
+        >
+          <Ionicons name="map" size={16} color={palette.white} />
+          <Text variant="caption" weight="700" color={palette.white}>
+            Map
+          </Text>
+        </PressableScale>
+      ) : null}
 
       <BrowseFiltersSheet
         visible={filtersOpen}
@@ -235,11 +274,24 @@ export default function Browse() {
           setFiltersOpen(false);
         }}
         onClear={() => {
-          setDraftFilters(DEFAULT_BROWSE_FILTERS);
-          setFilters(DEFAULT_BROWSE_FILTERS);
+          setDraftFilters(getDefaultBrowseFilters());
+          setFilters(getDefaultBrowseFilters());
           setFiltersOpen(false);
         }}
       />
+    </View>
+  );
+}
+
+function ResultCardSkeleton() {
+  return (
+    <View style={{ backgroundColor: palette.surface, borderRadius: radius.lg, borderWidth: 1, borderColor: palette.border, overflow: 'hidden' }}>
+      <Skeleton height={180} rounded={0} />
+      <View style={{ padding: spacing.base, gap: 8 }}>
+        <Skeleton width="65%" height={16} />
+        <Skeleton width="45%" height={12} />
+        <Skeleton width="35%" height={18} style={{ marginTop: 4 }} />
+      </View>
     </View>
   );
 }

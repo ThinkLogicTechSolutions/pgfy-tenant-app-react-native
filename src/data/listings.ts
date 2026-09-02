@@ -97,6 +97,9 @@ function genFloors(seedStr: string, sharing: SharingSpec[], securityDeposit: num
           rent: s.rent,
         };
       });
+      const occupiedCount = beds.filter((b) => b.status === 'occupied').length;
+      const r = (seed + fi * 7 + si * 3) >>> 0;
+      const professionals = occupiedCount === 0 ? 0 : (r % (occupiedCount + 1));
       return {
         id: `${seedStr}-${number}`,
         number,
@@ -107,7 +110,15 @@ function genFloors(seedStr: string, sharing: SharingSpec[], securityDeposit: num
         amenities: ['AC', 'Attached Bath', 'Study Table', 'Wardrobe'],
         photo: coverImages[(seed + fi + si) % coverImages.length],
         beds,
-        occupied: beds.filter((b) => b.status === 'occupied').length,
+        occupied: occupiedCount,
+        roommateProfile: {
+          professionals,
+          students: Math.max(0, occupiedCount - professionals),
+          smoking: r % 4 === 0,
+          alcohol: r % 3 === 0,
+          sleep: r % 2 === 0 ? 'early' : 'late',
+          diet: (['veg', 'nonveg', 'vegan'] as const)[r % 3],
+        },
       };
     });
     return { id: `${seedStr}-f${fi}`, name: fname, rooms };
@@ -127,6 +138,8 @@ const RATING_BREAKDOWN = [
   { label: 'Staff', value: 4.5 },
   { label: 'Price', value: 4.2 },
 ];
+
+const MANAGER_NAMES = ['Ramesh Kumar', 'Suresh Nair', 'Anil Reddy', 'Vijay Menon', 'Prakash Rao', 'Manoj Pillai', 'Karthik Iyer', 'Deepak Shetty'];
 
 function buildListing(c: ListingConfig): Listing {
   const floors = genFloors(c.id, c.sharing, c.securityDeposit);
@@ -173,7 +186,24 @@ function buildListing(c: ListingConfig): Listing {
     hourly: c.hourlyEnabled ? { windowStart: c.hourlyWindowStart ?? '06:00', windowEnd: c.hourlyWindowEnd ?? '22:00' } : undefined,
     daily: (c.dailyEnabled ?? true) ? { checkInTime: c.dailyCheckIn ?? '12:00', checkOutTime: c.dailyCheckOut ?? '11:00' } : undefined,
   };
+  const roomProfiles = floors.flatMap((f) => f.rooms.map((r) => r.roommateProfile!).filter(Boolean));
+  const totalPros = roomProfiles.reduce((s, p) => s + p.professionals, 0);
+  const totalStudents = roomProfiles.reduce((s, p) => s + p.students, 0);
+  const majority = <T extends string>(vals: T[]): T =>
+    vals.sort((a, b) => vals.filter((v) => v === b).length - vals.filter((v) => v === a).length)[0];
+  const roommateSummary = {
+    mostlyProfessionals: totalPros >= totalStudents,
+    smoking: roomProfiles.filter((p) => p.smoking).length > roomProfiles.length / 2,
+    alcohol: roomProfiles.filter((p) => p.alcohol).length > roomProfiles.length / 2,
+    sleep: majority(roomProfiles.map((p) => p.sleep)),
+    diet: majority(roomProfiles.map((p) => p.diet)),
+  };
   const seedNum = c.coverIdx + c.id.length;
+  const managerNum = 9000000000 + ((seedNum * 48271) % 999999999);
+  const manager = {
+    name: MANAGER_NAMES[seedNum % MANAGER_NAMES.length],
+    phone: `+91 ${String(managerNum).slice(0, 5)} ${String(managerNum).slice(5)}`,
+  };
   const mediaSections = mediaSectionsFor(seedNum, c.coverIdx);
   const gallery = mediaSections.flatMap((s) => s.images);
   return {
@@ -221,6 +251,8 @@ function buildListing(c: ListingConfig): Listing {
     bookingConfig,
     hourlyPricing,
     dailyPricing,
+    roommateSummary,
+    manager,
   };
 }
 

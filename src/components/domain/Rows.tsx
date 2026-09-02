@@ -2,10 +2,11 @@
 import { View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { palette, radius, spacing } from '@/theme';
-import { Text, Avatar, PressableScale } from '@/components/ui';
-import { StatusPill } from './Badges';
+import { Text, Avatar, PressableScale, Card, Badge } from '@/components/ui';
+import { StatusPill, statusTone } from './Badges';
 import { inr, formatDate, formatDayMonth, timeAgo } from '@/lib/format';
-import type { Review, Invoice, Visitor, Ticket, NotificationItem, NotificationType, TicketCategory } from '@/data/types';
+import type { Review, Invoice, Visitor, Ticket, TicketCategory } from '@/data/types';
+import type { ApiTenantNotification, TenantNotificationAction } from '@/lib/api';
 
 /* Review */
 export function ReviewCard({ review }: { review: Review }) {
@@ -93,45 +94,72 @@ const CAT_ICON: Record<TicketCategory, keyof typeof Ionicons.glyphMap> = {
 
 export function TicketRow({ ticket, onPress }: { ticket: Ticket; onPress?: () => void }) {
   const t = ticket;
-  const resolved = t.status === 'Resolved';
   return (
-    <PressableScale onPress={onPress} scaleTo={0.99} style={{ flexDirection: 'row', alignItems: 'center', gap: spacing.md, backgroundColor: palette.surface, borderRadius: radius.lg, borderWidth: 1, borderColor: palette.border, padding: spacing.base }}>
-      <View style={{ width: 42, height: 42, borderRadius: radius.md, backgroundColor: palette.surfaceRaised, alignItems: 'center', justifyContent: 'center' }}>
-        <Ionicons name={CAT_ICON[t.category]} size={20} color={resolved ? palette.success : palette.navy} />
-      </View>
-      <View style={{ flex: 1 }}>
-        <Text variant="bodyMd" weight="600" numberOfLines={1}>{t.category}</Text>
-        <Text variant="caption" color={palette.inkTertiary} numberOfLines={1}>{t.id} · {timeAgo(t.createdAt)}</Text>
-      </View>
-      <StatusPill status={t.status} small />
+    <PressableScale onPress={onPress} scaleTo={0.99}>
+      <Card>
+        <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: spacing.sm }}>
+          <Badge label={t.status} tone={statusTone(t.status)} />
+          <Text variant="caption" color={palette.inkTertiary}>{timeAgo(t.createdAt)}</Text>
+        </View>
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: spacing.sm }}>
+          <View style={{ width: 30, height: 30, borderRadius: radius.sm, backgroundColor: palette.surfaceRaised, alignItems: 'center', justifyContent: 'center' }}>
+            <Ionicons name={CAT_ICON[t.category]} size={16} color={palette.inkSecondary} />
+          </View>
+          <Text variant="bodyMd" weight="700" numberOfLines={1} style={{ flex: 1 }}>{t.category}</Text>
+        </View>
+        <Text variant="bodySm" color={palette.inkSecondary} numberOfLines={2} style={{ marginTop: spacing.xs }}>{t.description}</Text>
+        <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: spacing.sm }}>
+          <Text variant="caption" color={palette.inkTertiary}>{t.id}</Text>
+          <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+            <Text variant="bodySm" color={palette.info} weight="600">View details</Text>
+            <Ionicons name="chevron-forward" size={16} color={palette.info} />
+          </View>
+        </View>
+      </Card>
     </PressableScale>
   );
 }
 
 /* Notification */
-const NOTIF_ICON: Record<NotificationType, { icon: keyof typeof Ionicons.glyphMap; tint: string }> = {
-  'Rent Reminder': { icon: 'cash-outline', tint: palette.warning },
-  'Booking Update': { icon: 'calendar-outline', tint: palette.coral },
-  Announcement: { icon: 'megaphone-outline', tint: palette.info },
-  'Lease Expiry': { icon: 'document-text-outline', tint: palette.navy },
-  'Ticket Update': { icon: 'construct-outline', tint: palette.success },
-  'Visitor Alert': { icon: 'people-outline', tint: palette.info },
+const NOTIF_ICON: Record<string, { icon: keyof typeof Ionicons.glyphMap; tint: string }> = {
+  PROFILE: { icon: 'person-outline', tint: palette.navy },
+  SUPPORT: { icon: 'help-buoy-outline', tint: palette.success },
+  BOOKING: { icon: 'calendar-outline', tint: palette.coral },
+  INVOICE: { icon: 'receipt-outline', tint: palette.warning },
+  MAINTENANCE: { icon: 'construct-outline', tint: palette.success },
+  PAYOUT: { icon: 'cash-outline', tint: palette.success },
+  LEASE: { icon: 'document-text-outline', tint: palette.navy },
+  REWARD: { icon: 'gift-outline', tint: palette.coral },
+  KYC: { icon: 'shield-checkmark-outline', tint: palette.info },
+  ANNOUNCEMENT: { icon: 'megaphone-outline', tint: palette.info },
+  BROADCAST: { icon: 'megaphone-outline', tint: palette.info },
+  VISITOR: { icon: 'people-outline', tint: palette.info },
+  MOVE_OUT: { icon: 'exit-outline', tint: palette.danger },
+  BED_CHANGE: { icon: 'swap-horizontal-outline', tint: palette.navy },
+  TRANSACTION: { icon: 'card-outline', tint: palette.success },
+  SUBSCRIPTION: { icon: 'refresh-outline', tint: palette.navy },
 };
+const DEFAULT_NOTIF_ICON: { icon: keyof typeof Ionicons.glyphMap; tint: string } = { icon: 'notifications-outline', tint: palette.inkTertiary };
 
-export function NotificationRow({ item, onPress }: { item: NotificationItem; onPress?: () => void }) {
-  const meta = NOTIF_ICON[item.type];
+export function notificationIcon(action: TenantNotificationAction) {
+  return NOTIF_ICON[action] ?? DEFAULT_NOTIF_ICON;
+}
+
+export function NotificationRow({ item, onPress }: { item: ApiTenantNotification; onPress?: () => void }) {
+  const meta = notificationIcon(item.action);
+  const unread = item.status === 'UNSEEN';
   return (
-    <PressableScale onPress={onPress} scaleTo={0.99} style={{ flexDirection: 'row', gap: spacing.md, paddingVertical: spacing.md, paddingHorizontal: spacing.base, backgroundColor: item.read ? 'transparent' : palette.coralTint + '55', borderRadius: radius.md }}>
+    <PressableScale onPress={onPress} scaleTo={0.99} style={{ flexDirection: 'row', gap: spacing.md, paddingVertical: spacing.md, paddingHorizontal: spacing.base, backgroundColor: unread ? palette.coralTint + '55' : 'transparent', borderRadius: radius.md }}>
       <View style={{ width: 40, height: 40, borderRadius: 20, backgroundColor: meta.tint + '1A', alignItems: 'center', justifyContent: 'center' }}>
         <Ionicons name={meta.icon} size={19} color={meta.tint} />
       </View>
       <View style={{ flex: 1 }}>
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
           <Text variant="bodyMd" weight="600" numberOfLines={1} style={{ flex: 1 }}>{item.title}</Text>
-          {!item.read ? <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: palette.coral }} /> : null}
+          {unread ? <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: palette.coral }} /> : null}
         </View>
-        <Text variant="bodySm" color={palette.inkSecondary} numberOfLines={2} style={{ marginTop: 1 }}>{item.body}</Text>
-        <Text variant="caption" color={palette.inkTertiary} style={{ marginTop: 3 }}>{timeAgo(item.timestamp)}</Text>
+        <Text variant="bodySm" color={palette.inkSecondary} numberOfLines={2} style={{ marginTop: 1 }}>{item.message}</Text>
+        <Text variant="caption" color={palette.inkTertiary} style={{ marginTop: 3 }}>{timeAgo(item.created_at)}</Text>
       </View>
     </PressableScale>
   );

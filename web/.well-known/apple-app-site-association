@@ -1,0 +1,22 @@
+{
+  "webcredentials": {
+    "apps": [
+      "JGMKYLZ78K.in.pgfy.tenant"
+    ]
+  },
+  "applinks": {
+    "apps": [],
+    "details": [
+      {
+        "appIDs": [
+          "JGMKYLZ78K.in.pgfy.tenant"
+        ],
+        "appID": "JGMKYLZ78K.in.pgfy.tenant",
+        "paths": [
+          "*",
+          "/"
+        ]
+      }
+    ]
+  }
+}

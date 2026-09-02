@@ -1,95 +1,180 @@
-/** T-S19 — Digital lease agreement (view & e-sign). */
-import { useState } from 'react';
-import { View, ScrollView } from 'react-native';
-import { useRouter } from 'expo-router';
+/** T-S19 — Lease agreement detail. Real `GET /tenant/lease-agreements/:id` (opened via `id`,
+ * e.g. from the lease-agreements list) or the latest lease for a booking (via `bookingId`,
+ * e.g. from My Stay's "Lease" quick action). */
+import { useEffect, useState } from 'react';
+import { View, ScrollView, Linking } from 'react-native';
+import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { palette, spacing, radius } from '@/theme';
-import { Text, ScreenHeader, Card, Button, Divider, Sheet } from '@/components/ui';
-import { StatusPill } from '@/components/domain';
-import { SuccessBurst } from '@/components/illustrations';
-import { LEASE, ACTIVE_BOOKING } from '@/data';
-import { inr, formatDate } from '@/lib/format';
+import { Text, ScreenHeader, Card, Button, Divider, EmptyState, Skeleton, PressableScale } from '@/components/ui';
+import { EmptyGeneric } from '@/components/illustrations';
+import { leaseApi, errorMessage, type LeaseAgreement } from '@/lib/api';
+import { leaseStatusLabel, leaseSigningUrl } from '@/lib/leaseDisplay';
+import { formatDate } from '@/lib/format';
+import { showAlert } from '@/lib/alert';
 import { haptic } from '@/lib/haptics';
+
+const STATUS_ICON: Record<string, keyof typeof Ionicons.glyphMap> = {
+  SIGNED: 'checkmark-circle',
+  PENDING_TENANT: 'time',
+  CANCELLED: 'close-circle',
+  EXPIRED: 'close-circle',
+};
+
+const STATUS_TONE_COLOR: Record<string, { bg: string; fg: string }> = {
+  SIGNED: { bg: palette.successTint, fg: palette.success },
+  PENDING_TENANT: { bg: palette.warningTint, fg: '#B26A00' },
+  CANCELLED: { bg: palette.surfaceRaised, fg: palette.inkSecondary },
+  EXPIRED: { bg: palette.dangerTint, fg: palette.danger },
+};
+
+function daysUntil(iso: string): number {
+  return Math.ceil((new Date(iso).getTime() - Date.now()) / 86_400_000);
+}
+
+async function openUrl(url: string) {
+  try {
+    await Linking.openURL(url);
+  } catch {
+    showAlert('Unable to open', 'Please try again in a moment.');
+  }
+}
 
 export default function LeaseScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
-  const [signOpen, setSignOpen] = useState(false);
-  const [signed, setSigned] = useState(LEASE.status === 'Signed');
+  const { id, bookingId } = useLocalSearchParams<{ id?: string; bookingId?: string }>();
 
-  const doSign = () => { haptic.success(); setSigned(true); setSignOpen(false); };
+  const [lease, setLease] = useState<LeaseAgreement | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    setLoading(true);
+    setError(null);
+    const fetch = id
+      ? leaseApi.getLeaseAgreement(Number(id))
+      : bookingId
+        ? leaseApi.getLeaseAgreementForBooking(Number(bookingId))
+        : Promise.resolve(null);
+    fetch
+      .then(setLease)
+      .catch((e) => setError(errorMessage(e)))
+      .finally(() => setLoading(false));
+  }, [id, bookingId]);
+
+  if (loading) {
+    return (
+      <View style={{ flex: 1, paddingTop: insets.top + spacing.xs }}>
+        <ScreenHeader title="Lease agreement" />
+        <View style={{ paddingHorizontal: spacing.base, gap: spacing.base }}>
+          <Skeleton width="100%" height={72} rounded={radius.lg} />
+          <Skeleton width="100%" height={220} rounded={radius.lg} />
+          <Skeleton width="100%" height={80} rounded={radius.lg} />
+        </View>
+      </View>
+    );
+  }
+
+  if (error || !lease) {
+    return (
+      <View style={{ flex: 1, paddingTop: insets.top + spacing.xs }}>
+        <ScreenHeader title="Lease agreement" />
+        <EmptyState
+          illustration={<EmptyGeneric />}
+          title={error ? "Couldn't load this lease" : 'No lease agreement yet'}
+          message={error ?? "This booking doesn't have a lease agreement on file yet."}
+          actionLabel={!error && !id ? 'View all lease agreements' : undefined}
+          onAction={!error && !id ? () => router.push('/lease-agreements') : undefined}
+        />
+      </View>
+    );
+  }
+
+  const tone = STATUS_TONE_COLOR[lease.status] ?? STATUS_TONE_COLOR.CANCELLED;
+  const icon = STATUS_ICON[lease.status] ?? 'document-text';
+  const downloadUrl = lease.signed_pdf_url ?? lease.agreement_url;
+  const signingUrl = lease.status === 'PENDING_TENANT' ? leaseSigningUrl(lease.lease_signing_urls) : null;
+  const expiringSoon = lease.status === 'SIGNED' && daysUntil(lease.lease_end_date) <= 60 && daysUntil(lease.lease_end_date) >= 0;
 
   return (
     <View style={{ flex: 1, paddingTop: insets.top + spacing.xs }}>
-      <ScreenHeader title="Lease agreement" subtitle={LEASE.id} />
+      <ScreenHeader title="Lease agreement" subtitle={lease.booking.code} />
       <ScrollView contentContainerStyle={{ paddingHorizontal: spacing.base, paddingBottom: insets.bottom + 110, gap: spacing.base }} showsVerticalScrollIndicator={false}>
         {/* Status banner */}
-        <View style={{ flexDirection: 'row', alignItems: 'center', gap: spacing.md, backgroundColor: signed ? palette.successTint : palette.warningTint, borderRadius: radius.lg, padding: spacing.base }}>
-          <Ionicons name={signed ? 'checkmark-circle' : 'time'} size={24} color={signed ? palette.success : palette.warning} />
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: spacing.md, backgroundColor: tone.bg, borderRadius: radius.lg, padding: spacing.base }}>
+          <Ionicons name={icon} size={24} color={tone.fg} />
           <View style={{ flex: 1 }}>
-            <Text variant="bodyMd" weight="700" color={signed ? palette.success : '#B26A00'}>{signed ? 'Signed & active' : 'Pending your signature'}</Text>
-            <Text variant="caption" color={signed ? palette.success : '#B26A00'}>{signed ? 'Your agreement is legally active.' : 'Review and e-sign to activate your stay.'}</Text>
+            <Text variant="bodyMd" weight="700" color={tone.fg}>{leaseStatusLabel(lease.status)}</Text>
+            <Text variant="caption" color={tone.fg}>
+              {lease.status === 'SIGNED'
+                ? 'Your agreement is legally active.'
+                : lease.status === 'PENDING_TENANT'
+                  ? 'Review and e-sign to activate your stay.'
+                  : `Lease #${lease.id}`}
+            </Text>
           </View>
         </View>
 
         {/* Summary */}
         <Card>
           <Text variant="overline" color={palette.inkTertiary} style={{ marginBottom: spacing.sm }}>AGREEMENT SUMMARY</Text>
-          <Row k="Property" v={ACTIVE_BOOKING.propertyName} />
-          <Row k="Room / Bed" v={`${ACTIVE_BOOKING.roomNumber} · ${ACTIVE_BOOKING.bedLabel}`} />
-          <Row k="Start date" v={formatDate(LEASE.startDate)} />
-          <Row k="End date" v={formatDate(LEASE.endDate)} />
-          <Row k="Monthly rent" v={inr(ACTIVE_BOOKING.monthlyRent)} />
-          <Row k="Security deposit" v={inr(ACTIVE_BOOKING.deposit)} />
-          <Row k="Lock-in period" v={`${LEASE.lockInMonths} months`} />
-          <Row k="Notice period" v={`${LEASE.noticeDays} days`} />
-          <Row k="Early-exit penalty" v={inr(LEASE.earlyExitPenalty)} last />
+          <Row k="Property" v={lease.property.name} />
+          {lease.room && lease.bed ? <Row k="Room / Bed" v={`${lease.room.room_number} · ${lease.bed.bed_number}`} /> : null}
+          <Row k="Start date" v={formatDate(lease.lease_start_date)} />
+          <Row k="End date" v={formatDate(lease.lease_end_date)} />
+          <Row k="Lock-in period" v={`${lease.booking.lock_in_period_months} months`} />
+          <Row k="Notice period" v={`${lease.notice_period_days} days`} last />
         </Card>
 
-        {/* Document preview */}
+        {/* Document */}
         <Card>
-          <View style={{ flexDirection: 'row', alignItems: 'center', gap: spacing.md }}>
-            <View style={{ width: 48, height: 60, borderRadius: radius.sm, backgroundColor: palette.dangerTint, alignItems: 'center', justifyContent: 'center' }}>
-              <Ionicons name="document-text" size={26} color={palette.danger} />
+          {downloadUrl ? (
+            <PressableScale onPress={() => openUrl(downloadUrl)} scaleTo={0.99} style={{ flexDirection: 'row', alignItems: 'center', gap: spacing.md }}>
+              <View style={{ width: 48, height: 60, borderRadius: radius.sm, backgroundColor: palette.dangerTint, alignItems: 'center', justifyContent: 'center' }}>
+                <Ionicons name="document-text" size={26} color={palette.danger} />
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text variant="bodyMd" weight="600">PGfy_Lease_{lease.id}.pdf</Text>
+                <Text variant="caption" color={palette.inkTertiary}>Tap to view the agreement</Text>
+              </View>
+              <Ionicons name="eye-outline" size={22} color={palette.navy} />
+            </PressableScale>
+          ) : (
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: spacing.md }}>
+              <View style={{ width: 48, height: 60, borderRadius: radius.sm, backgroundColor: palette.surfaceRaised, alignItems: 'center', justifyContent: 'center' }}>
+                <Ionicons name="document-outline" size={26} color={palette.inkTertiary} />
+              </View>
+              <Text variant="bodySm" color={palette.inkTertiary} style={{ flex: 1 }}>The document isn't available yet.</Text>
             </View>
-            <View style={{ flex: 1 }}>
-              <Text variant="bodyMd" weight="600">PGfy_Lease_{LEASE.id}.pdf</Text>
-              <Text variant="caption" color={palette.inkTertiary}>8 pages · e-sign via Cashfree</Text>
-            </View>
-            <Ionicons name="eye-outline" size={22} color={palette.navy} />
-          </View>
+          )}
         </Card>
 
-        {signed && LEASE.daysToExpiry <= 60 ? (
+        {expiringSoon ? (
           <View style={{ flexDirection: 'row', gap: spacing.sm, backgroundColor: palette.warningTint, padding: spacing.md, borderRadius: radius.md }}>
             <Ionicons name="alert-circle" size={18} color={palette.warning} />
-            <Text variant="caption" color="#B26A00" style={{ flex: 1 }}>Your agreement expires in {LEASE.daysToExpiry} days. Renew to continue your stay.</Text>
+            <Text variant="caption" color="#B26A00" style={{ flex: 1 }}>Your agreement expires in {daysUntil(lease.lease_end_date)} days.</Text>
           </View>
         ) : null}
       </ScrollView>
 
-      <View style={{ position: 'absolute', bottom: 0, left: 0, right: 0, flexDirection: 'row', gap: spacing.md, paddingHorizontal: spacing.base, paddingTop: spacing.md, paddingBottom: insets.bottom + spacing.md, backgroundColor: palette.surface, borderTopWidth: 1, borderTopColor: palette.border }}>
-        <Button label="Download" variant="outline" icon="download-outline" style={{ flex: 1 }} full />
-        {signed ? (
-          <Button label="Renew lease" icon="refresh" style={{ flex: 1.4 }} full />
-        ) : (
-          <Button label="Review & Sign" icon="create-outline" onPress={() => setSignOpen(true)} style={{ flex: 1.4 }} full />
-        )}
-      </View>
-
-      <Sheet visible={signOpen} onClose={() => setSignOpen(false)} title="E-sign agreement">
-        {signed ? null : (
-          <View style={{ gap: spacing.base }}>
-            <Text variant="bodySm" color={palette.inkSecondary}>You're signing the lease for {ACTIVE_BOOKING.propertyName}. This is legally binding and powered by Cashfree e-sign.</Text>
-            <View style={{ height: 90, borderRadius: radius.md, borderWidth: 1.5, borderStyle: 'dashed', borderColor: palette.borderStrong, alignItems: 'center', justifyContent: 'center', backgroundColor: palette.surfaceRaised }}>
-              <Ionicons name="finger-print-outline" size={28} color={palette.inkTertiary} />
-              <Text variant="caption" color={palette.inkTertiary} style={{ marginTop: 4 }}>Tap to authenticate with Aadhaar e-sign</Text>
-            </View>
-            <Button label="Confirm & Sign" icon="checkmark" onPress={doSign} full size="lg" />
-          </View>
-        )}
-      </Sheet>
+      {downloadUrl || signingUrl ? (
+        <View style={{ position: 'absolute', bottom: 0, left: 0, right: 0, flexDirection: 'row', gap: spacing.md, paddingHorizontal: spacing.base, paddingTop: spacing.md, paddingBottom: insets.bottom + spacing.md, backgroundColor: palette.surface, borderTopWidth: 1, borderTopColor: palette.border }}>
+          {downloadUrl ? (
+            <Button label="Download" variant="outline" icon="download-outline" style={{ flex: 1 }} full onPress={() => openUrl(downloadUrl)} />
+          ) : null}
+          {signingUrl ? (
+            <Button
+              label="Review & Sign"
+              icon="create-outline"
+              style={{ flex: 1.4 }}
+              full
+              onPress={() => { haptic.select(); openUrl(signingUrl); }}
+            />
+          ) : null}
+        </View>
+      ) : null}
     </View>
   );
 }

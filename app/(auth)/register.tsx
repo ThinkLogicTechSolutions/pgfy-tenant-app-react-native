@@ -1,24 +1,32 @@
 /** T-S6 — Basic registration (minimal first-login profile). */
 import { useState } from 'react';
-import { View, KeyboardAvoidingView, Platform, ScrollView } from 'react-native';
+import { View, KeyboardAvoidingView, Platform, ScrollView, Alert } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { palette, spacing } from '@/theme';
 import { Text, Input, Button } from '@/components/ui';
-import { session } from '@/lib/session';
 import { haptic } from '@/lib/haptics';
+import { useAuth } from '@/context/AuthContext';
+import { errorMessage } from '@/lib/api';
 
 export default function Register() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
-  const [name, setName] = useState('Aarav Sharma');
-  const [email, setEmail] = useState('');
+  const { updateProfile } = useAuth();
+  const [name, setName] = useState('');
   const [loading, setLoading] = useState(false);
 
   const save = async () => {
-    setLoading(true); haptic.success();
-    await session.login();
-    setTimeout(() => router.replace('/(tabs)'), 500);
+    setLoading(true);
+    try {
+      await updateProfile({ name: name.trim() });
+      haptic.success();
+      router.replace('/(tabs)');
+    } catch (e) {
+      Alert.alert('Could not save your profile', errorMessage(e));
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (
@@ -30,9 +38,8 @@ export default function Register() {
         </Text>
         <View style={{ gap: spacing.base }}>
           <Input label="Full name" icon="person-outline" value={name} onChangeText={setName} maxLength={60} placeholder="Your name" />
-          <Input label="Email (optional)" icon="mail-outline" value={email} onChangeText={setEmail} keyboardType="email-address" autoCapitalize="none" placeholder="you@example.com" />
         </View>
-        <Button label="Save & Continue" onPress={save} loading={loading} disabled={!name.trim()} full size="lg" style={{ marginTop: spacing.xl }} />
+        <Button label="Save & Continue" loadingLabel="Saving…" onPress={save} loading={loading} disabled={!name.trim()} full size="lg" style={{ marginTop: spacing.xl }} />
         <View style={{ flex: 1 }} />
         <Text variant="caption" color={palette.inkTertiary} align="center" style={{ marginTop: spacing.xl }}>
           A SnapKYC-verified profile is required before you can confirm a booking.

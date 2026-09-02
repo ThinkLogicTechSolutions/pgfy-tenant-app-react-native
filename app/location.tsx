@@ -1,17 +1,20 @@
-/** Location picker — autocomplete, near me, search history, top cities. */
+/** Location picker — Google Places autocomplete, near me, search history, top cities. */
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { View, ScrollView, TextInput, Alert, Keyboard } from 'react-native';
+import { View, ScrollView, TextInput, Keyboard } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useFocusEffect } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
 import { palette, radius, spacing, fontFamily } from '@/theme';
 import { Text, Button, IconButton, PressableScale } from '@/components/ui';
-import { filterLocations, LOCATION_SEARCH_PLACEHOLDER } from '@/data/locationSearch';
-import { TOP_CITIES } from '@/data';
+import { LOCATION_SEARCH_PLACEHOLDER } from '@/data/locationSearch';
 import { resolveNearMeLocation } from '@/lib/nearMe';
-import { getSearchHistory, addSearchHistory } from '@/lib/searchHistory';
+import { autocompletePlaces, geocodePlaceId, newPlacesSessionToken, type PlaceAutocompletePrediction } from '@/lib/googleMaps';
+import { matchOperationalLocation } from '@/lib/operationalLocation';
+import { getSearchHistory, addSearchHistory, clearSearchHistory } from '@/lib/searchHistory';
+import { showAlert } from '@/lib/alert';
 import { locationPicker } from '@/store/locationPicker';
+import { useMasterData } from '@/context/MasterDataContext';
 import { haptic } from '@/lib/haptics';
 
 export default function LocationScreen() {
@@ -19,17 +22,35 @@ export default function LocationScreen() {
   const insets = useSafeAreaInsets();
   const inputRef = useRef<TextInput>(null);
   const pickedRef = useRef(false);
+  const sessionToken = useRef(newPlacesSessionToken());
+  const { states, cities, localities } = useMasterData();
 
   const [query, setQuery] = useState('');
   const [history, setHistory] = useState<string[]>([]);
   const [loadingNear, setLoadingNear] = useState(false);
+  const [suggestions, setSuggestions] = useState<PlaceAutocompletePrediction[]>([]);
 
-  const suggestions = useMemo(() => filterLocations(query, 10), [query]);
   const showSuggestions = query.trim().length > 0 && suggestions.length > 0;
+
+  const topCities = useMemo(
+    () =>
+      cities
+        .filter((c) => c.status === 'ACTIVE')
+        .sort((a, b) => a.priority - b.priority)
+        .slice(0, 8),
+    [cities],
+  );
+  const stateName = (stateId: number) => states.find((s) => s.id === stateId)?.name;
 
   const loadHistory = useCallback(async () => {
     setHistory(await getSearchHistory());
   }, []);
+
+  const clearHistory = async () => {
+    haptic.light();
+    setHistory([]);
+    await clearSearchHistory();
+  };
 
   useFocusEffect(
     useCallback(() => {
@@ -46,26 +67,80 @@ export default function LocationScreen() {
     [],
   );
 
-  const select = async (label: string) => {
+  // Debounced Places Autocomplete as the tenant types.
+  useEffect(() => {
+    const q = query.trim();
+    if (!q) {
+      setSuggestions([]);
+      return;
+    }
+    let active = true;
+    const t = setTimeout(async () => {
+      const results = await autocompletePlaces(q, sessionToken.current);
+      if (active) setSuggestions(results);
+    }, 300);
+    return () => {
+      active = false;
+      clearTimeout(t);
+    };
+  }, [query]);
+
+  const finishPick = async (
+    label: string,
+    ids?: { stateId?: number; cityId?: number; localityId?: number | null },
+    operational = true,
+  ) => {
     pickedRef.current = true;
     haptic.select();
     Keyboard.dismiss();
     const next = await addSearchHistory(label);
     setHistory(next);
-    locationPicker.pick(label);
+    locationPicker.pick(label, ids, operational);
     router.back();
+  };
+
+  const selectPrediction = async (prediction: PlaceAutocompletePrediction) => {
+    haptic.light();
+    const address = await geocodePlaceId(prediction.placeId);
+    if (!address) {
+      showAlert('Could not resolve location', 'Please try a different search.');
+      return;
+    }
+    sessionToken.current = newPlacesSessionToken();
+    const match = matchOperationalLocation(address, { states, cities, localities });
+    if (!match) {
+      await finishPick(address.locality ?? address.city ?? address.formattedAddress, undefined, false);
+      return;
+    }
+    await finishPick(match.localityName ?? match.cityName, match);
+  };
+
+  const selectHistoryOrCity = async (label: string) => {
+    // Legacy string entries (recent searches / top cities) aren't place-resolved — re-run
+    // autocomplete-free matching by name only against master data.
+    haptic.select();
+    const match = matchOperationalLocation({ city: label }, { states, cities, localities });
+    if (!match) {
+      await finishPick(label, undefined, false);
+      return;
+    }
+    await finishPick(match.localityName ?? match.cityName, match);
   };
 
   const nearMe = async () => {
     setLoadingNear(true);
     haptic.light();
-    const result = await resolveNearMeLocation();
+    const result = await resolveNearMeLocation({ states, cities, localities });
     setLoadingNear(false);
     if (result.ok) {
-      await select(result.label);
+      await finishPick(result.label, result);
       return;
     }
-    Alert.alert('Near me', result.message);
+    if (result.reason === 'not-operational') {
+      await finishPick(result.label, undefined, false);
+      return;
+    }
+    showAlert('Near me', result.message);
   };
 
   return (
@@ -118,7 +193,13 @@ export default function LocationScreen() {
         {showSuggestions ? (
           <View style={{ marginBottom: spacing.lg, borderRadius: radius.md, borderWidth: 1, borderColor: palette.border, overflow: 'hidden', backgroundColor: palette.surface }}>
             {suggestions.map((item, i) => (
-              <SuggestionRow key={`${item}-${i}`} icon="search-outline" label={item} onPress={() => select(item)} divider={i < suggestions.length - 1} />
+              <SuggestionRow
+                key={item.placeId}
+                icon="search-outline"
+                label={item.description}
+                onPress={() => selectPrediction(item)}
+                divider={i < suggestions.length - 1}
+              />
             ))}
           </View>
         ) : null}
@@ -136,28 +217,35 @@ export default function LocationScreen() {
 
         {history.length > 0 && !showSuggestions ? (
           <View style={{ marginBottom: spacing.xl }}>
-            <Text variant="overline" color={palette.inkTertiary} style={{ marginBottom: spacing.sm }}>
-              CONTINUE YOUR SEARCH
-            </Text>
+            <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: spacing.sm }}>
+              <Text variant="overline" color={palette.inkTertiary}>
+                CONTINUE YOUR SEARCH
+              </Text>
+              <PressableScale onPress={clearHistory} haptics={false}>
+                <Text variant="bodySm" weight="600" color={palette.coralDark}>
+                  Clear All
+                </Text>
+              </PressableScale>
+            </View>
             {history.map((item, i) => (
-              <SuggestionRow key={`${item}-${i}`} icon="time-outline" label={item} onPress={() => select(item)} />
+              <SuggestionRow key={`${item}-${i}`} icon="time-outline" label={item} onPress={() => selectHistoryOrCity(item)} />
             ))}
           </View>
         ) : null}
 
-        {!showSuggestions ? (
+        {!showSuggestions && topCities.length > 0 ? (
           <View>
             <Text variant="overline" color={palette.inkTertiary} style={{ marginBottom: spacing.sm }}>
               TOP CITIES
             </Text>
-            {TOP_CITIES.map((city, i) => (
+            {topCities.map((city, i) => (
               <SuggestionRow
-                key={city.name}
+                key={city.id}
                 icon="business-outline"
                 label={city.name}
-                subtitle={city.state}
-                onPress={() => select(city.name)}
-                divider={i < TOP_CITIES.length - 1}
+                subtitle={stateName(city.state_id)}
+                onPress={() => finishPick(city.name, { stateId: city.state_id, cityId: city.id })}
+                divider={i < topCities.length - 1}
               />
             ))}
           </View>

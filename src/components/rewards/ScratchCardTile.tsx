@@ -5,53 +5,44 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import { palette, radius, spacing } from '@/theme';
 import { Text, PressableScale } from '@/components/ui';
-import {
-  getOffer,
-  getVendor,
-  isRewardExpired,
-  isRewardOpened,
-  type TenantReward,
-} from '@/data/brandRewards';
+import type { ApiReward } from '@/lib/api';
 
 type Props = {
-  reward: TenantReward;
+  reward: ApiReward;
   width: number;
   onPress?: () => void;
 };
 
 export function ScratchCardTile({ reward, width, onPress }: Props) {
   const height = width * 1.2;
-  const offer = getOffer(reward.offerId);
-  const vendor = getVendor(reward.vendorId);
-  if (!offer || !vendor) return null;
-
-  const opened = isRewardOpened(reward);
-  const expired = isRewardExpired(reward);
-  const locked = !opened;
+  const offer = reward.offer;
+  const vendor = offer.vendor;
+  const locked = reward.status === 'LOCKED';
+  const expired = reward.is_expired;
 
   return (
     <PressableScale
-      onPress={onPress}
+      onPress={expired ? undefined : onPress}
       scaleTo={0.97}
-      disabled={!onPress}
+      disabled={!onPress || expired}
       style={{ width, marginBottom: spacing.md }}
     >
       <View style={[styles.card, { width, height, opacity: expired ? 0.72 : 1 }]}>
-        {opened ? (
+        {!locked ? (
           <>
-            <Image source={{ uri: offer.bannerImage }} style={StyleSheet.absoluteFill} contentFit="cover" />
+            {offer.banner?.link ? <Image source={{ uri: offer.banner.link }} style={StyleSheet.absoluteFill} contentFit="cover" /> : null}
             <LinearGradient
               colors={['transparent', 'rgba(1,38,78,0.92)']}
               style={StyleSheet.absoluteFill}
             />
             <View style={styles.footer}>
-              <Image source={{ uri: vendor.logo }} style={styles.logo} contentFit="cover" />
+              {vendor.logo?.link ? <Image source={{ uri: vendor.logo.link }} style={styles.logo} contentFit="cover" /> : null}
               <Text variant="caption" weight="700" color={palette.white} numberOfLines={2}>
                 {offer.title}
               </Text>
-              {reward.couponCode ? (
+              {reward.coupon?.code ? (
                 <Text variant="caption" mono color="rgba(255,255,255,0.9)" numberOfLines={1}>
-                  {reward.couponCode}
+                  {reward.coupon.code}
                 </Text>
               ) : null}
             </View>
@@ -84,9 +75,6 @@ export function ScratchCardTile({ reward, width, onPress }: Props) {
           </View>
         ) : null}
       </View>
-      <Text variant="caption" color={palette.inkTertiary} numberOfLines={1} style={{ marginTop: 4 }}>
-        {vendor.name}
-      </Text>
     </PressableScale>
   );
 }

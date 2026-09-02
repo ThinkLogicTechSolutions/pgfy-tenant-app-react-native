@@ -1,22 +1,22 @@
-/** T-S10 — Search results list with sort + compare bar. */
+/** T-S10 — Search results list with filters + compare bar. */
 import { useMemo, useState } from 'react';
-import { View, FlatList, ScrollView } from 'react-native';
+import { View, FlatList } from 'react-native';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { palette, spacing, radius } from '@/theme';
-import { Text, ScreenHeader, Chip, Sheet, EmptyState, PressableScale, IconButton } from '@/components/ui';
+import { Text, ScreenHeader, EmptyState, PressableScale, IconButton } from '@/components/ui';
 import { ListingCard } from '@/components/domain';
 import {
   BrowseFiltersSheet,
-  DEFAULT_BROWSE_FILTERS,
+  getDefaultBrowseFilters,
   browseFiltersFromParams,
   matchesBrowseFilters,
   browseFiltersActiveCount,
   type BrowseFilters,
 } from '@/components/search';
 import { EmptySearch } from '@/components/illustrations';
-import { LISTINGS, listingsByIds, CURATED_RAILS, SORT_OPTIONS } from '@/data';
+import { LISTINGS, listingsByIds, CURATED_RAILS } from '@/data';
 import { getPromotedPgListingId, listingSupportsBookingMode } from '@/lib/listingDisplay';
 import { useSaved } from '@/store/saved';
 
@@ -33,8 +33,6 @@ export default function Results() {
     hours?: string;
   }>();
   const saved = useSaved();
-  const [sort, setSort] = useState('Relevance');
-  const [sortOpen, setSortOpen] = useState(false);
   const [filtersOpen, setFiltersOpen] = useState(false);
   const [filters, setFilters] = useState<BrowseFilters>(() => browseFiltersFromParams(params));
   const [draftFilters, setDraftFilters] = useState<BrowseFilters>(() => browseFiltersFromParams(params));
@@ -58,13 +56,8 @@ export default function Results() {
   };
 
   const list = useMemo(() => {
-    const arr = base.filter((l) => listingSupportsBookingMode(l, filters.bookingType) && matchesBrowseFilters(l, filters));
-    if (sort === 'Price: Low to High') arr.sort((a, b) => a.priceFrom - b.priceFrom);
-    else if (sort === 'Price: High to Low') arr.sort((a, b) => b.priceFrom - a.priceFrom);
-    else if (sort === 'Rating') arr.sort((a, b) => b.rating - a.rating);
-    else if (sort === 'Distance') arr.sort((a, b) => a.distanceKm - b.distanceKm);
-    return arr;
-  }, [base, sort, filters]);
+    return base.filter((l) => listingSupportsBookingMode(l, filters.bookingType) && matchesBrowseFilters(l, filters));
+  }, [base, filters]);
 
   const promotedPgId = useMemo(() => getPromotedPgListingId(LISTINGS), []);
 
@@ -79,10 +72,6 @@ export default function Results() {
         right={<IconButton icon="map-outline" color={palette.navy} onPress={() => router.push('/map')} />}
       />
       <View style={{ flexDirection: 'row', alignItems: 'center', paddingHorizontal: spacing.base, gap: spacing.sm, paddingBottom: spacing.sm }}>
-        <PressableScale onPress={() => setSortOpen(true)} haptics={false} style={{ flexDirection: 'row', alignItems: 'center', gap: 5, backgroundColor: palette.surface, borderWidth: 1, borderColor: palette.border, borderRadius: radius.pill, paddingVertical: 8, paddingHorizontal: 14 }}>
-          <Ionicons name="swap-vertical" size={15} color={palette.navy} />
-          <Text variant="bodySm" weight="600">{sort}</Text>
-        </PressableScale>
         <PressableScale
           onPress={() => { setDraftFilters(filters); setFiltersOpen(true); }}
           haptics={false}
@@ -158,22 +147,11 @@ export default function Results() {
         onDraftChange={setDraftFilters}
         onApply={() => { setFilters(draftFilters); setFiltersOpen(false); }}
         onClear={() => {
-          setDraftFilters(DEFAULT_BROWSE_FILTERS);
-          setFilters(DEFAULT_BROWSE_FILTERS);
+          setDraftFilters(getDefaultBrowseFilters());
+          setFilters(getDefaultBrowseFilters());
           setFiltersOpen(false);
         }}
       />
-
-      <Sheet visible={sortOpen} onClose={() => setSortOpen(false)} title="Sort by">
-        <View>
-          {SORT_OPTIONS.map((s) => (
-            <PressableScale key={s} onPress={() => { setSort(s); setSortOpen(false); }} scaleTo={0.98} style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingVertical: spacing.md }}>
-              <Text variant="bodyMd" color={sort === s ? palette.coralDark : palette.ink} weight={sort === s ? '600' : '400'}>{s}</Text>
-              {sort === s ? <Ionicons name="checkmark-circle" size={22} color={palette.coral} /> : null}
-            </PressableScale>
-          ))}
-        </View>
-      </Sheet>
     </View>
   );
 }

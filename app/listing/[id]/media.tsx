@@ -7,24 +7,36 @@ import { palette, spacing } from '@/theme';
 import { Text, IconButton } from '@/components/ui';
 import { MediaSectionGrid } from '@/components/domain/MediaSectionGrid';
 import { getListing } from '@/data';
-import { listingMediaSections, listingPhotoCount } from '@/lib/media';
+import { listingMediaSections } from '@/lib/media';
+import type { MediaSection } from '@/data/types';
 
 export default function PropertyMedia() {
-  const { id, section: sectionParam } = useLocalSearchParams<{ id: string; section?: string }>();
+  const { id, section: sectionParam, sections: sectionsParam } = useLocalSearchParams<{ id: string; section?: string; sections?: string }>();
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const { width } = useWindowDimensions();
-  const listing = getListing(String(id));
-  const sections = useMemo(
-    () => (listing ? listingMediaSections(listing) : []),
-    [listing],
-  );
+
+  // The caller (listing detail) already has the media sections in hand — it passes them
+  // straight through so this screen doesn't need a listing lookup that may not resolve
+  // (e.g. an API-backed property id, which isn't in the mock catalogue `getListing` reads).
+  const passedSections = useMemo<MediaSection[] | null>(() => {
+    if (!sectionsParam) return null;
+    try {
+      const parsed = JSON.parse(sectionsParam);
+      return Array.isArray(parsed) ? parsed : null;
+    } catch {
+      return null;
+    }
+  }, [sectionsParam]);
+
+  const mockListing = passedSections ? null : getListing(String(id));
+  const sections = passedSections ?? (mockListing ? listingMediaSections(mockListing) : []);
   const [activeSection, setActiveSection] = useState(
     () => sectionParam ?? sections[0]?.id ?? '',
   );
   const active = sections.find((s) => s.id === activeSection) ?? sections[0];
 
-  if (!listing) {
+  if (!passedSections && !mockListing) {
     return (
       <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>
         <Text variant="bodyMd" color={palette.inkSecondary}>Property not found</Text>
@@ -32,7 +44,7 @@ export default function PropertyMedia() {
     );
   }
 
-  const photoCount = listingPhotoCount(listing);
+  const photoCount = sections.reduce((n, s) => n + s.images.length, 0);
   const contentWidth = width - spacing.base * 2;
 
   return (

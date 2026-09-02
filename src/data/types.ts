@@ -5,9 +5,11 @@
  */
 import type { BedStatusKey } from '@/theme/colors';
 
-export type PropertyType = 'PG' | 'Hostel' | 'Co-living';
+export type PropertyType = 'PG' | 'Hostel' | 'Co-living' | 'Flat' | 'Home stay';
 export type Gender = 'Male' | 'Female' | 'Co-ed';
-export type SharingType = 'Single' | 'Double' | 'Triple' | '4-sharing' | 'Dormitory';
+/** Open union: real dorm sizes (`Dorm 5`..`Dorm 9`, etc., via `formatLayoutFallback`) don't
+ * fit the coarse buckets below but are still valid — see `listingAdapter.ts`'s `layoutToSharing`. */
+export type SharingType = 'Single' | 'Double' | 'Triple' | '4-sharing' | 'Dormitory' | (string & {});
 export type KycStatus = 'Verified' | 'Pending' | 'Not Submitted';
 
 /* ── Booking type ────────────────────────────── */
@@ -55,12 +57,67 @@ export interface PricingTier {
   available: number;
 }
 
+/**
+ * Real per-combination pricing for a room layout, as returned by the property-details API.
+ * Only populated for API-backed listings — mock listings synthesize these combos instead
+ * (see `monthlyPlansForTier` in the listing-detail screen).
+ */
+export interface PricingVariant {
+  sharingType: SharingType;
+  /** Raw API layout code (e.g. `SINGLE`, `DUO`) — required to query room/bed availability. */
+  layout: string;
+  available: number;
+  acWithFood?: number;
+  acNoFood?: number;
+  nonAcWithFood?: number;
+  nonAcNoFood?: number;
+  /** Flat/Home stay only — the single monthly/daily rent (no AC/food split). */
+  rent?: number;
+}
+
+export interface FoodMenuSlot {
+  enabled: boolean;
+  items: string;
+}
+
+/** A single calendar day's meal schedule, as returned by the property-details API. */
+export interface WeeklyMenuDay {
+  /** 0 = Sunday .. 6 = Saturday (matches `Date#getDay()`). */
+  dayOfWeek: number;
+  morningTea?: FoodMenuSlot;
+  breakfast?: FoodMenuSlot;
+  lunch?: FoodMenuSlot;
+  eveningTea?: FoodMenuSlot;
+  dinner?: FoodMenuSlot;
+}
+
 export interface Bed {
   id: string;
   label: string;
   status: BedStatusKey;
   gender: Gender;
   rent: number;
+}
+
+/** Aggregate lifestyle profile of a room's current occupants — drives the
+ *  compatibility score shown during room selection. */
+export interface RoommateProfile {
+  professionals: number;
+  students: number;
+  smoking: boolean;
+  alcohol: boolean;
+  sleep: 'early' | 'late';
+  diet: 'veg' | 'vegan' | 'nonveg';
+}
+
+/** One current occupant's lifestyle prefs, as reported by the real room/bed availability API
+ *  (a room can have more than one occupant, so this is per-tenant, not aggregated). */
+export interface RoomRoommatePreference {
+  tenantId: number;
+  sleepSchedule: string | null;
+  dietPreference: string | null;
+  smokingPref: boolean | null;
+  alcoholPref: boolean | null;
 }
 
 export interface Room {
@@ -74,6 +131,13 @@ export interface Room {
   photo?: string;
   beds: Bed[];
   occupied: number;
+  roommateProfile?: RoommateProfile;
+  /** Server-computed 0–100 compatibility score (real API rooms only) — takes priority over
+   * client-side `computeCompatibility` scoring when present. */
+  matchScore?: number;
+  /** Current occupants' individual preferences (real API rooms only), for the compatibility
+   * breakdown sheet. */
+  roommatePrefs?: RoomRoommatePreference[];
 }
 
 export interface Floor {
@@ -109,6 +173,13 @@ export interface Listing {
   id: string;
   name: string;
   type: PropertyType;
+  /** Finer subcategory label for `type: 'Flat'` (e.g. "2 BHK") — absent for Hostel/Home stay. */
+  subType?: string;
+  /** `type === 'Flat' | 'Home stay'` only — books the whole property (see `maxOccupancy`, no
+   *  room/bed selection). */
+  isUnitProperty?: boolean;
+  /** `Flat`/`Home stay` only — max named guests per booking. */
+  maxOccupancy?: number;
   gender: Gender;
   locality: string;
   city: string;
@@ -138,6 +209,8 @@ export interface Listing {
   foodRating?: number;
   foodMenu: FoodDay[];
   pricing: PricingTier[];
+  /** Real per-combination pricing (API-backed listings only) — see `PricingVariant`. */
+  pricingVariants?: PricingVariant[];
   floors: Floor[];
   vacantBeds: number;
   occupancyPct: number;
@@ -151,6 +224,51 @@ export interface Listing {
   bookingConfig: ListingBookingConfig;
   hourlyPricing: HourlyPricingTier[];
   dailyPricing: DailyPricingTier[];
+  /** Property-level roommate makeup used for compatibility filtering on search. */
+  roommateSummary?: {
+    mostlyProfessionals: boolean;
+    smoking: boolean;
+    alcohol: boolean;
+    sleep: 'early' | 'late';
+    diet: 'veg' | 'vegan' | 'nonveg';
+  };
+  /** Appointed on-site property manager the tenant can reach. */
+  manager: { name: string; phone: string };
+  /** Real per-day-of-week meal schedule (API-backed listings only) — see `WeeklyMenuDay`. */
+  weeklyFoodMenu?: WeeklyMenuDay[];
+  /** Whether the signed-in tenant may rate this property (API-backed listings only). */
+  canRate?: boolean;
+  /** The signed-in tenant's own rating of this property, or `null` if they haven't rated it
+   * (API-backed listings only) — carries the full category breakdown so the edit sheet can
+   * prefill from it. */
+  myRating?: TenantRating | null;
+  /** Discount applied to *this* tenant's own booking checkout for having been referred
+   * (API-backed listings only) — `null` type/value when `applicable` is false. */
+  referralDiscount?: {
+    applicable: boolean;
+    value: number | null;
+    type: 'FLAT' | 'PERCENTAGE' | null;
+  };
+  isFavorite?: boolean;
+  favoriteId?: number | null;
+}
+
+/** A tenant's own rating/review of a property — the shape shared by `Listing.myRating` and
+ * the property's `reviews` list (API-backed listings only). */
+export interface TenantRating {
+  id: number;
+  tenantName: string;
+  tenantAvatar: string | null;
+  ratings: {
+    cleanliness: number;
+    food: number;
+    safety: number;
+    staff: number;
+    price: number;
+    overall: number;
+  };
+  review: string | null;
+  createdAt: string;
 }
 
 export interface CuratedRail {
@@ -192,6 +310,18 @@ export interface ActiveBooking {
   nextRentAmount: number;
   rentOverdue: boolean;
   qrToken: string;
+  /** Stay cadence. Only hourly/daily stays can be extended (T-S new). */
+  bookingMode: BookingMode;
+  /** Hourly/daily stays: when the current stay ends, and the per-unit rate. */
+  checkOutDate?: string;
+  startTime?: string;
+  endTime?: string;
+  ratePerHour?: number;
+  ratePerDay?: number;
+  /** Set when the tenant was onboarded offline by the owner. */
+  ownerOnboarded?: boolean;
+  /** A pending invoice raised by the owner that the tenant can clear from My Stay. */
+  pendingInvoice?: { id: string; label: string; amount: number; dueDate: string };
 }
 
 export type LeaseStatus = 'Pending Tenant Signature' | 'Signed' | 'Expired';
@@ -280,6 +410,14 @@ export interface TicketEvent {
   note?: string;
 }
 
+/** Link to a complaint auto-created in the HouseWise maintenance partner (M-INT1). */
+export interface HouseWiseTicketLink {
+  complaintId: string;
+  url: string;
+  syncedAt: string;
+  status: 'synced' | 'failed';
+}
+
 export interface Ticket {
   id: string;
   supportKind: SupportKind;
@@ -290,6 +428,7 @@ export interface Ticket {
   images: string[];
   timeline: TicketEvent[];
   response?: string;
+  housewise?: HouseWiseTicketLink;
 }
 
 export type RequestStatus = 'Pending' | 'Under Review' | 'Approved' | 'Denied' | 'Refund Initiated';

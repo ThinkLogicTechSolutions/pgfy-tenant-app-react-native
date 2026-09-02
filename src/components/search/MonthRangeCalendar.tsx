@@ -33,33 +33,40 @@ interface Props {
   checkIn: string;
   checkOut: string;
   onChange: (range: { checkIn: string; checkOut: string }) => void;
+  /** Earliest selectable date. Defaults to today (the booking-flow default — no past dates). */
+  minDate?: Date;
+  /** Latest selectable date. Defaults to unbounded (the booking-flow default). */
+  maxDate?: Date;
 }
 
-export function MonthRangeCalendar({ checkIn, checkOut, onChange }: Props) {
+export function MonthRangeCalendar({ checkIn, checkOut, onChange, minDate, maxDate }: Props) {
   const today = startOfToday();
-  const initial = checkIn ? parseIso(checkIn) : today;
+  const min = minDate ?? today;
+  const initial = checkIn ? parseIso(checkIn) : min;
   const [viewYear, setViewYear] = useState(initial.getFullYear());
   const [viewMonth, setViewMonth] = useState(initial.getMonth());
   const translateX = useSharedValue(0);
 
-  const grid = useMemo(() => buildMonthGrid(viewYear, viewMonth, today), [viewYear, viewMonth, today]);
+  const grid = useMemo(() => buildMonthGrid(viewYear, viewMonth, min, maxDate), [viewYear, viewMonth, min, maxDate]);
 
   const canGoPrev =
-    viewYear > today.getFullYear() || (viewYear === today.getFullYear() && viewMonth > today.getMonth());
+    viewYear > min.getFullYear() || (viewYear === min.getFullYear() && viewMonth > min.getMonth());
+  const canGoNext =
+    !maxDate || viewYear < maxDate.getFullYear() || (viewYear === maxDate.getFullYear() && viewMonth < maxDate.getMonth());
 
   const goPrev = useCallback(() => {
     const { year, month } = addMonths(viewYear, viewMonth, -1);
-    const min = today;
     if (year < min.getFullYear() || (year === min.getFullYear() && month < min.getMonth())) return;
     setViewYear(year);
     setViewMonth(month);
-  }, [viewYear, viewMonth, today]);
+  }, [viewYear, viewMonth, min]);
 
   const goNext = useCallback(() => {
     const { year, month } = addMonths(viewYear, viewMonth, 1);
+    if (maxDate && (year > maxDate.getFullYear() || (year === maxDate.getFullYear() && month > maxDate.getMonth()))) return;
     setViewYear(year);
     setViewMonth(month);
-  }, [viewYear, viewMonth]);
+  }, [viewYear, viewMonth, maxDate]);
 
   const navigatePrev = useCallback(() => {
     if (!canGoPrev) return;
@@ -68,9 +75,10 @@ export function MonthRangeCalendar({ checkIn, checkOut, onChange }: Props) {
   }, [canGoPrev, goPrev]);
 
   const navigateNext = useCallback(() => {
+    if (!canGoNext) return;
     haptic.select();
     goNext();
-  }, [goNext]);
+  }, [canGoNext, goNext]);
 
   const swipeMonth = useMemo(
     () =>
@@ -122,7 +130,7 @@ export function MonthRangeCalendar({ checkIn, checkOut, onChange }: Props) {
         <Text variant="bodyMd" weight="700">
           {formatMonthYear(viewYear, viewMonth)}
         </Text>
-        <PressableScale onPress={navigateNext} scaleTo={0.9} style={{ padding: 8 }}>
+        <PressableScale onPress={navigateNext} scaleTo={0.9} disabled={!canGoNext} style={{ opacity: canGoNext ? 1 : 0.35, padding: 8 }}>
           <Ionicons name="chevron-forward" size={22} color={palette.navy} />
         </PressableScale>
       </View>

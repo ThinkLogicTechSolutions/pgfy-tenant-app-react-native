@@ -1,79 +1,111 @@
 # Android APK build — PGfy Tenant
 
-**Package name:** `com.kumarsunil17.tenant`  
+**Package name:** `in.pgfy.tenant`  
 **EAS project:** [@kumarsunil17/pgfy-tenant](https://expo.dev/accounts/kumarsunil17/projects/pgfy-tenant)  
 **Project ID:** `5e813d62-a636-48e3-a39d-8442867202c0`
 
 ## Prerequisites
 
 - Node.js 18+
-- [EAS CLI](https://docs.expo.dev/build/setup/): `npm install -g eas-cli`
-- Expo account: `eas login`
-- For local builds: Android Studio + JDK 17
+- [Android Studio](https://developer.android.com/studio) with **Android SDK** and **JDK 17**
+- `ANDROID_HOME` set (Android Studio → Settings → Android SDK shows the path)
 
-## Option A — EAS Build (recommended)
+```bash
+export ANDROID_HOME="$HOME/Library/Android/sdk"
+export PATH="$ANDROID_HOME/platform-tools:$PATH"
+```
 
-1. From `tenant-app-1/`:
+> **Disk space:** Gradle downloads several GB on the first build; the local build script defaults `GRADLE_USER_HOME` to `~/.gradle` on your system disk. Override with `GRADLE_USER_HOME` if you want it elsewhere — but keep it off any exFAT-formatted drive (see the note below on where the project itself lives).
+>
+> **exFAT warning:** if this project's own folder is on an external exFAT drive, `expo run:android` / Gradle builds can fail intermittently with `Unable to delete file/directory ... New files were found` — that's exFAT's lack of proper POSIX file locking, not a code bug. Gradle's own caches are kept off it by the default above, but the project's `node_modules/**/build` output still lives wherever the repo is checked out. If you hit this, the reliable fix is moving the repo to an APFS volume (internal disk, or an external drive reformatted to APFS); retrying the build sometimes works around a single transient failure but isn't a real fix.
+
+## Option A — Local build (no EAS quota)
+
+Use this when the Expo free-plan Android build quota is exhausted.
+
+1. From `tenant-app/`:
 
    ```bash
    npm install
-   eas login
+   npm run build:apk:local
    ```
 
-   First-time only (already done for this repo):
+2. APK output (dated filename in `dist/`):
+
+   ```
+   dist/PGfy_tenant_DD_MM_YY.apk
+   ```
+
+   Example: `dist/PGfy_tenant_12_06_26.apk`
+
+3. Install on a connected phone (USB debugging on):
 
    ```bash
-   eas init --force --non-interactive
+   adb install -r dist/PGfy_tenant_12_06_26.apk
    ```
 
-   EAS requires a git repo in `tenant-app-1/` (`git init` + at least one commit).
+### Other local commands
 
-2. Build an installable APK:
+| Command | What it does |
+|---------|----------------|
+| `npm run prebuild:android` | Regenerate `android/` from `app.json` |
+| `npm run build:apk:gradle:debug` | Gradle debug APK (requires existing `android/`) |
+| `npm run build:apk:local:release` | **Signed** release APK (uses the production keystore) |
+| `npm run android` | Build + run on emulator/device via Expo |
 
-   ```bash
-   npm run build:apk
-   ```
+### Release signing
 
-   Or production profile:
+Release builds are signed with the production upload key. The signing setup is
+durable across `expo prebuild` (which regenerates / wipes `android/`):
 
-   ```bash
-   npm run build:apk:prod
-   ```
+- **Keystore + passwords:** `credentials/release.keystore` and
+  `credentials/keystore.properties`. This folder is **gitignored** — never commit it.
+  Keep a secure backup; losing it means you can no longer update the app on Play.
+- **Config plugin:** `plugins/withAndroidSigning.js` (registered in `app.json` →
+  `expo.plugins`). On every prebuild it copies the keystore into `android/` and points
+  the `release` build type at it. If the keystore is missing it falls back to the debug
+  key, so dev builds still work.
 
-3. Download the `.apk` from the [Expo dashboard](https://expo.dev) when the build finishes.
+Key fingerprint (verify with `keytool -list -v -keystore credentials/release.keystore`):
 
-Profiles are defined in `eas.json` (`preview` / `production` use `buildType: "apk"`).
+```
+Alias: key0
+SHA1:  EE:96:46:D3:8F:3C:82:34:65:C9:2B:17:57:6E:3E:F0:B2:28:7B:33
+```
 
-## Option B — Local Gradle build
+Build a signed release APK:
 
-1. Generate the native Android project (if `android/` is missing):
+```bash
+npm run build:apk:local:release
+```
 
-   ```bash
-   npm run prebuild:android
-   ```
+Output: `android/app/build/outputs/apk/release/app-release.apk`
 
-2. Debug APK (no release keystore required):
+Confirm a build is signed with the production key:
 
-   ```bash
-   cd android && ./gradlew assembleDebug
-   ```
+```bash
+cd android && ./gradlew :app:signingReport   # release variant → Alias: key0
+```
 
-   Output: `android/app/build/outputs/apk/debug/app-debug.apk`
+## Option B — EAS Build (cloud)
 
-3. Release APK requires a signing keystore. Configure `android/app/build.gradle` signing configs, then:
+Requires EAS CLI and available build quota:
 
-   ```bash
-   cd android && ./gradlew assembleRelease
-   ```
+```bash
+npm install -g eas-cli
+eas login
+npm run build:apk        # preview APK
+npm run build:apk:prod   # production APK
+```
 
-   Output: `android/app/build/outputs/apk/release/app-release.apk`
+Download the `.apk` from the [Expo dashboard](https://expo.dev) when the build finishes.
 
 ## Verify package name
 
 After prebuild, confirm:
 
 - `app.json` → `expo.android.package`
-- `android/app/build.gradle` → `applicationId 'com.kumarsunil17.tenant'`
+- `android/app/build.gradle` → `applicationId 'in.pgfy.tenant'`
 
 ## Version bumps
 

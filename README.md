@@ -180,3 +180,26 @@ Expo SDK 54 · React Native 0.81 · React 19 · expo-router 6 · TypeScript (str
 react-native-reanimated 4.1.1 · react-native-worklets 0.5.1 · react-native-gesture-handler ·
 react-native-svg · expo-image · expo-linear-gradient · expo-haptics ·
 @expo-google-fonts/inter · @react-native-async-storage/async-storage.
+
+
+
+export APP_ENV=production
+export NODE_ENV=production
+
+# regenerate native projects with prod values baked in
+npx expo prebuild --platform android
+npx expo prebuild --platform ios
+
+# Android
+cd android
+./gradlew --stop
+./gradlew bundleRelease      # AAB, for Play Store
+./gradlew assembleRelease    # APK
+cd ..
+
+# iOS — CLI archive inherits the exported env since it's a child process of this shell
+xcodebuild archive \
+  -workspace ios/PGfyDev.xcworkspace \
+  -scheme PGfyDev \
+  -configuration Release \
+  -archivePath build/PGfyDev.xcarchive

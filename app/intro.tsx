@@ -78,7 +78,10 @@ export default function Intro() {
         <View style={{ height: spacing.xl + spacing.sm }} />
       )}
 
+      {/* Purely decorative background blobs — `pointerEvents="none"` so they don't swallow
+          taps meant for whatever's underneath (the top-right one overlaps the Skip button). */}
       <View
+        pointerEvents="none"
         style={{
           position: 'absolute',
           top: -height * 0.12,
@@ -90,6 +93,7 @@ export default function Intro() {
         }}
       />
       <View
+        pointerEvents="none"
         style={{
           position: 'absolute',
           bottom: -height * 0.1,

@@ -1,0 +1,289 @@
+/** PGfy API surface — import from `@/lib/api`. */
+export {
+  API_BASE_URL,
+  ApiError,
+  errorMessage,
+  getAccessToken,
+  setAccessToken,
+  setUnauthorizedHandler,
+  request,
+} from './client';
+
+export * as authApi from './auth';
+export * as profileApi from './profile';
+export * as masterDataApi from './masterData';
+export * as propertyApi from './property';
+export * as favoritesApi from './favorites';
+export * as bookingApi from './booking';
+export * as billingApi from './billing';
+export * as couponsApi from './coupons';
+export * as stayApi from './stay';
+export * as maintenanceApi from './maintenance';
+export * as visitorLogApi from './visitorLog';
+export * as moveOutApi from './moveOut';
+export * as groupBookingApi from './groupBooking';
+export * as propertyLeadApi from './propertyLead';
+export * as extendStayApi from './extendStay';
+export * as changeBedApi from './changeBed';
+export * as supportApi from './support';
+export * as continueBrowsingApi from './continueBrowsing';
+export * as dashboardApi from './dashboard';
+export * as searchApi from './search';
+export * as uploadApi from './upload';
+export { UploadFileType } from './upload';
+export * as referralApi from './referral';
+export * as ratingsApi from './ratings';
+export * as rewardsApi from './rewards';
+export * as snapKycApi from './snapkyc';
+export * as notificationsApi from './notifications';
+export * as leaseApi from './lease';
+
+export type {
+  LeaseAgreement,
+  LeaseAgreementStatus,
+  LeaseAgreementStatusFilter,
+  LeaseAgreementListResponse,
+  LeaseAgreementCounts,
+  ListLeaseAgreementsQuery,
+} from './lease';
+
+export type {
+  SendOtpInput,
+  VerifyOtpInput,
+  SendPhoneVerificationInput,
+  VerifyPhoneVerificationInput,
+  SendEmailVerificationInput,
+  VerifyEmailVerificationInput,
+  VerifyContactResponse,
+  SendCompanyEmailOtpInput,
+  VerifyCompanyEmailOtpInput,
+} from './auth';
+export type { UpdateTenantProfileInput } from './profile';
+export type {
+  SearchPropertiesQuery,
+  PropertyPage,
+  PropertyDetailsQuery,
+  RoomBedAvailabilityQuery,
+} from './property';
+export type { ContinueBrowsingProperty, ContinueBrowsingPage, ContinueBrowsingMediaSection } from './continueBrowsing';
+export type { DashboardQuery, DashboardResponse, DashboardStayDuration, DashboardPropertyCategory } from './dashboard';
+export type {
+  SearchProperty,
+  SearchResponse,
+  SearchPropertyLocality,
+  SearchPropertyCity,
+  SearchPropertyType,
+  SearchPropertyMediaSection,
+} from './search';
+export type { UploadPurpose, UploadResult, UploadFileInput } from './upload';
+export type { ListBookingsQuery } from './booking';
+export type { ListFavoritePropertiesQuery } from './favorites';
+export type { ListRewardsQuery } from './rewards';
+export type { ListNotificationsQuery } from './notifications';
+export type { ListBillingRentQuery } from './billing';
+export type { ListCouponsQuery } from './coupons';
+export type { ListMaintenanceQuery } from './maintenance';
+export type { ListVisitorLogsQuery } from './visitorLog';
+export type { MoveOutEstimateQuery, ListMoveOutsQuery } from './moveOut';
+export type { SnapKycFlow, SnapKycPlatform, CreateSnapKycSessionInput, SnapKycSession } from './snapkyc';
+
+export type {
+  ApiProfile,
+  ProfileAsset,
+  Gender,
+  PersonalDetails,
+  KycDocuments,
+  Occupation,
+  OccupationDetails,
+  BankDetails,
+  RoommatePreferences,
+  SleepScheduleApi,
+  DietPreferenceApi,
+  AuthResponse,
+  GuestAuthResponse,
+  KycStatus,
+  BankVerificationStatus,
+  ProfileStatus,
+  Paginated,
+  ListResponse,
+  MasterStatus,
+  MasterChargeType,
+  MasterMediaAsset,
+  StateMaster,
+  CityMaster,
+  LocalityMaster,
+  AmenityMaster,
+  MaintenancePriority,
+  MaintenanceCategoryMaster,
+  SupportPanel,
+  PlatformSupportCategoryMaster,
+  PopularDestinationMaster,
+  MasterConfig,
+  PropertyGender,
+  PropertyCategory,
+  PropertySubCategory,
+  Furnishing,
+  AllowedTenantType,
+  MediaAttachment,
+  PropertyMediaSection,
+  PropertyGstMode,
+  ApiProperty,
+  ApiBookingMode,
+  ApiPropertyPricingTier,
+  ApiFoodMenuSlot,
+  ApiFoodMenuDay,
+  ApiFoodMenu,
+  VerificationDocStatus,
+  ApiVerificationDocument,
+  ApiPropertyVerification,
+  ApiPropertyDetails,
+  ApiRatingCategoryScores,
+  PropertyRatingStatus,
+  ApiPropertyRating,
+  CreateRatingInput,
+  UpdateRatingInput,
+  ApiPropertyRatingSummary,
+  DiscountTypeEnum,
+  ApiDiscountDetail,
+  ApiReferralDiscountInfo,
+  ApiBedStatus,
+  ApiRoomBed,
+  ApiRoomRoommatePreference,
+  ApiPropertyRoom,
+  ApiPropertyFloor,
+  ApiSelectedOccupancy,
+  ApiRoomBedAvailability,
+  FavoriteStatus,
+  TenantFavoriteProperty,
+  ApiFavoritePropertyItem,
+  BookingStatusApi,
+  PaymentMethod,
+  PaymentFrequency,
+  ApiBookingProperty,
+  ApiBooking,
+  ApiBookingDetail,
+  ApiBookingInvoiceLink,
+  CreateBookingInput,
+  ApiBookingInvoice,
+  ApiBookingBill,
+  ApiBookingTransaction,
+  ApiBookingPaymentHint,
+  ApiBookingCreateResponse,
+  CancelBookingInput,
+  ApiBookingRefund,
+  ApiBookingCancelResponse,
+  ApiBookingCancelPreview,
+  InvoiceStatusApi,
+  InvoiceTypeApi,
+  ApiInvoiceProperty,
+  ApiInvoiceRoom,
+  ApiInvoiceBooking,
+  ApiInvoiceTenant,
+  ApiInvoice,
+  ApiBillingSummary,
+  ApiBillingRentResponse,
+  PayRentInput,
+  ApiPayRentInvoice,
+  ApiPayRentMandate,
+  ApiPayRentRazorpayAuth,
+  ApiPayRentAutopay,
+  ApiPayRentResponse,
+  CouponDiscountType,
+  CouponStatus,
+  ApiCoupon,
+  ApiStayProperty,
+  ApiStayBookingSummary,
+  ApiStayFloor,
+  ApiStayRoom,
+  ApiStayBed,
+  ApiStayBilling,
+  ApiBedStay,
+  ApiMyStayOwner,
+  ApiMyStayProperty,
+  ApiMyStayRoom,
+  ApiMyStayBooking,
+  ApiMyStayInvoice,
+  ApiMyStayBilling,
+  AnnouncementGuestType,
+  AnnouncementStatus,
+  ApiAnnouncement,
+  ApiMyStayResponse,
+  MaintenanceStatus,
+  ApiMaintenanceTicket,
+  ApiMaintenanceListResponse,
+  CreateMaintenanceInput,
+  VisitorLogStatus,
+  ApiVisitorLog,
+  CreateVisitorLogInput,
+  MoveOutStatus,
+  MoveOutRefundStatus,
+  MoveOutEstimateNotice,
+  MoveOutEstimateSettlement,
+  MoveOutEstimateBankDetails,
+  ApiMoveOutEstimate,
+  MoveOutCharge,
+  ApiMoveOutRequest,
+  CreateMoveOutInput,
+  GroupBookingArrangement,
+  GroupBookingMeals,
+  GroupBookingFoodType,
+  GroupBookingStatus,
+  CreateGroupBookingEnquiryInput,
+  ApiGroupBookingEnquiry,
+  BookingGuestItem,
+  PropertyLeadType,
+  PropertyLeadStatus,
+  CreatePropertyLeadInput,
+  ApiPropertyLead,
+  ExtensionMode,
+  ApiExtendStayProperty,
+  ApiExtendStayBooking,
+  ApiExtendStayPreview,
+  ExtendStayBillSummary,
+  CheckExtensionAvailabilityInput,
+  ApiExtendStayAvailability,
+  CreateExtensionInput,
+  ExtensionStatusApi,
+  ApiStayExtension,
+  ApiExtendStayInvoiceSummary,
+  ApiExtendStayPaymentHint,
+  ApiCreateExtensionResponse,
+  ApiSwapBed,
+  ApiSwapRoom,
+  ApiSwapFloorGroup,
+  ChangeBedRequestStatus,
+  ApiChangeBedLocation,
+  ApiChangeBedRent,
+  ApiChangeBedRequest,
+  CreateChangeBedInput,
+  CancelChangeBedInput,
+  ApiFaq,
+  ApiFaqListResponse,
+  SupportQueryStatus,
+  ApiSupportQueryCategoryRef,
+  ApiSupportQueryAttachment,
+  ApiSupportQuery,
+  ApiSupportQueryListResponse,
+  CreateSupportQueryInput,
+  ApiReferralBenefit,
+  ApiReferralBenefits,
+  ApiReferralStats,
+  ReferralStatusApi,
+  ApiReferralItem,
+  ApiReferralSummary,
+  ScratchCardStatusApi,
+  RewardCouponStatusApi,
+  OfferCouponTypeApi,
+  RewardIssueSource,
+  RewardAsset,
+  ApiRewardVendor,
+  ApiRewardOffer,
+  ApiRewardCoupon,
+  ApiReward,
+  ApiRewardDetail,
+  RewardAction,
+  TenantNotificationAction,
+  TenantNotificationStatus,
+  TenantNotificationEntityType,
+  ApiTenantNotification,
+} from './types';

@@ -1,27 +1,25 @@
-/** Booking history — all stays with date & status filters in a sheet. */
-import { useMemo, useState } from 'react';
-import { View, FlatList } from 'react-native';
+/** Booking history — real `/tenant/booking` list with date & status filters in a sheet. */
+import { useEffect, useMemo, useState } from 'react';
+import { View, FlatList, ActivityIndicator } from 'react-native';
 import { Image } from 'expo-image';
 import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { palette, spacing, radius } from '@/theme';
 import {
-  Text, ScreenHeader, PressableScale, EmptyState, Sheet, Chip, Button, Divider,
+  Text, ScreenHeader, PressableScale, EmptyState, Sheet, Chip, Button, Divider, AnimatedListItem, Badge, Skeleton,
 } from '@/components/ui';
-import { PastBookingCard, StatusPill } from '@/components/domain';
 import { EmptyBookings } from '@/components/illustrations';
-import {
-  getAllTenantBookings,
-  bookingListStatus,
-  bookingCheckInDate,
-  type TenantBookingItem,
-} from '@/data';
+import { bookingApi, errorMessage, type ApiBooking } from '@/lib/api';
+import { bookingStatusLabel, bookingStatusTone, bookingModeLabel, bookingCoverImage, isActiveBookingStatus, isUnitBooking } from '@/lib/bookingDisplay';
+import { isUnitPropertyType } from '@/lib/listingAdapter';
+import { toLocalIso } from '@/lib/dates';
 import { inr, formatDate } from '@/lib/format';
 import { haptic } from '@/lib/haptics';
 
 type DateFilter = 'all' | '3m' | '6m' | '12m' | '2026' | '2025' | '2024';
-type StatusFilter = 'all' | 'Active' | 'Completed' | 'Moved Out' | 'Cancelled';
+
+const PAGE_SIZE = 10;
 
 const DATE_FILTERS: { key: DateFilter; label: string }[] = [
   { key: 'all', label: 'All time' },
@@ -33,54 +31,66 @@ const DATE_FILTERS: { key: DateFilter; label: string }[] = [
   { key: '2024', label: '2024' },
 ];
 
-const STATUS_FILTERS: { key: StatusFilter; label: string }[] = [
-  { key: 'all', label: 'All statuses' },
-  { key: 'Active', label: 'Active' },
-  { key: 'Completed', label: 'Completed' },
-  { key: 'Moved Out', label: 'Moved out' },
-  { key: 'Cancelled', label: 'Cancelled' },
-];
-
 function monthsAgoIso(months: number): string {
   const d = new Date();
   d.setMonth(d.getMonth() - months);
-  return d.toISOString().slice(0, 10);
+  return toLocalIso(d);
 }
 
 function matchesDateFilter(checkIn: string, filter: DateFilter): boolean {
   if (filter === 'all') return true;
-  if (filter === '3m') return checkIn >= monthsAgoIso(3);
-  if (filter === '6m') return checkIn >= monthsAgoIso(6);
-  if (filter === '12m') return checkIn >= monthsAgoIso(12);
-  return checkIn.startsWith(filter);
-}
-
-function matchesStatusFilter(status: string, filter: StatusFilter): boolean {
-  if (filter === 'all') return true;
-  return status === filter;
+  const iso = checkIn.slice(0, 10);
+  if (filter === '3m') return iso >= monthsAgoIso(3);
+  if (filter === '6m') return iso >= monthsAgoIso(6);
+  if (filter === '12m') return iso >= monthsAgoIso(12);
+  return iso.startsWith(filter);
 }
 
 export default function Bookings() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
-  const allBookings = useMemo(() => getAllTenantBookings(), []);
+
+  const [bookings, setBookings] = useState<ApiBooking[]>([]);
+  const [total, setTotal] = useState(0);
+  const [loading, setLoading] = useState(true);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const loadPage = (skip: number) => {
+    const setBusy = skip === 0 ? setLoading : setLoadingMore;
+    setBusy(true);
+    setError(null);
+    bookingApi.listBookings({ limit: PAGE_SIZE, skip })
+      .then((page) => {
+        setBookings((prev) => (skip === 0 ? page.data : [...prev, ...page.data]));
+        setTotal(page.total);
+      })
+      .catch((e) => setError(errorMessage(e)))
+      .finally(() => setBusy(false));
+  };
+
+  useEffect(() => {
+    loadPage(0);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const [filtersOpen, setFiltersOpen] = useState(false);
   const [dateFilter, setDateFilter] = useState<DateFilter>('all');
-  const [statusFilter, setStatusFilter] = useState<StatusFilter>('all');
+  const [statusFilter, setStatusFilter] = useState<string>('all');
   const [draftDate, setDraftDate] = useState<DateFilter>('all');
-  const [draftStatus, setDraftStatus] = useState<StatusFilter>('all');
+  const [draftStatus, setDraftStatus] = useState<string>('all');
+
+  const statusOptions = useMemo(() => {
+    const seen = new Map<string, string>();
+    for (const b of bookings) seen.set(b.status, bookingStatusLabel(b.status));
+    return [{ key: 'all', label: 'All statuses' }, ...Array.from(seen, ([key, label]) => ({ key, label }))];
+  }, [bookings]);
 
   const filtersActive = dateFilter !== 'all' || statusFilter !== 'all';
 
-  const filtered = useMemo(
-    () => allBookings.filter((item) => {
-      const checkIn = bookingCheckInDate(item);
-      const status = bookingListStatus(item);
-      return matchesDateFilter(checkIn, dateFilter) && matchesStatusFilter(status, statusFilter);
-    }),
-    [allBookings, dateFilter, statusFilter],
-  );
+  const filtered = bookings.filter((b) => (
+    matchesDateFilter(b.check_in_date, dateFilter) && (statusFilter === 'all' || b.status === statusFilter)
+  ));
 
   const openFilters = () => {
     setDraftDate(dateFilter);
@@ -107,7 +117,7 @@ export default function Bookings() {
     <View style={{ flex: 1, paddingTop: insets.top + spacing.xs }}>
       <ScreenHeader
         title="Booking history"
-        subtitle={`${filtered.length} of ${allBookings.length} bookings`}
+        subtitle={loading ? undefined : `${filtered.length} of ${bookings.length} bookings`}
         right={
           <PressableScale onPress={openFilters} scaleTo={0.92}>
             <View
@@ -152,7 +162,7 @@ export default function Bookings() {
           ) : null}
           {statusFilter !== 'all' ? (
             <Chip
-              label={STATUS_FILTERS.find((f) => f.key === statusFilter)?.label ?? statusFilter}
+              label={statusOptions.find((f) => f.key === statusFilter)?.label ?? statusFilter}
               active
               onPress={openFilters}
             />
@@ -160,30 +170,58 @@ export default function Bookings() {
         </View>
       ) : null}
 
-      <FlatList
-        data={filtered}
-        keyExtractor={(item) => item.booking.ref}
-        contentContainerStyle={{
-          paddingHorizontal: spacing.base,
-          paddingBottom: spacing['3xl'],
-          gap: spacing.md,
-          paddingTop: spacing.sm,
-          flexGrow: 1,
-        }}
-        showsVerticalScrollIndicator={false}
-        renderItem={({ item }) => (
-          item.kind === 'active'
-            ? <ActiveBookingCard item={item} onPress={() => router.push(`/booking/${item.booking.ref}`)} />
-            : <PastBookingCard booking={item.booking} onPress={() => router.push(`/booking/${item.booking.ref}`)} />
-        )}
-        ListEmptyComponent={
-          <EmptyState
-            illustration={<EmptyBookings />}
-            title="No bookings found"
-            message="Try adjusting your date or status filters."
-          />
-        }
-      />
+      {loading ? (
+        <View style={{ paddingHorizontal: spacing.base, paddingTop: spacing.sm, gap: spacing.md }}>
+          {[0, 1, 2].map((i) => (
+            <View key={i} style={{ backgroundColor: palette.surface, borderRadius: radius.lg, borderWidth: 1, borderColor: palette.border, padding: spacing.md, flexDirection: 'row', gap: spacing.md }}>
+              <Skeleton width={72} height={72} rounded={radius.md} />
+              <View style={{ flex: 1, gap: 8 }}>
+                <Skeleton width="65%" height={16} />
+                <Skeleton width="45%" height={12} />
+                <Skeleton width="55%" height={12} />
+              </View>
+            </View>
+          ))}
+        </View>
+      ) : (
+        <FlatList
+          data={filtered}
+          keyExtractor={(item) => String(item.id)}
+          contentContainerStyle={{
+            paddingHorizontal: spacing.base,
+            paddingBottom: spacing['3xl'],
+            gap: spacing.md,
+            paddingTop: spacing.sm,
+            flexGrow: 1,
+          }}
+          showsVerticalScrollIndicator={false}
+          renderItem={({ item, index }) => (
+            <AnimatedListItem index={index}>
+              {isActiveBookingStatus(item.status)
+                ? <BookingCard booking={item} onPress={() => router.push(`/booking/${item.id}`)} />
+                : <PastBookingCardApi booking={item} onPress={() => router.push(`/booking/${item.id}`)} />}
+            </AnimatedListItem>
+          )}
+          ListEmptyComponent={
+            <EmptyState
+              illustration={<EmptyBookings />}
+              title={error ? "Couldn't load bookings" : 'No bookings found'}
+              message={error ?? 'Try adjusting your date or status filters.'}
+            />
+          }
+          onEndReachedThreshold={0.4}
+          onEndReached={() => {
+            if (!loadingMore && !error && bookings.length < total) loadPage(bookings.length);
+          }}
+          ListFooterComponent={
+            loadingMore ? (
+              <View style={{ paddingVertical: spacing.md, alignItems: 'center' }}>
+                <ActivityIndicator color={palette.coral} />
+              </View>
+            ) : null
+          }
+        />
+      )}
 
       <Sheet visible={filtersOpen} onClose={() => setFiltersOpen(false)} title="Filters" scroll>
         <View style={{ gap: spacing.lg }}>
@@ -210,7 +248,7 @@ export default function Bookings() {
               BOOKING STATUS
             </Text>
             <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm }}>
-              {STATUS_FILTERS.map((f) => (
+              {statusOptions.map((f) => (
                 <Chip
                   key={f.key}
                   label={f.label}
@@ -231,27 +269,62 @@ export default function Bookings() {
   );
 }
 
-function ActiveBookingCard({ item, onPress }: { item: TenantBookingItem & { kind: 'active' }; onPress?: () => void }) {
-  const b = item.booking;
+function BookingCard({ booking: b, onPress }: { booking: ApiBooking; onPress?: () => void }) {
+  const rateSuffix = b.booking_mode === 'HOURLY' ? '/hr' : b.booking_mode === 'DAILY' ? '/day' : '/mo';
   return (
     <PressableScale onPress={onPress} scaleTo={0.99} style={{ backgroundColor: palette.navy, borderRadius: radius.lg, overflow: 'hidden' }}>
       <View style={{ flexDirection: 'row', padding: spacing.md, gap: spacing.md, alignItems: 'center' }}>
-        <Image source={{ uri: b.propertyImage }} style={{ width: 72, height: 72, borderRadius: radius.md }} contentFit="cover" />
+        <Image source={{ uri: bookingCoverImage(b.property) }} style={{ width: 72, height: 72, borderRadius: radius.md }} contentFit="cover" />
         <View style={{ flex: 1 }}>
           <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: spacing.sm }}>
             <Text variant="bodyMd" weight="700" color={palette.white} numberOfLines={1} style={{ flex: 1 }}>
-              {b.propertyName}
+              {b.property.name}
             </Text>
-            <StatusPill status={b.status} small />
+            <Badge label={bookingStatusLabel(b.status)} tone={bookingStatusTone(b.status)} small />
           </View>
           <Text variant="caption" color="rgba(255,255,255,0.8)" style={{ marginTop: 2 }}>
-            {b.locality} · {b.roomNumber}/{b.bedLabel}
+            {isUnitBooking(b) || isUnitPropertyType(b.property) ? b.property.locality : `${b.property.locality} · ${b.room_number}/${b.bed_number}`}
           </Text>
           <Text variant="caption" color="rgba(255,255,255,0.8)" style={{ marginTop: 4 }}>
-            Since {formatDate(b.checkInDate)} · {inr(b.monthlyRent)}/mo
+            {bookingModeLabel(b.booking_mode)} · {inr(b.base_rent)}{rateSuffix} · Since {formatDate(b.check_in_date)}
           </Text>
         </View>
         <Ionicons name="chevron-forward" size={18} color={palette.white} />
+      </View>
+    </PressableScale>
+  );
+}
+
+/** Closed-out bookings (rejected/expired/cancelled/completed/checked-out) — a plain
+ * history-card treatment, distinct from the highlighted active-stay card above. */
+function PastBookingCardApi({ booking: b, onPress }: { booking: ApiBooking; onPress?: () => void }) {
+  const rateSuffix = b.booking_mode === 'HOURLY' ? '/hr' : b.booking_mode === 'DAILY' ? '/day' : '/mo';
+  const dimmed = b.status === 'CANCELLED' || b.status === 'REJECTED' || b.status === 'EXPIRED';
+  return (
+    <PressableScale
+      onPress={onPress}
+      scaleTo={0.99}
+      style={{ backgroundColor: palette.surface, borderRadius: radius.lg, borderWidth: 1, borderColor: palette.border, overflow: 'hidden' }}
+    >
+      <View style={{ flexDirection: 'row', padding: spacing.md, gap: spacing.md, alignItems: 'center' }}>
+        <Image
+          source={{ uri: bookingCoverImage(b.property) }}
+          style={{ width: 72, height: 72, borderRadius: radius.md, opacity: dimmed ? 0.55 : 1 }}
+          contentFit="cover"
+        />
+        <View style={{ flex: 1 }}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: spacing.sm }}>
+            <Text variant="bodyMd" weight="700" numberOfLines={1} style={{ flex: 1 }}>{b.property.name}</Text>
+            <Badge label={bookingStatusLabel(b.status)} tone={bookingStatusTone(b.status)} small />
+          </View>
+          <Text variant="caption" color={palette.inkTertiary} numberOfLines={1} style={{ marginTop: 2 }}>
+            {isUnitBooking(b) || isUnitPropertyType(b.property) ? b.property.locality : `${b.property.locality} · ${b.room_number}/${b.bed_number}`}
+          </Text>
+          <Text variant="caption" color={palette.inkSecondary} style={{ marginTop: 4 }}>
+            {bookingModeLabel(b.booking_mode)} · {inr(b.base_rent)}{rateSuffix} · {formatDate(b.check_in_date)}
+          </Text>
+        </View>
+        <Ionicons name="chevron-forward" size={18} color={palette.inkTertiary} />
       </View>
     </PressableScale>
   );

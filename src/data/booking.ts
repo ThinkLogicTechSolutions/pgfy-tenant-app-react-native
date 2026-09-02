@@ -25,7 +25,93 @@ export const ACTIVE_BOOKING: ActiveBooking = {
   nextRentAmount: 13000,
   rentOverdue: false,
   qrToken: 'PGFY-CHKN-8821-Z7K9',
+  bookingMode: 'monthly',
+  // Onboarded offline by the owner — a pending invoice is surfaced on the My Stay page.
+  ownerOnboarded: true,
+  pendingInvoice: { id: 'INV-OWN-0625', label: 'June rent · owner-raised', amount: 13000, dueDate: '2026-06-05' },
 };
+
+const hourlyListing = getListing('l4')!;
+/** Checked-in hourly stay — eligible for extension within the property's window. */
+export const ACTIVE_HOURLY_BOOKING: ActiveBooking = {
+  ref: 'PGF-9001',
+  listingId: hourlyListing.id,
+  propertyName: hourlyListing.name,
+  propertyImage: hourlyListing.coverImage,
+  locality: hourlyListing.locality,
+  roomNumber: 'G2',
+  bedLabel: 'A',
+  sharingType: 'Double',
+  checkInDate: '2026-05-29',
+  status: 'Active',
+  stayStatus: 'Active',
+  monthlyRent: 0,
+  deposit: 0,
+  nextRentDue: '2026-05-29',
+  nextRentAmount: 0,
+  rentOverdue: false,
+  qrToken: 'PGFY-CHKN-9001-H3R2',
+  bookingMode: 'hourly',
+  startTime: '14:00',
+  endTime: '18:00',
+  ratePerHour: 120,
+};
+
+const dailyListing = getListing('l2')!;
+/** Checked-in daily stay — eligible for extension up to the owner's day cap. */
+export const ACTIVE_DAILY_BOOKING: ActiveBooking = {
+  ref: 'PGF-9002',
+  listingId: dailyListing.id,
+  propertyName: dailyListing.name,
+  propertyImage: dailyListing.coverImage,
+  locality: dailyListing.locality,
+  roomNumber: 'G1',
+  bedLabel: 'B',
+  sharingType: 'Single',
+  checkInDate: '2026-05-27',
+  status: 'Active',
+  stayStatus: 'Active',
+  monthlyRent: 0,
+  deposit: 0,
+  nextRentDue: '2026-05-30',
+  nextRentAmount: 0,
+  rentOverdue: false,
+  qrToken: 'PGFY-CHKN-9002-D8L5',
+  bookingMode: 'daily',
+  checkOutDate: '2026-05-30',
+  ratePerDay: 560,
+};
+
+const upcomingListing = getListing('l3')!;
+/** Paid & confirmed, but the tenant hasn't checked in yet — eligible for cancellation. */
+export const UPCOMING_BOOKING: ActiveBooking = {
+  ref: 'PGF-9300',
+  listingId: upcomingListing.id,
+  propertyName: upcomingListing.name,
+  propertyImage: upcomingListing.coverImage,
+  locality: upcomingListing.locality,
+  roomNumber: '305',
+  bedLabel: 'A',
+  sharingType: 'Double',
+  checkInDate: '2026-07-05',
+  status: 'Confirmed',
+  stayStatus: 'Active',
+  monthlyRent: 14000,
+  deposit: 28000,
+  nextRentDue: '2026-08-05',
+  nextRentAmount: 14000,
+  rentOverdue: false,
+  qrToken: 'PGFY-CHKN-9300-U1P0',
+  bookingMode: 'monthly',
+};
+
+/** All current bookings — checked-in stays plus the upcoming (pre-check-in) one. */
+export const ACTIVE_BOOKINGS: ActiveBooking[] = [
+  UPCOMING_BOOKING,
+  ACTIVE_BOOKING,
+  ACTIVE_HOURLY_BOOKING,
+  ACTIVE_DAILY_BOOKING,
+];
 
 export const LEASE: Lease = {
   id: 'LSE-8821',
@@ -219,7 +305,7 @@ export type TenantBookingItem = BookingRecord;
 
 export function getAllTenantBookings(): TenantBookingItem[] {
   return [
-    { kind: 'active', booking: ACTIVE_BOOKING },
+    ...ACTIVE_BOOKINGS.map((booking) => ({ kind: 'active' as const, booking })),
     ...PAST_BOOKINGS.map((booking) => ({ kind: 'past' as const, booking })),
   ];
 }
@@ -233,7 +319,8 @@ export function bookingCheckInDate(item: TenantBookingItem): string {
 }
 
 export function getBookingByRef(ref: string): BookingRecord | null {
-  if (ACTIVE_BOOKING.ref === ref) return { kind: 'active', booking: ACTIVE_BOOKING };
+  const active = ACTIVE_BOOKINGS.find((b) => b.ref === ref);
+  if (active) return { kind: 'active', booking: active };
   const past = PAST_BOOKINGS.find((b) => b.ref === ref);
   if (past) return { kind: 'past', booking: past };
   return null;

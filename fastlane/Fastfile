@@ -1,0 +1,112 @@
+default_platform(:android)
+
+# Fastlane's own working directory is wherever `fastlane` was invoked from, but that's not
+# reliable across local runs vs CI — resolve every path from this Fastfile's own location
+# instead. This Fastfile lives at `<repo root>/fastlane/Fastfile`.
+PROJECT_ROOT = File.expand_path('..', __dir__)
+ANDROID_DIR = File.join(PROJECT_ROOT, 'android')
+IOS_DIR = File.join(PROJECT_ROOT, 'ios')
+
+platform :android do
+
+  desc "Install JS deps, regenerate the native android/ project, and build a signed release AAB"
+  lane :build_android do
+    # app.config.ts falls back to APP_ENV=development when unset — a Play Store build must
+    # always be production, and this has to be set before prebuild *and* before the gradle
+    # bundle task, since both read it (prebuild writes it into app config, Gradle's JS bundle
+    # step re-reads it when Metro bundles the release JS).
+    ENV['APP_ENV'] ||= 'production'
+    ENV['NODE_ENV'] ||= 'production'
+
+    Dir.chdir(PROJECT_ROOT) do
+      sh("npm", "ci")
+      # No --clean: android/ is checked into git with manual customizations (Firebase,
+      # signing config, RNFB Podfile-equivalent Gradle tweaks) that a full wipe would discard.
+      # This only syncs Expo-managed files against the current app.config.ts.
+      sh("npx", "expo", "prebuild", "--platform", "android")
+    end
+
+    gradle(
+      task: 'bundle',
+      build_type: 'Release',
+      project_dir: ANDROID_DIR,
+    )
+  end
+
+  desc "Build and deploy to the Play Store internal testing track"
+  lane :deploy_android do
+    # Force production regardless of whatever the invoking shell already has set — a Play
+    # Store upload must never go out pointed at the dev/staging API.
+    ENV['APP_ENV'] = 'production'
+    ENV['NODE_ENV'] = 'production'
+
+    # A stale Gradle daemon can keep serving env vars from a previous (dev) invocation even
+    # after APP_ENV/NODE_ENV change above — stop it before build_android's gradle bundle runs.
+    Dir.chdir(ANDROID_DIR) do
+      sh("./gradlew", "--stop")
+    end
+
+    build_android
+
+    upload_to_play_store(
+      track: 'internal',
+      release_status: 'completed',
+      metadata_path: File.join(PROJECT_ROOT, 'fastlane', 'metadata'),
+      json_key: File.join(PROJECT_ROOT, 'fastlane', 'pgfy-64511-96b244485dfd.json'),
+      aab: File.join(ANDROID_DIR, 'app', 'build', 'outputs', 'bundle', 'release', 'app-release.aab'),
+      skip_upload_apk: true,
+      skip_upload_aab: false,
+      skip_upload_metadata: true,
+      skip_upload_changelogs: true,
+      skip_upload_images: true,
+      skip_upload_screenshots: true,
+      validate_only: false,
+      timeout: 300,
+      changes_not_sent_for_review: false,
+      rescue_changes_not_sent_for_review: true,
+      in_app_update_priority: 0,
+      ack_bundle_installation_warning: false,
+    )
+  end
+end
+
+platform :ios do
+
+  desc "Install JS deps, regenerate the native ios/ project, and archive a signed Release build"
+  lane :archive_ios do
+    ENV['APP_ENV'] ||= 'production'
+    ENV['NODE_ENV'] ||= 'production'
+    # CocoaPods' Ruby crashes on path normalization without a UTF-8 locale — hit this exact
+    # failure running `pod install` by hand; set it defensively so the lane doesn't depend on
+    # the invoking shell's locale.
+    ENV['LANG'] ||= 'en_US.UTF-8'
+    ENV['LC_ALL'] ||= 'en_US.UTF-8'
+
+    Dir.chdir(PROJECT_ROOT) do
+      sh("npm", "ci")
+      # No --clean: ios/ is checked into git with manual customizations (ci_scripts for Xcode
+      # Cloud, the export-compliance Info.plist flag, ...) that a full wipe would discard.
+      sh("npx", "expo", "prebuild", "--platform", "ios")
+    end
+
+    # A machine-local `.xcode.env.local` can pin NODE_BINARY to a since-removed nvm version —
+    # hit this exact failure (silently broke the Hermes/"Bundle React Native code" script
+    # phases). It's gitignored and only ever meant as a local override; the committed
+    # `.xcode.env`'s `$(command -v node)` fallback is always correct, so drop it rather than
+    # trust stale local state.
+    xcode_env_local = File.join(IOS_DIR, '.xcode.env.local')
+    File.delete(xcode_env_local) if File.exist?(xcode_env_local)
+
+    Dir.chdir(IOS_DIR) do
+      sh("pod", "install")
+    end
+
+    sh(
+      "xcodebuild", "archive",
+      "-workspace", File.join(IOS_DIR, "PGfyDev.xcworkspace"),
+      "-scheme", "PGfyDev",
+      "-configuration", "Release",
+      "-archivePath", File.join(PROJECT_ROOT, "build", "PGfyDev.xcarchive"),
+    )
+  end
+end

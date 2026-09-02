@@ -1,10 +1,11 @@
 import { useMemo, useState } from 'react';
-import { View, TextInput, ActivityIndicator, Keyboard, Alert } from 'react-native';
+import { View, TextInput, ActivityIndicator, Keyboard } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { palette, radius, spacing, fontFamily, shadows } from '@/theme';
 import { Text, PressableScale } from '@/components/ui';
 import { filterLocations, LOCATION_SEARCH_PLACEHOLDER } from '@/data/locationSearch';
 import { resolveNearMeLocation } from '@/lib/nearMe';
+import { showAlert } from '@/lib/alert';
 import { haptic } from '@/lib/haptics';
 
 interface AutocompleteProps {
@@ -76,13 +77,13 @@ export function LocationAutocomplete({ value, onChange, onSelect }: Autocomplete
   const nearMe = async () => {
     setLoadingNear(true);
     haptic.light();
-    const result = await resolveNearMeLocation();
+    const result = await resolveNearMeLocation({ states: [], cities: [], localities: [] });
     setLoadingNear(false);
     if (result.ok) {
       pick(result.label);
       return;
     }
-    Alert.alert('Near me', result.message);
+    showAlert('Near me', result.message);
   };
 
   return (

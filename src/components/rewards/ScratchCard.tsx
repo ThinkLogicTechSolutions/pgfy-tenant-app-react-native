@@ -1,90 +1,89 @@
-/** Interactive scratch card — swipe to reveal brand reward. */
-import { useCallback } from 'react';
-import { View, StyleSheet } from 'react-native';
+/** Interactive scratch card — real finger-scratch reveal via `rn-scratch-card` (a native
+ * scratch-off view), no tap-to-reveal. Crossing the reveal threshold fires
+ * `onThresholdReached` once — the caller uses that to call the real scratch API — and the
+ * remaining foil fades away immediately regardless of how much was physically scratched,
+ * matching a typical scratch-card app's "partial scratch reveals the rest" behavior.
+ * `revealing` shows a lightweight loading state on the card face until the caller has a real
+ * coupon code to pass in. */
+import { useCallback, useRef, useState } from 'react';
+import { View, StyleSheet, ActivityIndicator } from 'react-native';
 import { Image } from 'expo-image';
 import { LinearGradient } from 'expo-linear-gradient';
-import { Gesture, GestureDetector } from 'react-native-gesture-handler';
-import Animated, {
-  runOnJS,
-  useAnimatedStyle,
-  useSharedValue,
-  withSpring,
-  withTiming,
-} from 'react-native-reanimated';
+import { ScratchCard as RnScratchCard } from 'rn-scratch-card';
+import Animated, { useAnimatedStyle, useSharedValue, withTiming, runOnJS } from 'react-native-reanimated';
 import { Ionicons } from '@expo/vector-icons';
 import { palette, radius, spacing } from '@/theme';
 import { Text } from '@/components/ui';
-import type { BrandOffer, BrandVendor } from '@/data/brandRewards';
+
+/** Percent (0–100) of the card's area that must be scratched before it counts as "opened". */
+const REVEAL_THRESHOLD = 30;
+/** Below this, the "scratch to reveal" hint stays visible over the foil. */
+const HINT_HIDE_THRESHOLD = 6;
+const BRUSH_WIDTH = 45;
+const FOIL_SOURCE = require('../../../assets/images/scratch-foil.png');
 
 type Props = {
-  vendor: BrandVendor;
-  offer: BrandOffer;
+  bannerUrl: string;
+  vendorLogoUrl?: string;
+  offerTitle: string;
   couponCode?: string;
   locked: boolean;
-  onRevealed?: () => void;
+  /** Coupon has been drawn but hasn't come back from the API yet — shows a spinner in place
+   * of the code, foil already gone. */
+  revealing?: boolean;
+  onThresholdReached?: () => void;
 };
 
 const CARD_W = 300;
 const CARD_H = 188;
 
-export function ScratchCard({ vendor, offer, couponCode, locked, onRevealed }: Props) {
-  const scratchProgress = useSharedValue(0);
-  const revealed = useSharedValue(locked ? 0 : 1);
+export function ScratchCard({ bannerUrl, vendorLogoUrl, offerTitle, couponCode, locked, revealing, onThresholdReached }: Props) {
+  // `locked` only ever goes true → false in practice (a scratched card never re-locks), so a
+  // one-way "has this ever been scratched past the threshold" flag is enough to drive the fade.
+  const [foilVisible, setFoilVisible] = useState(locked);
+  const [showHint, setShowHint] = useState(true);
+  const revealFired = useRef(false);
+  const foilOpacity = useSharedValue(1);
 
-  const finishReveal = useCallback(() => {
-    onRevealed?.();
-  }, [onRevealed]);
+  const hideFoil = useCallback(() => setFoilVisible(false), []);
 
-  const pan = Gesture.Pan()
-    .enabled(locked)
-    .onUpdate((e) => {
-      const delta = Math.sqrt(e.velocityX ** 2 + e.velocityY ** 2) / 1200;
-      scratchProgress.value = Math.min(1, scratchProgress.value + delta);
-      if (scratchProgress.value > 0.55 && revealed.value === 0) {
-        revealed.value = 1;
-        scratchProgress.value = withTiming(1, { duration: 280 });
-        runOnJS(finishReveal)();
-      }
-    });
+  const foilStyle = useAnimatedStyle(() => ({ opacity: foilOpacity.value }));
 
-  const tap = Gesture.Tap()
-    .enabled(locked)
-    .onEnd(() => {
-      if (revealed.value === 0) {
-        scratchProgress.value = withTiming(1, { duration: 400 });
-        revealed.value = withSpring(1, { damping: 14 }, () => {
-          runOnJS(finishReveal)();
-        });
-      }
-    });
-
-  const gesture = Gesture.Simultaneous(pan, tap);
-
-  const foilStyle = useAnimatedStyle(() => ({
-    opacity: 1 - revealed.value,
-  }));
-
-  const hintStyle = useAnimatedStyle(() => ({
-    opacity: revealed.value < 0.5 ? 1 : 0,
-  }));
+  const handleScratch = useCallback(
+    (percent: number) => {
+      if (showHint && percent >= HINT_HIDE_THRESHOLD) setShowHint(false);
+      if (revealFired.current || percent < REVEAL_THRESHOLD) return;
+      revealFired.current = true;
+      onThresholdReached?.();
+      foilOpacity.value = withTiming(0, { duration: 320 }, (finished) => {
+        if (finished) runOnJS(hideFoil)();
+      });
+    },
+    [showHint, onThresholdReached, foilOpacity, hideFoil],
+  );
 
   return (
     <View style={styles.wrap}>
       <View style={styles.card}>
-        <Image source={{ uri: offer.bannerImage }} style={StyleSheet.absoluteFill} contentFit="cover" />
+        <Image source={{ uri: bannerUrl }} style={StyleSheet.absoluteFill} contentFit="cover" />
         <LinearGradient
           colors={['rgba(1,38,78,0.15)', 'rgba(1,38,78,0.88)']}
           style={StyleSheet.absoluteFill}
         />
         <View style={styles.revealContent}>
-          <Image source={{ uri: vendor.logo }} style={styles.vendorLogo} contentFit="cover" />
+          {vendorLogoUrl ? <Image source={{ uri: vendorLogoUrl }} style={styles.vendorLogo} contentFit="cover" /> : null}
           <Text variant="bodyMd" weight="700" color={palette.white} align="center" numberOfLines={2}>
-            {offer.title}
+            {offerTitle}
           </Text>
           {couponCode ? (
             <View style={styles.codeBox}>
               <Text variant="caption" color={palette.inkTertiary}>YOUR CODE</Text>
               <Text variant="h3" mono color={palette.navy}>{couponCode}</Text>
+            </View>
+          ) : revealing ? (
+            <View style={[styles.codeBox, { flexDirection: 'row', gap: spacing.sm, alignItems: 'center' }]}>
+              <ActivityIndicator color={palette.navy} size="small" />
+              <Text variant="bodySm" color={palette.navy}>Revealing your code…</Text>
             </View>
           ) : (
             <Text variant="caption" color="rgba(255,255,255,0.85)" align="center">
@@ -93,23 +92,18 @@ export function ScratchCard({ vendor, offer, couponCode, locked, onRevealed }: P
           )}
         </View>
 
-        {locked ? (
-          <GestureDetector gesture={gesture}>
-            <Animated.View style={[styles.foil, foilStyle]}>
-              <LinearGradient
-                colors={['#C0C5CE', '#E8ECF2', '#A8B0BC', '#DDE2E8']}
-                start={{ x: 0, y: 0 }}
-                end={{ x: 1, y: 1 }}
-                style={StyleSheet.absoluteFill}
-              />
-              <Animated.View style={[styles.hint, hintStyle]}>
-                <Ionicons name="hand-left-outline" size={28} color={palette.navy} />
+        {foilVisible ? (
+          <Animated.View style={[styles.foil, foilStyle]} pointerEvents={locked ? 'auto' : 'none'}>
+            <RnScratchCard source={FOIL_SOURCE} brushWidth={BRUSH_WIDTH} onScratch={handleScratch} style={styles.foilCard} />
+            {showHint ? (
+              <View style={styles.hint} pointerEvents="none">
+                <Ionicons name="hand-left-outline" size={26} color={palette.navy} />
                 <Text variant="bodySm" weight="700" color={palette.navy} style={{ marginTop: spacing.sm }}>
-                  Scratch or tap to reveal
+                  Scratch to reveal
                 </Text>
-              </Animated.View>
-            </Animated.View>
-          </GestureDetector>
+              </View>
+            ) : null}
+          </Animated.View>
         ) : null}
       </View>
     </View>
@@ -152,11 +146,15 @@ const styles = StyleSheet.create({
   },
   foil: {
     ...StyleSheet.absoluteFillObject,
-    alignItems: 'center',
-    justifyContent: 'center',
+  },
+  foilCard: {
+    width: CARD_W,
+    height: CARD_H,
+    borderRadius: radius.lg,
   },
   hint: {
+    ...StyleSheet.absoluteFillObject,
     alignItems: 'center',
-    padding: spacing.base,
+    justifyContent: 'center',
   },
 });

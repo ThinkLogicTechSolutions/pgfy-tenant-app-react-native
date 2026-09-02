@@ -133,6 +133,37 @@ export function EmptyInvoices({ size = 150 }: P) {
   );
 }
 
+export function EmptyLocation({ size = 150 }: P) {
+  return (
+    <Svg width={size} height={size} viewBox="0 0 160 160">
+      <Bg />
+      <Path
+        d="M80 36 C60 36 46 51 46 70 C46 96 80 128 80 128 C80 128 114 96 114 70 C114 51 100 36 80 36 Z"
+        fill={WHITE}
+        stroke={BORDER}
+        strokeWidth={2}
+      />
+      <Circle cx={80} cy={70} r={16} fill={CT} />
+      <Circle cx={104} cy={106} r={17} fill={MUT} />
+      <Path d="M97 106 L111 106 M104 99 L104 113" stroke={WHITE} strokeWidth={3.2} strokeLinecap="round" transform="rotate(45 104 106)" />
+    </Svg>
+  );
+}
+
+export function EmptyAuth({ size = 150 }: P) {
+  return (
+    <Svg width={size} height={size} viewBox="0 0 160 160">
+      <Bg />
+      <Circle cx={80} cy={64} r={20} fill={WHITE} stroke={BORDER} strokeWidth={2} />
+      <Circle cx={80} cy={58} r={8} fill={CT} />
+      <Path d="M64 78 a16 12 0 0 1 32 0Z" fill={CT} />
+      <Circle cx={104} cy={102} r={22} fill={INK} />
+      <Rect x={95} y={99} width={18} height={15} rx={3} fill={WHITE} />
+      <Path d="M98 99 V93 a6 6 0 0 1 12 0 V99" stroke={WHITE} strokeWidth={3} fill="none" strokeLinecap="round" />
+    </Svg>
+  );
+}
+
 export function KycShield({ size = 150 }: P) {
   return (
     <Svg width={size} height={size} viewBox="0 0 160 160">

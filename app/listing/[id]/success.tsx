@@ -12,7 +12,7 @@ import Animated, {
   withTiming,
 } from 'react-native-reanimated';
 import { palette, spacing, radius } from '@/theme';
-import { Text, Card, Button, Divider } from '@/components/ui';
+import { Text, Card, Button, Divider, Confetti } from '@/components/ui';
 import {
   AnimatedSuccessTick,
   useBookingSuccessSound,
@@ -21,7 +21,6 @@ import {
 import { getListing, ACTIVE_BOOKING } from '@/data';
 import { inr } from '@/lib/format';
 import { releaseHold } from '@/store/hold';
-import { grantScratchCard } from '@/store/rewards';
 
 const HERO_BLOCK_HEIGHT = 248;
 const TICK_SIZE = 112;
@@ -45,8 +44,7 @@ export default function Success() {
 
   useEffect(() => {
     releaseHold();
-    grantScratchCard(ACTIVE_BOOKING.ref, listing?.name ?? 'Your property');
-  }, [listing?.name]);
+  }, []);
 
   useEffect(() => {
     messageOpacity.value = withDelay(520, withTiming(1, { duration: 420 }));
@@ -87,6 +85,7 @@ export default function Success() {
 
   return (
     <View style={{ flex: 1, backgroundColor: palette.bg }}>
+      <Confetti originTop={screenHeight * 0.32} count={32} />
       <ScrollView
         contentContainerStyle={{
           paddingTop: insets.top,
@@ -135,6 +134,20 @@ export default function Success() {
               <Text variant="caption" color={palette.inkSecondary}>Scratch to unlock partner brand coupons</Text>
             </View>
             <Ionicons name="chevron-forward" size={18} color={palette.navy} />
+          </Card>
+
+          <Card
+            onPress={() => router.push('/roommate-preferences')}
+            style={{ flexDirection: 'row', alignItems: 'center', gap: spacing.md, backgroundColor: palette.coralTint }}
+          >
+            <View style={{ width: 48, height: 48, borderRadius: 24, backgroundColor: palette.coral, alignItems: 'center', justifyContent: 'center' }}>
+              <Ionicons name="people-circle-outline" size={24} color={palette.white} />
+            </View>
+            <View style={{ flex: 1 }}>
+              <Text variant="bodyMd" weight="700" color={palette.coralDark}>Tell us about yourself</Text>
+              <Text variant="caption" color={palette.inkSecondary}>So only compatible roommates are assigned to you</Text>
+            </View>
+            <Ionicons name="chevron-forward" size={18} color={palette.coralDark} />
           </Card>
 
           <Card style={{ alignItems: 'center', paddingVertical: spacing.lg }}>

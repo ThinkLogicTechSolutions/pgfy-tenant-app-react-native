@@ -1,4 +1,4 @@
 export { ScratchCard } from './ScratchCard';
 export { ScratchCardTile } from './ScratchCardTile';
-export { RewardListCard } from './RewardListCard';
-export { RewardDetailSheet } from './RewardDetailSheet';
+export { ScratchDialog } from './ScratchDialog';
+export { RewardSheet } from './RewardSheet';
