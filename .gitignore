@@ -44,3 +44,11 @@ yarn-error.*
 # typescript
 *.tsbuildinfo
 build/
+# Secrets — stripped from history for the client handoff, never recommit
+*.keystore
+google-services.json
+.env
+.env.production
+.env.staging
+.env.development
+GoogleService-Info.plist
