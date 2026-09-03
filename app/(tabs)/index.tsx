@@ -520,10 +520,7 @@ export default function Home() {
       });
     }
     if(key === 'packers-movers') {
-      return router.push({
-        pathname: '/coming-soon',
-        params: { title: 'Packers & Movers', subtitle: 'Move your belongings with ease. We’re working on it — stay tuned!', icon: 'truck-cargo-container', iconFamily: 'MaterialCommunityIcons' },
-      });
+      return router.push('/packers-movers');
     }
     if(key === 'storage') {
       return router.push({
