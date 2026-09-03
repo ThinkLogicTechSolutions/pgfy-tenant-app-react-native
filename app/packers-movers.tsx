@@ -10,7 +10,6 @@ import { haptic } from '@/lib/haptics';
 import { formatDate } from '@/lib/format';
 import { alert } from '@/lib/alertDialog';
 import { useAuth } from '@/context/AuthContext';
-import { useMasterData } from '@/context/MasterDataContext';
 import { Ionicons } from '@expo/vector-icons';
 
 const TIME_SLOTS = [
@@ -30,12 +29,21 @@ const ITEM_CATEGORIES = [
 
 const onlyDigits = (s: string) => s.replace(/\D/g, '');
 
+const INDIAN_STATES = [
+  "Andhra Pradesh", "Arunachal Pradesh", "Assam", "Bihar", "Chhattisgarh",
+  "Goa", "Gujarat", "Haryana", "Himachal Pradesh", "Jharkhand",
+  "Karnataka", "Kerala", "Madhya Pradesh", "Maharashtra", "Manipur",
+  "Meghalaya", "Mizoram", "Nagaland", "Odisha", "Punjab",
+  "Rajasthan", "Sikkim", "Tamil Nadu", "Telangana", "Tripura",
+  "Uttar Pradesh", "Uttarakhand", "West Bengal", "Delhi"
+];
+
+const stateOptions = INDIAN_STATES.map(s => ({ label: s, value: s }));
+
 export default function PackersMoversEnquiry() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const { user } = useAuth();
-  const { activeStates } = useMasterData();
-  const stateOptions = useMemo(() => activeStates.map(s => ({ label: s.name, value: s.name })), [activeStates]);
   
   const [done, setDone] = useState(false);
   const [submitting, setSubmitting] = useState(false);
