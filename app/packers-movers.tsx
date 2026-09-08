@@ -11,6 +11,7 @@ import { formatDate } from '@/lib/format';
 import { alert } from '@/lib/alertDialog';
 import { useAuth } from '@/context/AuthContext';
 import { Ionicons } from '@expo/vector-icons';
+import { packersMoversEnquiryApi } from '@/lib/api';
 
 const TIME_SLOTS = [
   { key: 'MORNING', label: 'Morning' },
@@ -114,12 +115,30 @@ export default function PackersMoversEnquiry() {
       return;
     }
     setSubmitting(true);
-    // Simulate API call and fast submission UI change
-    setTimeout(() => {
+    packersMoversEnquiryApi.createPackersMoversEnquiry({
+      contact_name: contactName.trim(),
+      contact_phone: contactPhone,
+      contact_email: contactEmail.trim() || undefined,
+      pickup_address: pickupAddress.trim(),
+      pickup_city: pickupCity.trim(),
+      pickup_state: pickupState.trim(),
+      pickup_pincode: pickupPincode,
+      destination_address: destinationAddress.trim(),
+      destination_city: destinationCity.trim(),
+      destination_state: destinationState.trim(),
+      destination_pincode: destinationPincode,
+      preferred_date: movingDate,
+      preferred_time: timeSlot,
+      items: Array.from(selectedItems),
+    }).then(() => {
       haptic.success();
       setDone(true);
+    }).catch((err) => {
+      console.error('Packers & Movers enquiry submission failed:', err);
+      alert('Submission failed', 'There was an error submitting your enquiry. Please try again later.');
+    }).finally(() => {
       setSubmitting(false);
-    }, 1500);
+    });
   };
 
   if (done) {
