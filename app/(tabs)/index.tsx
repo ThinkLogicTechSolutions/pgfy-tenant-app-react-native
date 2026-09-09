@@ -523,10 +523,7 @@ export default function Home() {
       return router.push('/packers-movers');
     }
     if(key === 'storage') {
-      return router.push({
-        pathname: '/coming-soon',
-        params: { title: 'Storage Solutions', subtitle: 'Store your belongings safely and conveniently. We’re working on it — stay tuned!', icon: 'warehouse', iconFamily: 'MaterialCommunityIcons' },
-      });
+      return router.push('/storage-solution');
     }
   };
 
