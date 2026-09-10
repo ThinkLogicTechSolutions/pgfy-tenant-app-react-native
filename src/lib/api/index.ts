@@ -38,6 +38,7 @@ export * as snapKycApi from './snapkyc';
 export * as notificationsApi from './notifications';
 export * as leaseApi from './lease';
 export * as packersMoversEnquiryApi from './packersMoversEnquiry';
+export * as storageSolutionApi from './storageSolution';
 
 export type {
   LeaseAgreement,

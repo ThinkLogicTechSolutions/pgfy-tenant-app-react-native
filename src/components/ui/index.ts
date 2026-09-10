@@ -31,3 +31,4 @@ export { Confetti } from './Confetti';
 export { AnimatedListItem } from './AnimatedListItem';
 export { RangeSlider } from './RangeSlider';
 export { CardCarousel } from './CardCarousel';
+export { ErrorState } from './ErrorState';

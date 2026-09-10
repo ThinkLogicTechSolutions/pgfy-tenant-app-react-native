@@ -2157,7 +2157,7 @@ export interface StorageSolutionEnquiryItemInterface {
   description?: string;
 }
 
-export type StorageSolutionEnquiryStatus = 'PENDING' | 'ACCEPTED' | 'REJECTED' | 'CANCELLED' | 'COMPLETED' ;
+export type StorageSolutionEnquiryStatus = 'SUBMITTED' | 'ASSIGNED' | 'CANCELLED' | 'COMPLETED' ;
 
 export interface StorageSolutionEnquiryRequest {
   contact_name: string;
@@ -2187,6 +2187,15 @@ export interface StorageSolutionEnquiryResponse extends StorageSolutionEnquiryRe
   id: number;
   tenant_id: number;
   status: StorageSolutionEnquiryStatus;
+  assigned_property_id?: number | null;
+  assigned_property?: {
+    code: string;
+    name: string;
+    owner: {
+      name: string;
+      phone: string;
+    };
+  } | null;
   created_at: string;
   updated_at: string;
 }

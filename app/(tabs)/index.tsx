@@ -94,11 +94,11 @@ type QuickService = {
 
 const QUICK_SERVICES: QuickService[] = [
   { key: 'group', label: 'Group booking', subtitle: 'Book in bulk', icon: 'people', gradient: [palette.navy, palette.navyDark], wash: palette.navyTint },
-  { key: 'invite', label: 'Invite a PG', subtitle: 'Refer a PG', icon: 'business', gradient: [palette.success, '#178A57'], wash: palette.successTint },
-  { key: 'metro', label: 'Metro Ticket', subtitle: 'Coming soon', icon: 'train', gradient: ['#3B82F6', '#1D5FD8'], wash: palette.infoTint },
-  { key: 'refer', label: 'Refer App', subtitle: 'Invite & save', icon: 'gift', gradient: [palette.coral, palette.coralDark], wash: palette.coralTint },
   { key: 'packers-movers', label: 'Packers & Movers', subtitle: 'Move with ease', icon: 'truck-cargo-container', iconFamily: 'MaterialCommunityIcons', gradient: ['#A855F7', '#7E22CE'], wash: '#FAF5FF' },
   { key: 'storage', label: 'Storage Solutions', subtitle: 'Store with ease', icon: 'warehouse', iconFamily: 'MaterialCommunityIcons', gradient: ['#6366F1', '#4338CA'], wash: '#EEF2FF' },
+  { key: 'metro', label: 'Metro Ticket', subtitle: 'Coming soon', icon: 'train', gradient: ['#3B82F6', '#1D5FD8'], wash: palette.infoTint },
+  { key: 'invite', label: 'Invite a PG', subtitle: 'Refer a PG', icon: 'business', gradient: [palette.success, '#178A57'], wash: palette.successTint },
+  { key: 'refer', label: 'Refer App', subtitle: 'Invite & save', icon: 'gift', gradient: [palette.coral, palette.coralDark], wash: palette.coralTint },
 ];
 
 function CategoryTabCard({ item, active, onPress }: { item: (typeof CATEGORY_TABS)[number]; active: boolean; onPress: () => void }) {
@@ -523,7 +523,7 @@ export default function Home() {
       return router.push('/packers-movers');
     }
     if(key === 'storage') {
-      return router.push('/storage-solution');
+      return router.push('/storage-solutions/create-enquiry');
     }
   };
 
