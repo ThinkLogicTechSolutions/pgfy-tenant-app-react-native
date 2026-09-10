@@ -2104,6 +2104,7 @@ export type PackersMoversStatusType =
   | 'ASSIGNED'
 ;
 
+
 export interface CreatePackersMoversEnquiryRequest {
     pickup_address: string;
     pickup_city: string;

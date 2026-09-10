@@ -1,12 +1,13 @@
 /** Generic tappable list row: leading icon tile + title/subtitle + right slot + chevron. */
 import { View, ViewStyle } from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
+import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import { palette, radius, spacing } from '@/theme';
 import { Text } from './Text';
 import { PressableScale } from './PressableScale';
 
 interface Props {
-  icon?: keyof typeof Ionicons.glyphMap;
+  icon?: keyof typeof Ionicons.glyphMap | keyof typeof MaterialCommunityIcons.glyphMap;
+  iconFamily?: 'Ionicons' | 'MaterialCommunityIcons';
   iconColor?: string;
   iconBg?: string;
   title: string;
@@ -22,6 +23,7 @@ interface Props {
 
 export function ListRow({
   icon,
+  iconFamily = 'Ionicons',
   iconColor = palette.ink,
   iconBg = palette.surfaceRaised,
   title,
@@ -54,7 +56,11 @@ export function ListRow({
             justifyContent: 'center',
           }}
         >
-          <Ionicons name={icon} size={20} color={danger ? palette.danger : iconColor} />
+          {iconFamily === 'Ionicons' ? (
+            <Ionicons name={icon as keyof typeof Ionicons.glyphMap} size={20} color={danger ? palette.danger : iconColor} />
+          ) : (
+            <MaterialCommunityIcons name={icon as keyof typeof MaterialCommunityIcons.glyphMap} size={20} color={danger ? palette.danger : iconColor} />
+          )}
         </View>
       ) : null}
       <View style={{ flex: 1 }}>

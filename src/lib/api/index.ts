@@ -287,4 +287,7 @@ export type {
   TenantNotificationStatus,
   TenantNotificationEntityType,
   ApiTenantNotification,
+  PackersMoversStatusType,
+  CreatePackersMoversEnquiryRequest,
+  CreatePackersMoversEnquiryResponse,
 } from './types';
