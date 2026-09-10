@@ -2092,3 +2092,60 @@ export interface ApiTenantNotification {
   created_at: string;
   updated_at: string;
 }
+
+// ---------------------------------------------------------------------------
+// Packer and mover service (`POST /tenant/packers-and-movers`) — a tenant requests a quote for
+// moving their belongings to a new property.
+// ---------------------------------------------------------------------------
+
+export type PackersMoversStatusType =
+  | 'SUBMITTED'
+  | 'CANCELLED'
+  | 'ASSIGNED'
+;
+
+
+export interface CreatePackersMoversEnquiryRequest {
+    pickup_address: string;
+    pickup_city: string;
+    pickup_state: string;
+    pickup_pincode: string;
+
+    destination_address: string;
+    destination_city: string;
+    destination_state: string;
+    destination_pincode: string;
+
+    contact_name: string;
+    contact_phone: string;
+    contact_email?: string;
+
+    preferred_date: Date | string;
+    preferred_time: string;
+    items: string[];
+}
+
+export interface CreatePackersMoversEnquiryResponse {
+    id: number;
+    tenant_id: number;
+    status: PackersMoversStatusType;
+    pickup_address: string;
+    pickup_city: string;
+    pickup_state: string;
+    pickup_pincode: string;
+
+    destination_address: string;
+    destination_city: string;
+    destination_state: string;
+    destination_pincode: string;
+
+    contact_name: string;
+    contact_phone: string;
+    contact_email: string | null;
+
+    preferred_date: Date | string;
+    preferred_time: string;
+    items: string[];
+    created_at: string;
+    updated_at: string;
+}

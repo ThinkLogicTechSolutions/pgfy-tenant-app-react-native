@@ -37,6 +37,7 @@ export * as rewardsApi from './rewards';
 export * as snapKycApi from './snapkyc';
 export * as notificationsApi from './notifications';
 export * as leaseApi from './lease';
+export * as packersMoversEnquiryApi from './packersMoversEnquiry';
 
 export type {
   LeaseAgreement,
@@ -286,4 +287,7 @@ export type {
   TenantNotificationStatus,
   TenantNotificationEntityType,
   ApiTenantNotification,
+  PackersMoversStatusType,
+  CreatePackersMoversEnquiryRequest,
+  CreatePackersMoversEnquiryResponse,
 } from './types';
