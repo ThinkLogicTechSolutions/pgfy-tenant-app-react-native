@@ -285,6 +285,19 @@ export default function Profile() {
         />
       </Section>
 
+      <Section title="OTHER SERVICES">
+        <ListRow icon="train" title="Metro Ticket" subtitle="Coming soon" iconBg='#E8F0FE' iconColor='#3B82F6' 
+          onPress={
+            () => router.push({ 
+              pathname: '/coming-soon',
+              params: { title: 'Metro Tickets', subtitle: 'Book metro tickets right inside PGfy. We’re working on it — stay tuned!', icon: 'train-outline' },
+            })
+          } 
+        />
+        <Divider />
+        <ListRow icon="warehouse" iconFamily="MaterialCommunityIcons" title="Storage Solutions" subtitle="Store with ease" iconBg='#EEF2FF' iconColor='#6366F1' onPress={() => router.push('/billing')} />
+      </Section>
+
       <Section title="PREFERENCES">
         <Toggle icon="notifications-outline" label="Push notifications" value={push} onChange={setPush} />
       </Section>
