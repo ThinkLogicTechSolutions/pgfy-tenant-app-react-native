@@ -296,8 +296,6 @@ export default function Profile() {
         />
         <Divider />
         <ListRow icon="truck-cargo-container" iconFamily="MaterialCommunityIcons" title="Packers & Movers" subtitle="Move with ease" iconBg='#FAF5FF' iconColor='#A855F7' onPress={() => router.push('/packers-movers')} />
-        <Divider />
-        <ListRow icon="warehouse" iconFamily="MaterialCommunityIcons" title="Storage Solutions" subtitle="Store with ease" iconBg='#EEF2FF' iconColor='#6366F1' onPress={() => router.push('/billing')} />
       </Section>
 
       <Section title="PREFERENCES">
