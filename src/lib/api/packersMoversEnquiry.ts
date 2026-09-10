@@ -6,6 +6,8 @@ export interface PackerMoversQuery {
   skip? : number;
   status? : PackersMoversStatusType | 'ALL';
   tacking_id? : number;
+  from_date?: string;
+  to_date?: string;
 }
 
 export async function createPackersMoversEnquiry(input: CreatePackersMoversEnquiryRequest): Promise<CreatePackersMoversEnquiryResponse> {
@@ -16,15 +18,19 @@ export async function listPackersMoversEnquiries({
   limit = 10,
   skip = 0,
   status,
-  tacking_id
-}:PackerMoversQuery  ): Promise<ListResponse<CreatePackersMoversEnquiryResponse>> {
+  tacking_id,
+  from_date,
+  to_date
+}: PackerMoversQuery): Promise<ListResponse<CreatePackersMoversEnquiryResponse>> {
   return request<ListResponse<CreatePackersMoversEnquiryResponse>>('/tenant/packers-movers-enquiry', { 
     query: {
       $limit: limit,
       $skip: skip,
       '$sort[created_at]': -1,
       status: status && status !== 'ALL' ? status : undefined,
-      id: tacking_id
+      id: tacking_id,
+      from_date: from_date,
+      to_date: to_date
     }
   });
 }

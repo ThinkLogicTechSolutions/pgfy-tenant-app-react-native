@@ -7,7 +7,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { palette, spacing, radius } from '@/theme';
 import { Text, ScreenHeader, Chip, PressableScale, EmptyState, Badge, Skeleton, AnimatedListItem, Sheet, Button } from '@/components/ui';
 import { EmptyGeneric } from '@/components/illustrations';
-import { packersMoversEnquiryApi, errorMessage, type CreatePackersMoversEnquiryResponse } from '@/lib/api';
+import { packersMoversEnquiryApi, errorMessage, type CreatePackersMoversEnquiryResponse, PackersMoversStatusType } from '@/lib/api';
 import { formatDate } from '@/lib/format';
 
 const PAGE_SIZE = 10;
@@ -70,10 +70,10 @@ export default function PackersMoversHistory() {
   const [activeSlide, setActiveSlide] = useState(0);
   const carouselRef = useRef<FlatList>(null);
 
-  const [status, setStatus] = useState('ALL');
+  const [status, setStatus] = useState<PackersMoversStatusType | 'ALL'>('ALL');
   const [dateFilter, setDateFilter] = useState('ALL');
   const [filterOpen, setFilterOpen] = useState(false);
-  const [draftStatus, setDraftStatus] = useState('ALL');
+  const [draftStatus, setDraftStatus] = useState<PackersMoversStatusType | 'ALL'> ('ALL');
   const [draftDateFilter, setDraftDateFilter] = useState('ALL');
 
   const [enquiries, setEnquiries] = useState<CreatePackersMoversEnquiryResponse[]>([]);
@@ -97,15 +97,8 @@ export default function PackersMoversHistory() {
     const setBusy = skip === 0 ? setLoading : setLoadingMore;
     setBusy(true);
     setError(null);
-    
-    const query: Record<string, any> = { limit: PAGE_SIZE, skip };
-    if (status !== 'ALL') query.status = status;
-    
     const { from_date, to_date } = getDateRange(dateFilter);
-    if (from_date) query.from_date = from_date;
-    if (to_date) query.to_date = to_date;
-
-    packersMoversEnquiryApi.listPackersMoversEnquiries(query)
+    packersMoversEnquiryApi.listPackersMoversEnquiries({limit:PAGE_SIZE,skip, status, from_date, to_date})
       .then((page) => {
         const data = Array.isArray(page) ? page : (page as any).data || [];
         const count = Array.isArray(page) ? data.length : (page as any).total || data.length;
@@ -322,7 +315,7 @@ export default function PackersMoversHistory() {
             </Text>
             <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm }}>
               {STATUS_FILTERS.map((f) => (
-                <Chip key={f.key} label={f.label} active={draftStatus === f.key} onPress={() => setDraftStatus(f.key)} />
+                <Chip key={f.key} label={f.label} active={draftStatus === f.key as PackersMoversStatusType | 'ALL'} onPress={() => setDraftStatus(f.key as PackersMoversStatusType | 'ALL')} />
               ))}
             </View>
           </View>
