@@ -2148,3 +2148,45 @@ export interface CreatePackersMoversEnquiryResponse {
     created_at: string;
     updated_at: string;
 }
+
+export interface StorageSolutionEnquiryItemInterface {
+  name: string;
+  category: string;
+  quantity: number;
+  weight?: number;
+  description?: string;
+}
+
+export type StorageSolutionEnquiryStatus = 'PENDING' | 'ACCEPTED' | 'REJECTED' | 'CANCELLED' | 'COMPLETED' ;
+
+export interface StorageSolutionEnquiryRequest {
+  contact_name: string;
+  contact_phone: string;
+  contact_email?: string | null;
+
+  state_id: number;
+  state_name?: string | null;
+
+  city_id: number;
+  city_name?: string | null;
+
+  locality_id: number;
+  locality_name?: string | null;
+
+  start_date: string;
+  start_time: string;
+  end_date: string;
+  end_time: string;
+
+  items: StorageSolutionEnquiryItemInterface[];
+  notes?: string | null;
+}
+
+// Standard response type for when the enquiry is created
+export interface StorageSolutionEnquiryResponse extends StorageSolutionEnquiryRequest {
+  id: number;
+  tenant_id: number;
+  status: StorageSolutionEnquiryStatus;
+  created_at: string;
+  updated_at: string;
+}

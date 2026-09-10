@@ -14,6 +14,7 @@ import { useAuth } from '@/context/AuthContext';
 import { Ionicons } from '@expo/vector-icons';
 
 import { useMasterData } from '@/context/MasterDataContext';
+import { createStorageSolutionEnquiry } from '@/lib/api/storageSolution';
 
 const ITEM_CATEGORIES = [
   { label: 'Luggage', value: 'Luggage' },
@@ -162,27 +163,72 @@ export default function LuggageStorageEnquiry() {
     setShowItemForm(false);
   };
 
+    // 1. Strict form validation before the submit button is enabled
   const valid = useMemo(() => {
+    const isPhoneValid = /^\d{10}$/.test(contactPhone);
+    const isEmailValid = !contactEmail || /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(contactEmail);
+    const isDateValid = new Date(fromDate) <= new Date(toDate); // Ensures start date is before/on end date
+    
     return (
       contactName.trim().length > 2 &&
-      contactPhone.length === 10 &&
+      isPhoneValid &&
+      isEmailValid &&
       selectedStateId.length > 0 &&
       selectedCityId.length > 0 &&
       selectedLocationId.length > 0 &&
       fromDate.length > 0 &&
       toDate.length > 0 &&
+      isDateValid &&
       items.length > 0
     );
-  }, [contactName, contactPhone, selectedStateId, selectedCityId, selectedLocationId, fromDate, toDate, items]);
+  }, [contactName, contactPhone, contactEmail, selectedStateId, selectedCityId, selectedLocationId, fromDate, toDate, items]);
 
+  // 2. Map state directly to the new StorageSolutionEnquiry_POST interface
   const submit = () => {
     setShowConfirmSheet(false);
     setSubmitting(true);
-    setTimeout(() => {
-      haptic.success();
-      setDone(true);
-      setSubmitting(false);
-    }, 1500);
+    
+    createStorageSolutionEnquiry({
+      contact_name: contactName.trim(),
+      contact_phone: contactPhone,
+      contact_email: contactEmail.trim() || null,
+      
+      state_id: Number(selectedStateId),
+      state_name: selectedStateName || null,
+      
+      city_id: Number(selectedCityId),
+      city_name: selectedCityName || null,
+      
+      locality_id: Number(selectedLocationId),
+      locality_name: selectedLocationName || null,
+      
+      start_date: new Date(fromDate).toISOString(),
+      start_time: formatTime12h(timeHHmmToDate(fromTime)),
+      end_date: new Date(toDate).toISOString(),
+      end_time: formatTime12h(timeHHmmToDate(toTime)),
+      
+      items: items.map(item => ({
+        name: item.name.trim(),
+        category: item.category,
+        quantity: Number(item.quantity) || 1,
+        weight: item.weight ? Number(item.weight) : undefined,
+        description: item.description.trim() || undefined,
+      })),
+      
+      notes: notes.trim() || null,
+    })
+      .then(() => {
+        haptic.success();
+        setDone(true);
+      })
+      .catch((err) => {
+        console.error('Storage enquiry submission failed:', err);
+        alert('Submission failed', err.message || 'There was an error submitting your request. Please try again.');
+        setShowConfirmSheet(true); // Pop the confirmation sheet back up so they can edit
+      })
+      .finally(() => {
+        setSubmitting(false);
+      });
   };
 
   if (done) {
