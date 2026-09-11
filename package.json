@@ -9,6 +9,7 @@
     "start:staging": "NODE_ENV=development APP_ENV=staging expo start --clear",
     "start:prod": "NODE_ENV=production APP_ENV=production expo start --clear --no-dev",
     "android": "NODE_ENV=production APP_ENV=production expo run:android",
+    "android-dev": "NODE_ENV=development APP_ENV=development expo run:android",
     "ios": "NODE_ENV=development APP_ENV=development expo run:ios",
     "web": "NODE_ENV=development APP_ENV=development expo start --web",
     "typecheck": "tsc --noEmit",

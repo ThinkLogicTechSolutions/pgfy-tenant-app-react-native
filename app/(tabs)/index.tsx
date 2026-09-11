@@ -11,7 +11,7 @@ import { Image } from 'expo-image';
 import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
-import { Ionicons } from '@expo/vector-icons';
+import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import { palette, spacing, radius, shadows, fontFamily } from '@/theme';
 import { Text, IconButton, PressableScale, Avatar, Button, EmptyState, Skeleton, VoiceWaveIcon, VoiceSearchSheet } from '@/components/ui';
 import { CityTile, SectionHeader, CraftedFooter, PromotedBadge } from '@/components/domain';
@@ -86,15 +86,18 @@ type QuickService = {
   key: string;
   label: string;
   subtitle: string;
-  icon: keyof typeof Ionicons.glyphMap;
+  icon: keyof typeof Ionicons.glyphMap | keyof typeof MaterialCommunityIcons.glyphMap;
+  iconFamily?: 'Ionicons' | 'MaterialCommunityIcons';
   gradient: [string, string];
   wash: string;
 };
 
 const QUICK_SERVICES: QuickService[] = [
   { key: 'group', label: 'Group booking', subtitle: 'Book in bulk', icon: 'people', gradient: [palette.navy, palette.navyDark], wash: palette.navyTint },
-  { key: 'invite', label: 'Invite a PG', subtitle: 'Refer a PG', icon: 'business', gradient: [palette.success, '#178A57'], wash: palette.successTint },
+  { key: 'packers-movers', label: 'Packers & Movers', subtitle: 'Move with ease', icon: 'truck-cargo-container', iconFamily: 'MaterialCommunityIcons', gradient: ['#A855F7', '#7E22CE'], wash: '#FAF5FF' },
+  { key: 'storage', label: 'Storage Solutions', subtitle: 'Store with ease', icon: 'warehouse', iconFamily: 'MaterialCommunityIcons', gradient: ['#6366F1', '#4338CA'], wash: '#EEF2FF' },
   { key: 'metro', label: 'Metro Ticket', subtitle: 'Coming soon', icon: 'train', gradient: ['#3B82F6', '#1D5FD8'], wash: palette.infoTint },
+  { key: 'invite', label: 'Invite a PG', subtitle: 'Refer a PG', icon: 'business', gradient: [palette.success, '#178A57'], wash: palette.successTint },
   { key: 'refer', label: 'Refer App', subtitle: 'Invite & save', icon: 'gift', gradient: [palette.coral, palette.coralDark], wash: palette.coralTint },
 ];
 
@@ -258,7 +261,11 @@ function QuickActionTile({ service, onPress }: { service: QuickService; onPress:
           end={{ x: 1, y: 1 }}
           style={{ width: 50, height: 50, borderRadius: radius.lg, alignItems: 'center', justifyContent: 'center', marginBottom: spacing.sm, ...shadows.raised }}
         >
-          <Ionicons name={service.icon} size={24} color={palette.white} />
+          {service.iconFamily === 'MaterialCommunityIcons' ? (
+              <MaterialCommunityIcons name={service.icon as keyof typeof MaterialCommunityIcons.glyphMap} size={24} color={palette.white} />
+            ) : (
+              <Ionicons name={service.icon as keyof typeof Ionicons.glyphMap} size={24} color={palette.white} />
+          )}
         </LinearGradient>
         <Text variant="bodySm" weight="700" align="center" numberOfLines={1}>{service.label}</Text>
         <Text variant="caption" color={palette.inkTertiary} align="center" numberOfLines={1} style={{ marginTop: 1 }}>
@@ -511,6 +518,12 @@ export default function Home() {
         pathname: '/coming-soon',
         params: { title: 'Metro Tickets', subtitle: 'Book metro tickets right inside PGfy. We’re working on it — stay tuned!', icon: 'train-outline' },
       });
+    }
+    if(key === 'packers-movers') {
+      return router.push('/packers-movers');
+    }
+    if(key === 'storage') {
+      return router.push('/storage-solutions/create-enquiry');
     }
   };
 

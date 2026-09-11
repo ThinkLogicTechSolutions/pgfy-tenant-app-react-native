@@ -2092,3 +2092,110 @@ export interface ApiTenantNotification {
   created_at: string;
   updated_at: string;
 }
+
+// ---------------------------------------------------------------------------
+// Packer and mover service (`POST /tenant/packers-and-movers`) — a tenant requests a quote for
+// moving their belongings to a new property.
+// ---------------------------------------------------------------------------
+
+export type PackersMoversStatusType =
+  | 'SUBMITTED'
+  | 'CANCELLED'
+  | 'ASSIGNED'
+;
+
+export interface CreatePackersMoversEnquiryRequest {
+    pickup_address: string;
+    pickup_city: string;
+    pickup_state: string;
+    pickup_pincode: string;
+
+    destination_address: string;
+    destination_city: string;
+    destination_state: string;
+    destination_pincode: string;
+
+    contact_name: string;
+    contact_phone: string;
+    contact_email?: string;
+
+    preferred_date: Date | string;
+    preferred_time: string;
+    items: string[];
+}
+
+export interface CreatePackersMoversEnquiryResponse {
+    id: number;
+    tenant_id: number;
+    status: PackersMoversStatusType;
+    pickup_address: string;
+    pickup_city: string;
+    pickup_state: string;
+    pickup_pincode: string;
+
+    destination_address: string;
+    destination_city: string;
+    destination_state: string;
+    destination_pincode: string;
+
+    contact_name: string;
+    contact_phone: string;
+    contact_email: string | null;
+
+    preferred_date: Date | string;
+    preferred_time: string;
+    items: string[];
+    created_at: string;
+    updated_at: string;
+}
+
+export interface StorageSolutionEnquiryItemInterface {
+  name: string;
+  category: string;
+  quantity: number;
+  weight?: number;
+  description?: string;
+}
+
+export type StorageSolutionEnquiryStatus = 'SUBMITTED' | 'ASSIGNED' | 'CANCELLED' | 'COMPLETED' ;
+
+export interface StorageSolutionEnquiryRequest {
+  contact_name: string;
+  contact_phone: string;
+  contact_email?: string | null;
+
+  state_id: number;
+  state_name?: string | null;
+
+  city_id: number;
+  city_name?: string | null;
+
+  locality_id: number;
+  locality_name?: string | null;
+
+  start_date: string;
+  start_time: string;
+  end_date: string;
+  end_time: string;
+
+  items: StorageSolutionEnquiryItemInterface[];
+  notes?: string | null;
+}
+
+// Standard response type for when the enquiry is created
+export interface StorageSolutionEnquiryResponse extends StorageSolutionEnquiryRequest {
+  id: number;
+  tenant_id: number;
+  status: StorageSolutionEnquiryStatus;
+  assigned_property_id?: number | null;
+  assigned_property?: {
+    code: string;
+    name: string;
+    owner: {
+      name: string;
+      phone: string;
+    };
+  } | null;
+  created_at: string;
+  updated_at: string;
+}
